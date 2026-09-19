@@ -829,13 +829,15 @@ class Fighter:
             pygame.draw.circle(s, husk, (int(p.x), int(p.y)), int(self.r))
             pygame.draw.circle(s, mix(husk, (0, 0, 0), 0.45),
                                (int(p.x), int(p.y)), int(self.r), 2)
-            for sgn in (-1, 1):
-                e = p + Vector2(self.r * 0.34 * sgn, -self.r * 0.10)
-                k = self.r * 0.16
-                pygame.draw.line(s, (215, 218, 228), (e.x - k, e.y - k),
-                                 (e.x + k, e.y + k), 2)
-                pygame.draw.line(s, (215, 218, 228), (e.x - k, e.y + k),
-                                 (e.x + k, e.y - k), 2)
+            split = mix(husk, (0, 0, 0), 0.55)
+            seam = [(-0.58, -0.12), (-0.14, 0.06), (0.16, -0.28),
+                    (0.14, 0.08), (0.54, 0.32)]
+            pygame.draw.lines(s, split, False,
+                              [(p.x + dx * self.r, p.y + dy * self.r)
+                               for dx, dy in seam], 2)
+            pygame.draw.line(s, split,
+                             (p.x - 0.14 * self.r, p.y + 0.06 * self.r),
+                             (p.x - 0.22 * self.r, p.y + 0.56 * self.r), 2)
             return
 
         blit_glow(s, p, int(self.r * 1.9), self.colour, 62)
@@ -849,18 +851,6 @@ class Fighter:
                            int(self.r * 0.42))
         pygame.draw.circle(s, mix(self.dark, (0, 0, 0), 0.35),
                            (int(p.x), int(p.y)), int(self.r), 2)
-
-        # eyes, looking at whoever it is fighting
-        foe = world.foe(self)
-        look = unit((foe.pos - self.pos) if foe else self.aim, self.aim)
-        for sgn in (-1, 1):
-            side = Vector2(-look.y, look.x) * (self.r * 0.34 * sgn)
-            e = p + look * self.r * 0.30 + side
-            pygame.draw.circle(s, (250, 250, 255), (int(e.x), int(e.y)),
-                               max(2, int(self.r * 0.20)))
-            q = e + look * self.r * 0.09
-            pygame.draw.circle(s, (18, 18, 24), (int(q.x), int(q.y)),
-                               max(1, int(self.r * 0.10)))
 
         # health ring
         frac = clamp(self.hp / MAX_HP, 0.0, 1.0)
