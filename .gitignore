@@ -1,0 +1,36 @@
+# ---- the player's own things -------------------------------------------
+# The profile lives in the OS data directory now (see `_save_dir`). This
+# entry is for the copy left here by older builds, which is a SAVE FILE -
+# somebody's campaign, not source.
+iron_line_profile.json
+
+# ---- build output -------------------------------------------------------
+build/
+dist/
+*.manifest
+
+# ---- python -------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+chk.pyc
+
+# ---- development screenshots --------------------------------------------
+# EVERY .png in this repository is a render made while working on
+# something - a body sheet, a map, a UI frame - and none of them are used
+# by the game, which draws all of its own graphics in code.
+#
+# If a real image asset is ever added, give it an exception here:
+#     !assets/whatever.png
+*.png
+
+# ---- audio --------------------------------------------------------------
+# Same story. All eighteen pieces are generated in code; vermilion_theme.ogg
+# is the recording THE VENGEANCE replaced and nothing loads it any more.
+*.ogg
+*.wav
+*.mp3
+
+# ---- editor / tooling ---------------------------------------------------
+# Local Claude Code permissions - per-machine, not project configuration.
+.claude/settings.local.json
