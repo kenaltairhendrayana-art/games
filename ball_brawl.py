@@ -2637,21 +2637,23 @@ SAVE_NAME = "progress.json"
 
 
 def load_progress():
-    """How far up the ladder, and how deep into the waves."""
+    """How far up the ladder, how deep into the waves, how many crowns."""
     try:
         with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
             data = json.load(fh)
         return (int(clamp(int(data.get("cleared", 0)), 0, len(CAMPAIGN))),
-                max(0, int(data.get("best_wave", 0))))
+                max(0, int(data.get("best_wave", 0))),
+                max(0, int(data.get("crowns", 0))))
     except (OSError, ValueError, TypeError, AttributeError):
-        return (0, 0)
+        return (0, 0, 0)
 
 
-def save_progress(cleared=None, best_wave=None):
-    """Write one field without clobbering the other."""
-    was_cleared, was_best = load_progress()
+def save_progress(cleared=None, best_wave=None, crowns=None):
+    """Write one field without clobbering the others."""
+    was_cleared, was_best, was_crowns = load_progress()
     data = {"cleared": was_cleared if cleared is None else int(cleared),
-            "best_wave": was_best if best_wave is None else int(best_wave)}
+            "best_wave": was_best if best_wave is None else int(best_wave),
+            "crowns": was_crowns if crowns is None else int(crowns)}
     try:
         with open(os.path.join(_save_dir(), SAVE_NAME), "w",
                   encoding="utf-8") as fh:
@@ -2667,6 +2669,8 @@ def save_progress(cleared=None, best_wave=None):
 # so the mode reads as a rush; the shooters arrive once you have had a
 # moment to settle.
 # ---------------------------------------------------------------------------
+TOURNEY_SIZES = (4, 8, 16)     # how many balls a custom bracket may hold
+
 RUSH_EARLY = (Dagger, Sword, Fists)
 RUSH_LATE = (Flurry, Hammer, Gun, Bow, Gauntlets, Maul, Greatsword)
 RUSH_COLOURS = (((140, 216, 120), (38, 92, 34)),   # never the player's red
@@ -2684,15 +2688,16 @@ RUSH_COLOURS = (((140, 216, 120), (38, 92, 34)),   # never the player's red
 # ---------------------------------------------------------------------------
 class Game:
     def __init__(self):
-        self.state = "menu"          # menu | campaign | fight | ko
-        self.mode = "versus"         # versus | campaign
+        self.state = "menu"          # menu | campaign | rush | tourney |
+        #                              bracket | fight | ko
+        self.mode = "versus"         # versus | campaign | rush | tourney
         self.paused = False
         self.speed = 1
         self.orbs_on = True
         self.human = False
         self.pick = [0, 0]           # weapon index for red, blue
         self.score = [0, 0]
-        self.cleared, self.best_wave = load_progress()
+        self.cleared, self.best_wave, self.crowns = load_progress()
         self.wave = 0
         self.kills = 0
         self.wave_gap = 0.0
@@ -2702,6 +2707,15 @@ class Game:
         self.slot = 0
         self.camp_win = False
         self.unlock_text = ""
+        # a custom tournament: who is in it, and how far it has got
+        self.tour_size = 8
+        self.field = [None] * 8      # a weapon index per seat, None = empty
+        self.bracket = []            # rounds of seat numbers, None = undecided
+        self.tour_round = 0
+        self.tour_match = 0
+        self.tour_seat = -1          # the seat you play; -1 watches them all
+        self.tour_played = 0         # the round on screen, not the one next
+        self.champion = None
         self.fighters = []
         self.projectiles = []
         self.minions = []
@@ -2722,6 +2736,15 @@ class Game:
         self.mouse = (W // 2, H // 2)
 
     # -- world -------------------------------------------------------------
+    def my_ball(self):
+        """The fighter you are driving, if you are driving one. In versus
+        and the campaign that is always the first one, but in a tournament
+        you may have drawn the blue seat."""
+        for f in self.fighters:
+            if f.player:
+                return f
+        return None
+
     def foes(self, f):
         """Everyone still standing on the other side."""
         return [o for o in self.fighters if o.team != f.team and o.hp > 0]
@@ -2788,6 +2811,19 @@ class Game:
                         lv["weapon"], shape=lv["sides"],
                         max_hp=MAX_HP * lv["hp"], dmg_mult=lv["dmg"],
                         speed_mult=lv["spd"], team=1))
+        elif self.mode == "tourney":
+            pair = self.match_up()
+            if pair is None:
+                return
+            a, b = pair
+            self.tour_played = self.tour_round
+            self.fighters = [
+                Fighter(self.seat_name(a), RED, RED_D, left,
+                        WEAPONS[self.field[a]], player=self.tour_seat == a),
+                Fighter(self.seat_name(b), BLUE, BLUE_D, right,
+                        WEAPONS[self.field[b]], player=self.tour_seat == b,
+                        team=1),
+            ]
         else:
             self.fighters = [
                 Fighter("RED", RED, RED_D, left, WEAPONS[self.pick[0]],
@@ -2834,6 +2870,8 @@ class Game:
             save_progress(best_wave=self.best_wave)
         elif self.mode == "campaign":
             self.record_level(winner)
+        elif self.mode == "tourney":
+            self.record_match(winner.team == 0)
         else:
             self.score[0 if winner.team == 0 else 1] += 1
         self.spark(loser.pos, loser.colour, 60, speed=520)
@@ -3011,8 +3049,9 @@ class Game:
 
     def menu_layout(self):
         """Every clickable thing on the versus menu: (rect, kind, value)."""
-        items = [(pygame.Rect(W - 216, 22, 180, 40), "camp", None),
-                 (pygame.Rect(W - 216, 68, 180, 34), "rush", None)]
+        items = [(pygame.Rect(W - 236, 12, 200, 30), "camp", None),
+                 (pygame.Rect(W - 236, 46, 200, 30), "rush", None),
+                 (pygame.Rect(W - 236, 80, 200, 30), "tourney", None)]
         cw, ch, gap = 188, 31, 2
         for side in (0, 1):
             for i, col, row in grid_slots():
@@ -3048,12 +3087,133 @@ class Game:
         items.append((pygame.Rect(W // 2 - 152, 612, 304, 46), "start", None))
         return items
 
+    def tourney_layout(self):
+        """Setting one up: how big, who is in it, and who you are."""
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None)]
+        for k, n in enumerate(TOURNEY_SIZES):
+            items.append((pygame.Rect(56 + k * 84, 118, 76, 30),
+                          "size", n))
+        sw, sh, per = 116, 28, 8
+        cols = min(per, self.tour_size)
+        x0 = (W - (cols * sw + (cols - 1) * 6)) // 2
+        for k in range(self.tour_size):
+            r, c = divmod(k, per)
+            items.append((pygame.Rect(x0 + c * (sw + 6), 190 + r * (sh + 6),
+                                      sw, sh), "seat", k))
+        items.append((pygame.Rect(W // 2 - 282, 292, 168, 30), "fill", None))
+        items.append((pygame.Rect(W // 2 - 104, 292, 208, 30), "who", None))
+        items.append((pygame.Rect(W // 2 + 114, 292, 168, 30), "clear", None))
+        items += self.ball_grid(380)
+        items.append((pygame.Rect(W // 2 - 152, 520, 304, 52), "start", None))
+        return items
+
+    def bracket_layout(self):
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None)]
+        items.append((pygame.Rect(W // 2 - 170, H - 58, 340, 42),
+                      "start", None))
+        return items
+
     def rush_layout(self):
         items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
                  (pygame.Rect(W - 216, 66, 180, 28), "human", None)]
         items += self.ball_grid(430)
         items.append((pygame.Rect(W // 2 - 152, 560, 304, 52), "start", None))
         return items
+
+    # -- the tournament -----------------------------------------------------
+    def open_tourney(self):
+        self.mode = "tourney"
+        self.state = "tourney"
+        self.champion = None
+        self.bracket = []
+        self.set_field_size(self.tour_size)
+        SFX.play("click")
+
+    def set_field_size(self, n):
+        """Resize the field, keeping whoever already has a seat."""
+        keep = [w for w in self.field if w is not None][:n]
+        self.tour_size = n
+        self.field = keep + [None] * (n - len(keep))
+        if self.tour_seat >= n:
+            self.tour_seat = -1
+
+    def seat_ball(self, i):
+        """Drop a ball into the first free seat."""
+        for k, w in enumerate(self.field):
+            if w is None:
+                self.field[k] = i
+                SFX.play("click")
+                return
+
+    def fill_field(self):
+        picks = self.unlocked_idx()
+        for k, w in enumerate(self.field):
+            if w is None:
+                self.field[k] = random.choice(picks)
+        SFX.play("click")
+
+    def field_ready(self):
+        return all(w is not None for w in self.field)
+
+    def seat_name(self, seat):
+        """Two of the same ball need telling apart on the tree."""
+        w = WEAPONS[self.field[seat]]
+        if sum(1 for x in self.field if x == self.field[seat]) > 1:
+            return "%s %d" % (w.NAME, seat + 1)
+        return w.NAME
+
+    def start_tourney(self):
+        """Draw the bracket. Who meets whom is drawn, not chosen."""
+        if not self.field_ready():
+            return
+        seats = list(range(self.tour_size))
+        random.shuffle(seats)
+        self.bracket = [seats]
+        n = self.tour_size
+        while n > 1:
+            n //= 2
+            self.bracket.append([None] * n)
+        self.tour_round = 0
+        self.tour_match = 0
+        self.champion = None
+        self.state = "bracket"
+        SFX.play("click")
+
+    def match_up(self):
+        """The two seats due to fight next, or None if there is no match."""
+        if self.champion is not None or not self.bracket:
+            return None
+        row = self.bracket[self.tour_round]
+        if self.tour_match * 2 + 1 >= len(row):
+            return None
+        a, b = row[self.tour_match * 2], row[self.tour_match * 2 + 1]
+        return None if a is None or b is None else (a, b)
+
+    def record_match(self, won_left):
+        """Put the winner through, and line up the next match."""
+        row = self.bracket[self.tour_round]
+        through = row[self.tour_match * 2 + (0 if won_left else 1)]
+        self.bracket[self.tour_round + 1][self.tour_match] = through
+        self.tour_match += 1
+        if self.tour_match * 2 >= len(row):
+            self.tour_round += 1
+            self.tour_match = 0
+        if len(self.bracket[self.tour_round]) == 1:
+            self.champion = through
+            self.crowns += 1
+            save_progress(crowns=self.crowns)
+
+    def round_name(self, r):
+        n = len(self.bracket[r]) if self.bracket else 0
+        return {2: "THE FINAL", 4: "THE SEMI-FINALS",
+                8: "THE QUARTER-FINALS",
+                16: "THE FIRST ROUND"}.get(n, "ROUND %d" % (r + 1))
+
+    def cycle_seat(self):
+        """Watch them all, or take one of the seats yourself."""
+        seats = [-1] + [k for k, w in enumerate(self.field) if w is not None]
+        at = seats.index(self.tour_seat) if self.tour_seat in seats else 0
+        self.tour_seat = seats[(at + 1) % len(seats)]
 
     def open_rush(self):
         self.mode = "rush"
@@ -3089,6 +3249,8 @@ class Game:
         if self.mode == "campaign" and self.camp_win:
             self.level = min(len(CAMPAIGN) - 1, self.level + 1)
             self.state = "campaign"
+        elif self.mode == "tourney":
+            self.state = "bracket"
         else:
             self.start_fight()
 
@@ -3105,8 +3267,13 @@ class Game:
         if k == pygame.K_ESCAPE:
             if self.state == "menu":
                 return False
-            if self.state in ("campaign", "rush"):
+            if self.state in ("campaign", "rush", "tourney"):
                 self.open_versus()
+            elif self.state == "bracket":
+                self.state = "tourney"      # abandon it and draw another
+            elif self.mode == "tourney":
+                self.state = "bracket"      # leave the match, keep the tree
+                self.paused = False
             elif self.mode in ("campaign", "rush"):
                 self.state = self.mode
                 self.paused = False
@@ -3120,6 +3287,9 @@ class Game:
             self.speed = 1 if self.speed >= 3 else self.speed + 1
         elif k == pygame.K_p and self.state in ("fight", "ko"):
             self.paused = not self.paused
+        elif k == pygame.K_TAB and self.state == "tourney":
+            self.cycle_seat()
+            SFX.play("click")
         elif k == pygame.K_TAB and self.state in ("menu", "campaign", "rush"):
             self.human = not self.human
             SFX.play("click")
@@ -3129,6 +3299,10 @@ class Game:
             self.campaign_key(k)
         elif self.state == "rush":
             self.rush_key(k)
+        elif self.state == "tourney":
+            self.tourney_key(k)
+        elif self.state == "bracket":
+            self.bracket_key(k)
         else:
             self.fight_key(k)
         return True
@@ -3148,8 +3322,33 @@ class Game:
             self.open_campaign()
         elif k == pygame.K_x:
             self.open_rush()
+        elif k == pygame.K_b:
+            self.open_tourney()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_fight()
+
+    def tourney_key(self, k):
+        if pygame.K_1 <= k < pygame.K_1 + len(TOURNEY_SIZES):
+            self.set_field_size(TOURNEY_SIZES[k - pygame.K_1])
+            SFX.play("click")
+        elif k == pygame.K_r:
+            self.fill_field()
+        elif k == pygame.K_c:
+            self.field = [None] * self.tour_size
+            self.tour_seat = -1
+            SFX.play("click")
+        elif k == pygame.K_b:
+            self.open_versus()
+        elif k in (pygame.K_SPACE, pygame.K_RETURN):
+            self.start_tourney()
+
+    def bracket_key(self, k):
+        if k in (pygame.K_SPACE, pygame.K_RETURN):
+            if self.champion is None:
+                self.start_fight()
+            else:
+                self.state = "tourney"
+                SFX.play("click")
 
     def rush_key(self, k):
         picks = self.unlocked_idx()
@@ -3190,9 +3389,10 @@ class Game:
         elif k == pygame.K_SPACE:
             if self.state == "ko":
                 self.after_ko()
-            elif self.human and self.fighters and self.fighters[0].dash_cd <= 0:
-                me = self.fighters[0]
-                me.dash(me.aim)
+            else:
+                me = self.my_ball()
+                if me is not None and me.dash_cd <= 0:
+                    me.dash(me.aim)
 
     def handle_click(self, pos):
         if self.state == "menu":
@@ -3203,6 +3403,8 @@ class Game:
                     self.set_pick(val[0], val[1])
                 elif kind == "camp":
                     self.open_campaign()
+                elif kind == "tourney":
+                    self.open_tourney()
                 elif kind == "human":
                     self.human = not self.human
                     SFX.play("click")
@@ -3226,6 +3428,45 @@ class Game:
                     self.open_versus()
                 elif kind == "start":
                     self.start_fight()
+                break
+        elif self.state == "tourney":
+            for rect, kind, val in self.tourney_layout():
+                if not rect.collidepoint(pos):
+                    continue
+                if kind == "ball" and val in self.unlocked_idx():
+                    self.seat_ball(val)
+                elif kind == "seat":
+                    if self.field[val] is not None:
+                        self.field[val] = None
+                        if self.tour_seat == val:
+                            self.tour_seat = -1
+                        SFX.play("click")
+                elif kind == "size":
+                    self.set_field_size(val)
+                    SFX.play("click")
+                elif kind == "fill":
+                    self.fill_field()
+                elif kind == "clear":
+                    self.field = [None] * self.tour_size
+                    self.tour_seat = -1
+                    SFX.play("click")
+                elif kind == "who":
+                    self.cycle_seat()
+                    SFX.play("click")
+                elif kind == "back":
+                    self.open_versus()
+                elif kind == "start":
+                    self.start_tourney()
+                break
+        elif self.state == "bracket":
+            for rect, kind, val in self.bracket_layout():
+                if not rect.collidepoint(pos):
+                    continue
+                if kind == "back":
+                    self.state = "tourney"
+                    SFX.play("click")
+                elif kind == "start":
+                    self.bracket_key(pygame.K_SPACE)
                 break
         elif self.state == "campaign":
             for rect, kind, val in self.camp_layout():
@@ -3264,6 +3505,10 @@ class Game:
             self.draw_campaign(s)
         elif self.state == "rush":
             self.draw_rush(s)
+        elif self.state == "tourney":
+            self.draw_tourney(s)
+        elif self.state == "bracket":
+            self.draw_bracket(s)
         else:
             off = [self.cam.x, self.cam.y]
             if self.shake > 0.2:
@@ -3320,8 +3565,8 @@ class Game:
         if tags:
             text(s, "  ".join(tags), 17, (VIEW.right - 20, VIEW.top + 26),
                  DIM, right=True)
-        if self.human and self.fighters:
-            me = self.fighters[0]
+        me = self.my_ball()
+        if me is not None:
             ready = me.dash_cd <= 0
             text(s, "DASH " + ("READY" if ready else "%.1f" % me.dash_cd), 17,
                  (VIEW.left + 20, VIEW.top + 18), GOLD if ready else DIM)
@@ -3387,6 +3632,8 @@ class Game:
             mid = "WAVE %d" % self.wave
         elif self.mode == "campaign":
             mid = "LEVEL %d / %d" % (self.level + 1, len(CAMPAIGN))
+        elif self.mode == "tourney":
+            mid = self.round_name(self.tour_played)
         else:
             mid = "%d - %d" % (self.score[0], self.score[1])
         text(s, mid, 19, (W // 2, 46), DIM, center=True)
@@ -3455,6 +3702,11 @@ class Game:
             size = int(lerp(92, 52, t))
             rule = (self.team_of(0)[0].colour if self.camp_win
                     else win.colour)
+        elif self.mode == "tourney":
+            title = ("%s TAKES IT" % self.seat_name(self.champion)
+                     if self.champion is not None else "%s WINS" % win.name)
+            size = int(lerp(110, 60, t))
+            rule = GOLD if self.champion is not None else win.colour
         else:
             title = "%s WINS" % win.name
             size = int(lerp(120, 66, t))
@@ -3480,6 +3732,15 @@ class Game:
                     "SPACE / R  try again        ESC  back to the ladder")
             text(s, line, 22, (W // 2, y + 56),
                  GOLD if self.unlock_text else INK, center=True)
+        elif self.mode == "tourney":
+            if self.champion is not None:
+                line = "CHAMPION  -  crowns won:  %d" % self.crowns
+                hint = "SPACE / click  the bracket        ESC  a new field"
+            else:
+                line = ("through to %s"
+                        % self.round_name(self.tour_round).lower())
+                hint = "SPACE / click  the bracket        ESC  the bracket"
+            text(s, line, 22, (W // 2, y + 56), GOLD, center=True)
         else:
             text(s, "%d hits  -  %d damage  -  %.0f DPS"
                  % (win.hits, int(win.dealt), win.dealt / max(1.0, self.clock_t)),
@@ -3514,6 +3775,8 @@ class Game:
                 self.draw_button(s, rect, "CAMPAIGN >", GOLD, "C")
             elif kind == "rush":
                 self.draw_button(s, rect, "RUSH >", (236, 110, 96), "X")
+            elif kind == "tourney":
+                self.draw_button(s, rect, "TOURNAMENT >", (176, 140, 236), "B")
             elif kind == "human":
                 self.draw_button(s, rect, "RED IS:  %s" % ("PLAYER" if self.human
                                                            else "CPU"),
@@ -3569,6 +3832,166 @@ class Game:
         if locked:
             text(s, "L%d" % unlock_level(wcls.NAME), 12,
                  (rect.right - 8, rect.centery), DIM, right=True)
+
+    # -- the tournament -----------------------------------------------------
+    def draw_tourney(self, s):
+        text(s, "TOURNAMENT", 42, (56, 20), (176, 140, 236))
+        text(s, "fill the field, draw the bracket, last ball standing",
+             15, (58, 70), DIM)
+        text(s, "BRACKET SIZE", 12, (56, 102), DIM)
+        ready = self.field_ready()
+        for rect, kind, val in self.tourney_layout():
+            if kind == "back":
+                self.draw_button(s, rect, "< VERSUS", DIM, "B")
+            elif kind == "size":
+                on = val == self.tour_size
+                pygame.draw.rect(s, mix(PANEL, (176, 140, 236),
+                                        0.28 if on else 0.0), rect)
+                pygame.draw.rect(s, (176, 140, 236) if on else (52, 57, 72),
+                                 rect, 2 if on else 1)
+                text(s, str(val), 20, rect.center, INK if on else DIM,
+                     center=True)
+            elif kind == "seat":
+                self.draw_seat(s, rect, val)
+            elif kind == "ball":
+                self.draw_ball(s, rect, val)
+            elif kind in ("fill", "clear", "who"):
+                if kind == "fill":
+                    label, key = "FILL AT RANDOM", "R"
+                elif kind == "clear":
+                    label, key = "EMPTY THE FIELD", "C"
+                else:
+                    label = ("YOU PLAY:  %s" % self.seat_name(self.tour_seat)
+                             if self.tour_seat >= 0 else "YOU WATCH IT ALL")
+                    key = "TAB"
+                pygame.draw.rect(s, PANEL, rect)
+                pygame.draw.rect(s, (52, 57, 72), rect, 1)
+                text(s, label, 14, (rect.left + 12, rect.centery),
+                     GOLD if kind == "who" and self.tour_seat >= 0 else DIM,
+                     left=True)
+                text(s, key, 11, (rect.right - 10, rect.centery),
+                     (72, 78, 96), right=True)
+            elif kind == "start":
+                pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
+                base = (60, 48, 80) if ready else (26, 27, 36)
+                pygame.draw.rect(s, mix((28, 26, 40), base, pulse), rect)
+                pygame.draw.rect(s, mix((176, 140, 236), INK, pulse * 0.5)
+                                 if ready else (52, 57, 72), rect, 2)
+                text(s, "DRAW THE BRACKET   (SPACE)" if ready
+                     else "EVERY SEAT NEEDS A BALL", 22, rect.center,
+                     INK if ready else DIM, center=True)
+        text(s, "click a ball to seat it, click a seat to empty it", 13,
+             (W // 2, 600), DIM, center=True)
+        text(s, "the draw is random - who you meet is not up to you", 13,
+             (W // 2, 622), DIM, center=True)
+        if self.crowns:
+            text(s, "CROWNS WON:  %d" % self.crowns, 14, (W - 56, 600),
+                 GOLD, right=True)
+
+    def draw_seat(self, s, rect, k):
+        i = self.field[k]
+        mine = self.tour_seat == k
+        pygame.draw.rect(s, PANEL if i is not None else (17, 18, 26), rect)
+        pygame.draw.rect(s, GOLD if mine else
+                         (72, 78, 96) if i is not None else (38, 41, 54),
+                         rect, 2 if mine else 1)
+        # GREATSWORD is 80 pixels wide at this size and the seat is 116,
+        # so the number goes on the far side and the badge does not go at all
+        text(s, "%d" % (k + 1), 10, (rect.right - 8, rect.centery),
+             GOLD if mine else (72, 78, 96), right=True)
+        text(s, WEAPONS[i].NAME if i is not None else "EMPTY", 13,
+             (rect.left + 10, rect.centery),
+             INK if i is not None else (58, 63, 80), left=True)
+
+    # -- the bracket --------------------------------------------------------
+    BR_TOP, BR_BOTTOM = 116, 636
+    PLATE_W, PLATE_H = 176, 26
+
+    def plate_pos(self, r, i):
+        """Top-left of slot i in round r. A slot sits midway between the
+        two it came from, which is the whole shape of a bracket."""
+        n = len(self.bracket[0])
+        step = min(58.0, (self.BR_BOTTOM - self.BR_TOP) / n)
+        top = (self.BR_TOP + self.BR_BOTTOM) * 0.5 - step * n * 0.5
+        y = top + (i * (1 << r) + (1 << r) * 0.5) * step
+        cols = len(self.bracket)
+        x0 = (W - (cols * self.PLATE_W + (cols - 1) * 22)) // 2
+        return x0 + r * (self.PLATE_W + 22), int(y - self.PLATE_H * 0.5)
+
+    def plate_state(self, r, i):
+        seat = self.bracket[r][i]
+        if seat is None:
+            return "empty"
+        if r == len(self.bracket) - 1:
+            return "champ"
+        parent = self.bracket[r + 1][i // 2]
+        if parent is not None:
+            return "won" if parent == seat else "lost"
+        if self.champion is None and (r, i // 2) == (self.tour_round,
+                                                     self.tour_match):
+            return "next"
+        return "waiting"
+
+    def draw_bracket(self, s):
+        text(s, "TOURNAMENT", 34, (56, 18), (176, 140, 236))
+        pair = self.match_up()
+        if self.champion is not None:
+            text(s, "%s takes the crown" % self.seat_name(self.champion),
+                 15, (58, 62), GOLD)
+        elif pair:
+            text(s, "%s  -  %s vs %s" % (self.round_name(self.tour_round),
+                                         self.seat_name(pair[0]),
+                                         self.seat_name(pair[1])),
+                 15, (58, 62), DIM)
+        for r in range(len(self.bracket) - 1):
+            for i in range(len(self.bracket[r])):
+                x, y = self.plate_pos(r, i)
+                px2, py = self.plate_pos(r + 1, i // 2)
+                a = (x + self.PLATE_W, y + self.PLATE_H // 2)
+                b = (px2, py + self.PLATE_H // 2)
+                mid = (a[0] + b[0]) // 2
+                pygame.draw.lines(s, (58, 63, 80), False,
+                                  [a, (mid, a[1]), (mid, b[1]), b], 2)
+        for r in range(len(self.bracket)):
+            for i in range(len(self.bracket[r])):
+                self.draw_plate(s, r, i)
+        for rect, kind, val in self.bracket_layout():
+            if kind == "back":
+                self.draw_button(s, rect, "< FIELD", DIM, "ESC")
+            elif kind == "start":
+                done = self.champion is not None
+                pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
+                pygame.draw.rect(s, mix((28, 26, 40), (62, 54, 34) if done
+                                        else (48, 44, 72), pulse), rect)
+                pygame.draw.rect(s, mix(GOLD if done else (176, 140, 236),
+                                        INK, pulse * 0.5), rect, 2)
+                text(s, "ANOTHER TOURNAMENT   (SPACE)" if done
+                     else "FIGHT IT   (SPACE)", 22, rect.center, INK,
+                     center=True)
+
+    def draw_plate(self, s, r, i):
+        seat = self.bracket[r][i]
+        x, y = self.plate_pos(r, i)
+        rect = pygame.Rect(x, y, self.PLATE_W, self.PLATE_H)
+        how = self.plate_state(r, i)
+        edge = {"next": GOLD, "won": GREEN, "champ": GOLD,
+                "lost": (56, 40, 44)}.get(how, (46, 50, 64))
+        pygame.draw.rect(s, mix(PANEL, GOLD, 0.2) if how == "champ"
+                         else PANEL if seat is not None else (16, 17, 24),
+                         rect)
+        pygame.draw.rect(s, edge, rect,
+                         2 if how in ("next", "champ") else 1)
+        if seat is None:
+            return
+        ink = DIM if how == "lost" else INK
+        self.draw_icon(s, (rect.left + 16, rect.centery),
+                       WEAPONS[self.field[seat]],
+                       GOLD if how == "champ" else ink, 0.36)
+        text(s, self.seat_name(seat), 14, (rect.left + 34, rect.centery),
+             ink, left=True)
+        if self.tour_seat == seat:
+            text(s, "YOU", 10, (rect.right - 8, rect.centery), GOLD,
+                 right=True)
 
     # -- the campaign ------------------------------------------------------
     def draw_campaign(self, s):
