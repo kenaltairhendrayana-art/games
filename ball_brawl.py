@@ -3,40 +3,52 @@ BALL BRAWL
 ==========
 Two balls. One arena. Pick a weapon and take the other one apart.
 
-A versus-fight in the style of those "X vs Y" battle clips: two fighters
+A versus-fight in the style of those "X vs Y" battle clips: fighters
 bounce around a walled arena, their weapons swing and fire on their own,
 damage numbers pop off every hit, and one split bar across the top shows
-who is winning. Red can be handed to a player instead of the CPU.
+who is winning. Any ball can be handed to a player instead of the CPU.
+
+Nothing ships beside this file. The twenty weapons, the four places they
+fight in, the nine sounds and the three pieces of music are all drawn or
+synthesised here, out of code.
 
 Requirements: pygame-ce (or pygame)  ->  pip install pygame-ce
 Run:                                     python ball_brawl.py
 
-There is a campaign too: five shapes on a ladder, each holding a weapon
-you do not have yet. Beat one and you keep its prize, in versus as well.
-Progress is saved outside the game folder and survives a reinstall.
+SIX WAYS TO PLAY
+  VERSUS      two balls, any two of the twenty
+  CAMPAIGN    twenty-four blocks on a ladder, each holding a weapon you do
+              not have yet, the last four of them bosses that want a party
+              of three. Saved outside the game folder, so it survives a
+              reinstall.
+  RUSH        one ball, endless waves, no second chances
+  TOURNAMENT  a bracket of 4, 8 or 16 - you choose the field, not the draw
+  ROYALE      4, 6 or 8 balls, every one its own side, last one up takes it
+  GAUNTLET    the whole roster one after another, on one pool of health
 
 CONTROLS
   Versus menu
-    1 .. 7          the seven base weapons, red / Q .. U for blue
-    click           any weapon, including the upgraded ones
+    1 .. 7          the first seven weapons for red, Q .. U for blue
+    click           any of the twenty, including the upgrades
     TAB             red fighter: CPU or PLAYER
     O               health orbs on / off
-    C               open the campaign
+    N               the map: random, or one of the four
+    C X B V G       campaign, rush, tournament, royale, gauntlet
     SPACE           fight
-  Campaign
-    up / down       choose a level (or 1 .. 9)
-    left / right    choose your ball
+  A mode's own screen
+    click           your ball, your level, your field, your seat
+    arrows          the same from the keyboard, where it makes sense
     TAB             play it yourself, or watch
-    C / ESC         back to versus
-    SPACE           fight
-  Fight  (only when you are the PLAYER)
+    N               the map
+    SPACE           go
+  Fight  (only the ball you are driving)
     WASD / arrows   thrust
     mouse           aim the gun and the bow
     SPACE           dash
   Any time
     P               pause
     F               speed  1x / 2x / 3x
-    M               mute
+    M               mute - the music goes with it
     R               restart the fight
     ESC             back out one screen
   Everywhere        the mouse does all of it too
@@ -74,7 +86,6 @@ ARENA = VIEW.copy()
 
 BG      = (13, 14, 20)
 PANEL   = (21, 23, 33)
-GRID    = (29, 32, 45)
 WALL    = (92, 100, 126)
 INK     = (228, 233, 245)
 DIM     = (126, 135, 158)
@@ -237,20 +248,21 @@ def blit_glow(surf, pos, radius, colour, strength=100):
 
 
 # ---------------------------------------------------------------------------
-# THE CITY
+# THE GROUND
 #
-# One street corner, from above, at human scale: a fighter is a person, so
-# a parked car is longer than it is, a doorway is its own size, and a
-# building is six or eight of it across. At that scale a grid of blocks
-# will not fit in the arena - what fits is an avenue, a side street, and
-# the buildings along them, which is what you would actually see standing
-# down there.
+# Four places, all seen from above at human scale: a fighter is a person,
+# so a parked car is longer than it is, a shipping container is three of
+# it, a park bench seats two of it. At that scale a whole city grid will
+# not fit in the arena - what fits is one avenue and a side street, one
+# corner of a freight yard, one lawn and its path, two rooftops.
 #
-# Built once into a surface and blitted from then on, from a fixed seed on
-# its own random stream: the streets never shimmer between frames, and
-# generating them cannot shift the sequence the fight draws from. It all
-# stays dark, because a fighter, a tracer and a damage number have to stay
-# readable over it.
+# Each is one panel built at a fixed scale and tiled, so a bigger arena is
+# more of the place rather than a stretched picture of it. Built once into
+# a surface and blitted from then on, from a fixed seed on its own random
+# stream: the ground never shimmers between frames, and generating it
+# cannot shift the sequence the fight draws from. All four stay dark,
+# because a fighter, a tracer and a damage number have to stay readable
+# over them - the suite measures that rather than trusting it.
 # ---------------------------------------------------------------------------
 ASPHALT   = (22, 23, 30)      # road, darkest
 PAVING    = (47, 49, 60)      # pavement, lightest ground
@@ -259,7 +271,6 @@ KERB      = (68, 72, 86)
 ROADLINE  = (84, 88, 102)
 CROSSWALK = (74, 78, 92)
 SHADOW    = (15, 16, 22)
-PARKLAND  = (25, 40, 31)
 CONCRETE  = (40, 42, 52)      # the yard
 JOINT     = (33, 35, 44)
 RAIL      = (78, 80, 92)
@@ -278,7 +289,7 @@ DUCT      = (60, 63, 76)
 ROOFS = ((34, 36, 46), (38, 36, 46), (31, 34, 44), (36, 38, 48))
 CARS = ((58, 62, 76), (74, 58, 60), (52, 66, 78), (66, 64, 54), (46, 50, 62))
 
-_city_floors = {}
+_floors = {}
 
 
 def _manhole(s, x, y, r=17):
@@ -741,8 +752,8 @@ def map_index(name):
 def arena_floor(w, h, which=0):
     """The arena floor. Built on first use per size and map, then reused."""
     which = which % len(MAPS)
-    if (w, h, which) in _city_floors:
-        return _city_floors[(w, h, which)]
+    if (w, h, which) in _floors:
+        return _floors[(w, h, which)]
     panel = MAPS[which][1]
     cols = max(1, int(round(w / VIEW.w)))
     rows = max(1, int(round(h / VIEW.h)))
@@ -754,7 +765,7 @@ def arena_floor(w, h, which=0):
             tile = panel(xs[c + 1] - xs[c], ys[r + 1] - ys[r],
                          20260920 + which * 977 + r * 31 + c)
             s.blit(tile, (xs[c], ys[r]))
-    _city_floors[(w, h, which)] = s
+    _floors[(w, h, which)] = s
     return s
 
 
@@ -2740,7 +2751,6 @@ FAMILIES = ((Sword, Greatsword), (Dagger, Flurry), (Gun, Repeater),
             (Summoner, Brood), (Spear, None), (Shield, None),
             (Chain, None), (Mines, None), (Beam, None), (Mech, None))
 WEAPONS = tuple(w for fam in FAMILIES for w in fam if w is not None)
-TIERS = len(FAMILIES)          # rows in every weapon grid
 STARTERS = ("SWORD",)          # what you own before you have beaten anything
 
 
