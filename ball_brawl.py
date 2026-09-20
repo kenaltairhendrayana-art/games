@@ -772,7 +772,8 @@ class Sfx:
         self.muted = False
         self.bank = {}
         try:
-            pygame.mixer.init(frequency=self.RATE, size=-16, channels=1, buffer=256)
+            pygame.mixer.init(frequency=self.RATE, size=-16, channels=1,
+                              buffer=512)   # a looping track wants room
             pygame.mixer.set_num_channels(24)
         except pygame.error:
             return
@@ -826,6 +827,197 @@ class Sfx:
 
 
 SFX = Sfx()
+
+# ---------------------------------------------------------------------------
+# MUSIC
+#
+# Three looping pieces, built out of the same array of samples the sounds
+# are. A piece is a handful of bars of bass, arpeggio and drums; a note
+# that overhangs the end wraps round to the beginning, which is what makes
+# the loop join without a gap at the tail or a click at the seam.
+#
+# They are built on first use and kept, because building one costs about a
+# fifth of a second and doing all three at startup would be felt.
+# ---------------------------------------------------------------------------
+def _hz(midi):
+    return 440.0 * 2.0 ** ((midi - 69) / 12.0)
+
+
+def _wave(kind, phase, rng):
+    if kind == "saw":
+        return (phase % 1.0) * 2.0 - 1.0
+    if kind == "square":
+        return 1.0 if (phase % 1.0) < 0.5 else -1.0
+    if kind == "tri":
+        v = (phase % 1.0) * 4.0
+        return v - 1.0 if v < 2.0 else 3.0 - v
+    if kind == "noise":
+        return rng.uniform(-1.0, 1.0)
+    return math.sin(phase * TAU)
+
+
+def _note(buf, rate, at, secs, midi, vol, kind="square", curve=2.0, bend=0.0,
+          rng=None):
+    """One note, mixed in, wrapping past the end of the loop."""
+    n = len(buf)
+    total = max(1, int(secs * rate))
+    start = int(at * rate)
+    hz = _hz(midi)
+    phase = 0.0
+    rng = rng or random
+    for i in range(total):
+        f = i / total
+        phase += (hz * (1.0 + bend * f)) / rate
+        v = _wave(kind, phase, rng) * vol * (1.0 - f) ** curve
+        buf[(start + i) % n] += v
+
+
+def _drone(buf, rate, midi, vol, kind="tri"):
+    """A note held under the whole loop, so there is never dead air.
+
+    Tuned to the nearest frequency that fits a whole number of cycles into
+    the loop, which is also what stops the seam clicking: the waveform at
+    the end is already on its way to where the start begins.
+    """
+    n = len(buf)
+    secs = n / rate
+    hz = max(1, round(_hz(midi) * secs)) / secs
+    for i in range(n):
+        swell = 0.74 + 0.26 * math.sin(TAU * 2.0 * i / n)
+        buf[i] += _wave(kind, hz * i / rate, random) * vol * swell
+
+
+def _hit(buf, rate, at, secs, vol, low, high, rng):
+    """A drum: noise and a falling tone together."""
+    n = len(buf)
+    total = max(1, int(secs * rate))
+    start = int(at * rate)
+    phase = 0.0
+    for i in range(total):
+        f = i / total
+        phase += (low + (high - low) * (1.0 - f)) / rate
+        body = math.sin(phase * TAU) * 0.7 + rng.uniform(-1.0, 1.0) * 0.3
+        buf[(start + i) % n] += body * vol * (1.0 - f) ** 2.6
+
+
+# root, then the chord over it, as offsets in semitones
+TRACKS = {
+    "menu": dict(bpm=96, bars=4, roots=(45, 41, 48, 43), drive=False),
+    "fight": dict(bpm=142, bars=4, roots=(45, 45, 41, 43), drive=True),
+    "boss": dict(bpm=126, bars=4, roots=(38, 38, 34, 36), drive=True,
+                 heavy=True),
+}
+
+
+def _render(name, rate):
+    """One track, as a buffer of samples ready for the mixer."""
+    spec = TRACKS[name]
+    rng = random.Random(hash(name) & 0xFFFF)
+    beat = 60.0 / spec["bpm"]
+    bars, roots = spec["bars"], spec["roots"]
+    length = int(bars * 4 * beat * rate)
+    buf = [0.0] * length
+    heavy = spec.get("heavy", False)
+    triad = (0, 3, 7, 10) if heavy else (0, 3, 7, 12)
+    _drone(buf, rate, roots[0] - 12, 0.075 if spec["drive"] else 0.055)
+
+    for bar in range(bars):
+        root = roots[bar % len(roots)]
+        t0 = bar * 4 * beat
+        if spec["drive"]:
+            for k in range(8):                       # a bass on every eighth
+                _note(buf, rate, t0 + k * beat / 2, beat * 0.46, root - 12,
+                      0.26, "saw", 1.6, rng=rng)
+            for k in range(16):                      # and an arpeggio over it
+                if k % 4 == 3 and not heavy:
+                    continue
+                step = triad[(k + bar) % len(triad)]
+                _note(buf, rate, t0 + k * beat / 4, beat * 0.22,
+                      root + 12 + step, 0.13, "square", 2.4, rng=rng)
+            for k in range(4):                       # kick
+                _hit(buf, rate, t0 + k * beat, 0.16, 0.40, 52.0, 150.0, rng)
+            for k in (1, 3):                         # snare
+                _hit(buf, rate, t0 + k * beat, 0.11, 0.24, 190.0, 420.0, rng)
+            for k in range(8):                       # hat
+                _note(buf, rate, t0 + k * beat / 2 + beat / 4, 0.045, 96,
+                      0.055, "noise", 3.0, rng=rng)
+            if heavy and bar % 2 == 0:               # something landing
+                _hit(buf, rate, t0, 0.5, 0.30, 44.0, 90.0, rng)
+        else:
+            for k in (0, 2):                         # a slow bass
+                _note(buf, rate, t0 + k * beat, beat * 1.7, root - 12,
+                      0.22, "tri", 1.2, rng=rng)
+            for k in range(8):                       # a sparse arpeggio
+                if k % 3 == 2:
+                    continue
+                step = triad[(k + bar) % len(triad)]
+                _note(buf, rate, t0 + k * beat / 2, beat * 0.60,
+                      root + 12 + step, 0.10, "sine", 1.8, rng=rng)
+            for k in (1, 3):                         # a soft tick, no kick
+                _note(buf, rate, t0 + k * beat, 0.05, 92, 0.035, "noise",
+                      3.0, rng=rng)
+
+    out = array("h")
+    peak = max(1e-6, max(abs(v) for v in buf))
+    gain = 0.88 / peak if peak > 0.88 else 1.0
+    for v in buf:
+        out.append(int(clamp(v * gain, -1.0, 1.0) * 32767))
+    return out
+
+
+class Music:
+    """The piece playing behind whatever screen you are on."""
+
+    def __init__(self, rate):
+        self.rate = rate
+        self.ok = False
+        self.muted = False
+        self.now = None
+        self.bank = {}
+        self.channel = None
+
+    def start(self):
+        try:
+            pygame.mixer.set_reserved(1)             # sounds cannot steal it
+            self.channel = pygame.mixer.Channel(0)
+            self.ok = True
+        except pygame.error:
+            self.ok = False
+
+    def track(self, name):
+        if name not in self.bank:
+            self.bank[name] = pygame.mixer.Sound(
+                buffer=_render(name, self.rate))
+            self.bank[name].set_volume(0.34)
+        return self.bank[name]
+
+    def play(self, name):
+        """Switch to a piece, or keep the one already going."""
+        if not self.ok or name == self.now:
+            return
+        self.now = name
+        if self.muted:
+            return
+        try:
+            self.channel.play(self.track(name), loops=-1, fade_ms=450)
+        except (pygame.error, MemoryError):
+            self.ok = False
+
+    def set_muted(self, quiet):
+        self.muted = quiet
+        if not self.ok:
+            return
+        if quiet:
+            self.channel.stop()
+        elif self.now:
+            was, self.now = self.now, None
+            self.play(was)
+
+
+MUSIC = Music(Sfx.RATE)
+if SFX.ok:
+    MUSIC.start()
+
 
 
 # ---------------------------------------------------------------------------
@@ -3746,7 +3938,17 @@ class Game:
         want.y = clamp(want.y, VIEW.bottom - ARENA.bottom, VIEW.top - ARENA.top)
         self.cam += (want - self.cam) * min(1.0, 6.0 * dt)
 
+    def theme(self):
+        """The piece this screen should be playing."""
+        if self.state not in ("fight", "ko"):
+            return "menu"
+        if self.mode == "campaign" and self.level < len(CAMPAIGN):
+            if CAMPAIGN[self.level].get("party", 1) > 1:
+                return "boss"
+        return "fight"
+
     def update(self, dt):
+        MUSIC.play(self.theme())
         if self.hitstop > 0.0:
             self.hitstop -= dt
             dt *= 0.12
@@ -4186,6 +4388,7 @@ class Game:
             return True
         if k == pygame.K_m:
             SFX.muted = not SFX.muted
+            MUSIC.set_muted(SFX.muted)
         elif k == pygame.K_f:
             self.speed = 1 if self.speed >= 3 else self.speed + 1
         elif k == pygame.K_p and self.state in ("fight", "ko"):
