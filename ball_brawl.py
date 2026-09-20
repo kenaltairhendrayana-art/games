@@ -64,7 +64,13 @@ TAU = math.tau
 W, H = 1040, 760
 HUD_H = 124
 FPS = 60
-ARENA = pygame.Rect(20, HUD_H, W - 40, H - HUD_H - 20)
+
+# VIEW is the hole in the window you watch through and never changes.
+# ARENA is the ground itself, which a level may make several times larger -
+# then the view follows the fight around it. Everything physical is in
+# arena coordinates; drawing adds the camera offset, same as screen shake.
+VIEW = pygame.Rect(20, HUD_H, W - 40, H - HUD_H - 20)
+ARENA = VIEW.copy()
 
 BG      = (13, 14, 20)
 PANEL   = (21, 23, 33)
@@ -245,7 +251,7 @@ PARKLAND  = (25, 40, 31)
 ROOFS = ((34, 36, 46), (38, 36, 46), (31, 34, 44), (36, 38, 48))
 CARS = ((58, 62, 76), (74, 58, 60), (52, 66, 78), (66, 64, 54), (46, 50, 62))
 
-_city_floor = None
+_city_floors = {}
 
 
 def _manhole(s, x, y, r=17):
@@ -383,12 +389,14 @@ def _frontage(s, r, rng, along_top):
         x += w + rng.randint(50, 130)
 
 
-def city_floor(w, h):
-    """The arena floor. Built on first use, then reused every frame."""
-    global _city_floor
-    if _city_floor is not None and _city_floor.get_size() == (w, h):
-        return _city_floor
-    rng = random.Random(20260920)
+def _district(w, h, seed):
+    """One block of city: an avenue, a side street, and the buildings.
+
+    Always drawn at the same scale whatever the arena measures - a bigger
+    arena gets more districts, never a stretched one, or the fighters
+    would stop being people-sized.
+    """
+    rng = random.Random(seed)
     s = pygame.Surface((w, h))
     s.fill(PAVING)
 
@@ -475,7 +483,24 @@ def city_floor(w, h):
     if rng.random() < 0.8:
         _car(s, pygame.Rect(side.left + 14, h - 150, 40, 86), rng, flat=False)
 
-    _city_floor = s
+    return s
+
+
+def city_floor(w, h):
+    """The arena floor. Built on first use per size, then reused."""
+    if (w, h) in _city_floors:
+        return _city_floors[(w, h)]
+    cols = max(1, int(round(w / VIEW.w)))
+    rows = max(1, int(round(h / VIEW.h)))
+    xs = [w * c // cols for c in range(cols + 1)]
+    ys = [h * r // rows for r in range(rows + 1)]
+    s = pygame.Surface((w, h))
+    for r in range(rows):
+        for c in range(cols):
+            tile = _district(xs[c + 1] - xs[c], ys[r + 1] - ys[r],
+                             20260920 + r * 31 + c)
+            s.blit(tile, (xs[c], ys[r]))
+    _city_floors[(w, h)] = s
     return s
 
 
@@ -662,7 +687,7 @@ class Projectile:
             self.vel *= 0.92
 
         for f in world.fighters:
-            if f is self.owner or f in self.hit or f.hp <= 0:
+            if f.team == self.owner.team or f in self.hit or f.hp <= 0:
                 continue
             # tested along the swept line, not the landing point
             if seg_dist(f.pos, self.prev, self.pos) <= f.r + self.size:
@@ -680,7 +705,7 @@ class Projectile:
                 self.vel *= 0.8
 
         for m in world.minions:
-            if m.owner is self.owner or m.hp <= 0:
+            if m.owner.team == self.owner.team or m.hp <= 0:
                 continue
             if seg_dist(m.pos, self.prev, self.pos) <= m.r + self.size:
                 m.hurt(self.dmg, world)
@@ -693,7 +718,14 @@ class Projectile:
         p = self.pos + Vector2(off)
         d = unit(self.vel)
         c = self.owner.colour
-        if self.kind == "arrow":
+        if self.kind == "shell":
+            pygame.draw.circle(s, mix(c, (0, 0, 0), 0.25),
+                               (int(p.x), int(p.y)), int(self.size))
+            pygame.draw.circle(s, mix(c, (255, 230, 180), 0.5),
+                               (int(p.x - d.x * 2), int(p.y - d.y * 2)),
+                               max(2, int(self.size * 0.5)))
+            blit_glow(s, p, self.size * 2.4, (255, 200, 140), 80)
+        elif self.kind == "arrow":
             tail = p - d * 22
             side = Vector2(-d.y, d.x)
             pygame.draw.line(s, mix(c, (255, 255, 255), 0.2), tail, p, 3)
@@ -785,29 +817,34 @@ class Melee(Weapon):
         self.angle = (self.angle + self.spin_rate() * dt) % TAU
         self.parry_cd = max(0.0, self.parry_cd - dt)
         self.flash = max(0.0, self.flash - dt * 5.0)
-        foe = world.foe(o)
+        targets = world.foes(o)
         for i, (a, b) in enumerate(self.segments()):
             self.cool[i] = max(0.0, self.cool[i] - dt)
-            if foe and foe.hp > 0 and self.cool[i] <= 0:
-                if seg_dist(foe.pos, a, b) <= foe.r + 7:
-                    crit = random.random() < self.CRIT
-                    dmg = random.uniform(*self.DMG) * (1.8 if crit else 1.0)
-                    foe.take_damage(dmg, o, world, crit=crit)
-                    push = unit(foe.pos - o.pos)
-                    foe.vel += push * (self.KNOCK / foe.weapon.MASS)
-                    o.vel += push * (self.LUNGE / o.weapon.MASS)
-                    self.cool[i] = self.HIT_CD
-                    self.flash = 1.0
-                    world.spark(foe.pos - push * foe.r, o.colour, 8, speed=240)
-                    SFX.play("cut", 0.7)
+            foe = None
+            if self.cool[i] <= 0:
+                for t in targets:          # whoever this blade is passing
+                    if seg_dist(t.pos, a, b) <= t.r + 7:
+                        foe = t
+                        break
+            if foe is not None:
+                crit = random.random() < self.CRIT
+                dmg = random.uniform(*self.DMG) * (1.8 if crit else 1.0)
+                foe.take_damage(dmg, o, world, crit=crit)
+                push = unit(foe.pos - o.pos)
+                foe.vel += push * (self.KNOCK / foe.weapon.MASS)
+                o.vel += push * (self.LUNGE / o.weapon.MASS)
+                self.cool[i] = self.HIT_CD
+                self.flash = 1.0
+                world.spark(foe.pos - push * foe.r, o.colour, 8, speed=240)
+                SFX.play("cut", 0.7)
             for m in world.minions:
-                if m.owner is not o and m.hp > 0:
+                if m.owner.team != o.team and m.hp > 0:
                     if seg_dist(m.pos, a, b) <= m.r + 4:
                         m.hurt(random.uniform(*self.DMG), world)
                         self.flash = max(self.flash, 0.6)
             if self.parry_cd <= 0:
                 for pr in world.projectiles:
-                    if pr.owner is o or pr.dead:
+                    if pr.owner.team == o.team or pr.dead:
                         continue
                     if segs_close(pr.prev, pr.pos, a, b, self.PARRY_BAND):
                         pr.dead = True
@@ -1356,6 +1393,127 @@ class Brood(Summoner):
     CAP_MAX = 10
 
 
+class Buster(Melee):
+    """A slab of a blade, and two cannons bolted to the back of the ball.
+
+    The only weapon that runs two systems at once: the blade swings on the
+    melee machinery like everything else, and the cannons fire on their own
+    timer regardless of what the blade is doing.
+    """
+    NAME = "BUSTER"
+    RADIUS = 58.0             # it is the size of a building
+    ART_REF = 27.0
+    PREF = 0.0
+    SPEED_MULT = 0.60
+    DASH_MULT = 2.2
+    MASS = 6.0
+    ARMOUR = 0.45
+    HP_MULT = 1.0             # the level supplies the health
+    BLURB = ("a slab of a sword, and two",
+             "cannons bolted on the back")
+    PIPS = (5, 2, 5)
+
+    BLADES = 1
+    REACH = 150.0
+    SPIN = 1.45
+    KNOCK = 420.0
+    LUNGE = 0.0
+    DMG = (105.0, 145.0)
+    HIT_CD = 1.0
+    CRIT = 0.10
+    PARRY_CD = 0.50
+    PARRY_BAND = 24.0
+
+    SALVO = 1.6               # seconds between salvos
+    SHELL_DMG = (34.0, 46.0)
+    SHELL_SPEED = 540.0
+    SHELL_SPREAD = 0.05
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.salvo = 2.0
+        self.muzzle = 0.0
+
+    def mounts(self):
+        """Where the two cannons sit: over each shoulder, facing back."""
+        o = self.owner
+        back = -o.aim
+        side = Vector2(-back.y, back.x)
+        for sgn in (-1, 1):
+            yield (o.pos + back * (o.r * 0.45) + side * (o.r * 0.62 * sgn),
+                   sgn)
+
+    def update(self, dt, world):
+        super().update(dt, world)
+        o = self.owner
+        self.muzzle = max(0.0, self.muzzle - dt * 4.0)
+        if o.hp <= 0 or world.state != "fight":
+            return
+        self.salvo -= dt
+        if self.salvo > 0:
+            return
+        self.salvo = self.SALVO
+        for mount, _sgn in self.mounts():
+            foe = world.foe(o)
+            if foe is None:
+                break
+            aim = unit(o.lead(foe), o.aim)
+            d = aim.rotate_rad(random.uniform(-self.SHELL_SPREAD,
+                                              self.SHELL_SPREAD))
+            world.projectiles.append(Projectile(
+                o, mount, d * self.SHELL_SPEED,
+                random.uniform(*self.SHELL_DMG), "shell",
+                crit_chance=0.08, bounces=0, pierce=1, knock=260.0,
+                size=10.0, life=3.0))
+            self.shots += 1
+            world.spark(mount, (255, 214, 150), 7, speed=210)
+        self.muzzle = 1.0
+        world.shake = max(world.shake, 7.0)
+        SFX.play("arrow", 0.6)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        ov = Vector2(off)
+        # the cannons first, so the blade passes over them
+        for mount, sgn in self.mounts():
+            m = mount + ov
+            back = -o.aim
+            side = Vector2(-back.y, back.x)
+            barrel = m - back * (o.r * 0.55)
+            pygame.draw.line(s, (60, 64, 78), m, barrel, max(5, int(o.r * 0.20)))
+            pygame.draw.line(s, (128, 134, 152), m, barrel,
+                             max(3, int(o.r * 0.13)))
+            body = [m + side * o.r * 0.16 + back * o.r * 0.20,
+                    m - side * o.r * 0.16 + back * o.r * 0.20,
+                    m - side * o.r * 0.16 - back * o.r * 0.10,
+                    m + side * o.r * 0.16 - back * o.r * 0.10]
+            pygame.draw.polygon(s, (74, 78, 94), body)
+            pygame.draw.polygon(s, mix(o.colour, (0, 0, 0), 0.3), body, 2)
+            if self.muzzle > 0.1:
+                blit_glow(s, barrel, o.r * 0.55 * self.muzzle,
+                          (255, 208, 140), int(170 * self.muzzle))
+
+        for a, b in self.segments():
+            a, b = a + ov, b + ov
+            d = unit(b - a)
+            side = Vector2(-d.y, d.x)
+            w0, w1 = o.r * 0.30, o.r * 0.26      # a slab, not a needle
+            blade = [a + side * w0, b + side * w1 - d * 0,
+                     b + side * w1 * 0.3 + d * o.r * 0.18,
+                     b - side * w1 * 0.9, a - side * w0]
+            face = mix((176, 182, 198), (255, 255, 255), 0.5 * self.flash)
+            pygame.draw.polygon(s, face, blade)
+            pygame.draw.polygon(s, mix(o.dark, (0, 0, 0), 0.4), blade, 3)
+            pygame.draw.line(s, mix(face, (255, 255, 255), 0.6),
+                             a + side * w0 * 0.2, b + side * w1 * 0.2, 2)
+            grip = a - d * o.r * 0.30
+            pygame.draw.line(s, (78, 60, 44), grip, a, max(5, int(o.r * 0.16)))
+            pygame.draw.line(s, (196, 202, 216), a + side * o.r * 0.22,
+                             a - side * o.r * 0.22, max(4, int(o.r * 0.10)))
+            if self.flash > 0.05:
+                blit_glow(s, b, o.r * 0.8, o.colour, int(120 * self.flash))
+
+
 # bases first, then each one's upgrade in the same order
 WEAPONS = (Sword, Dagger, Gun, Bow, Hammer, Fists, Summoner,
            Greatsword, Flurry, Repeater, Ballista, Maul,
@@ -1369,7 +1527,9 @@ STARTERS = ("SWORD",)
 # ---------------------------------------------------------------------------
 class Fighter:
     def __init__(self, name, colour, dark, pos, weapon_cls, player=False,
-                 shape=0, max_hp=MAX_HP, dmg_mult=1.0, speed_mult=1.0):
+                 shape=0, max_hp=MAX_HP, dmg_mult=1.0, speed_mult=1.0,
+                 team=0):
+        self.team = team
         self.name = name
         self.colour = colour
         self.dark = dark
@@ -1851,6 +2011,11 @@ CAMPAIGN = (
          hp=1.60, dmg=1.0, spd=0.92,
          brief="The hive, but worse. They come two at a time and they last.",
          reward=("weapon", "BROOD")),
+    dict(name="THE COLOSSUS", sides=4, weapon=Buster,
+         colour=(236, 92, 72), dark=(104, 26, 20),
+         hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3,
+         brief="It fills the street. Bring three, and keep them apart.",
+         reward=("crown", None)),
 )
 
 
@@ -1866,12 +2031,14 @@ def unlocked_weapons(cleared):
 
 def hp_bonus(cleared):
     """You toughen up as you climb - 5% more health per level cleared."""
-    return 0.05 * cleared
+    return 0.05 * min(cleared, len(CAMPAIGN))
 
 
 def reward_label(lv):
     kind, val = lv["reward"]
-    return val if kind == "weapon" else "THE BELT"
+    if kind == "weapon":
+        return val
+    return "THE CROWN" if kind == "crown" else "THE BELT"
 
 
 def unlock_level(name):
@@ -1920,6 +2087,8 @@ class Game:
         self.cleared = load_progress()
         self.level = min(self.cleared, len(CAMPAIGN) - 1)
         self.camp_pick = 0
+        self.camp_party = [0, 0, 0]
+        self.slot = 0
         self.camp_win = False
         self.unlock_text = ""
         self.fighters = []
@@ -1937,15 +2106,31 @@ class Game:
         self.winner = None
         self.orb_timer = 7.0
         self.order = 0
+        self.cam = Vector2()
         self.keys = None
         self.mouse = (W // 2, H // 2)
 
     # -- world -------------------------------------------------------------
+    def foes(self, f):
+        """Everyone still standing on the other side."""
+        return [o for o in self.fighters if o.team != f.team and o.hp > 0]
+
     def foe(self, f):
-        for o in self.fighters:
-            if o is not f:
+        """The nearest of them: what a weapon aims at and a ball steers to."""
+        best, near = None, 1e18
+        for o in self.foes(f):
+            d = (o.pos - f.pos).length_squared()
+            if d < near:
+                best, near = o, d
+        if best is not None:
+            return best
+        for o in self.fighters:        # all of them down: keep facing one
+            if o.team != f.team:
                 return o
         return None
+
+    def team_of(self, side):
+        return [f for f in self.fighters if f.team == side]
 
     def spark(self, pos, colour, n, speed=200.0):
         for _ in range(n):
@@ -1955,26 +2140,38 @@ class Game:
                                            colour, random.uniform(2.0, 4.5)))
 
     def start_fight(self):
+        global ARENA
+        lv = (CAMPAIGN[self.level] if self.mode == "campaign"
+              and self.level < len(CAMPAIGN) else None)
+        big = lv.get("arena", 1.0) if lv else 1.0
+        ARENA = pygame.Rect(VIEW.left, VIEW.top,
+                            int(VIEW.w * big), int(VIEW.h * big))
         left = (ARENA.left + ARENA.w * 0.20, ARENA.centery)
         right = (ARENA.left + ARENA.w * 0.80, ARENA.centery)
         if self.mode == "campaign":
             if self.level > self.cleared:
                 return
-            lv = CAMPAIGN[self.level]
-            self.fighters = [
-                Fighter("YOU", RED, RED_D, left, WEAPONS[self.camp_pick],
-                        player=self.human,
-                        max_hp=MAX_HP * (1.0 + hp_bonus(self.cleared))),
+            party = lv.get("party", 1)
+            mine = MAX_HP * (1.0 + hp_bonus(self.cleared))
+            self.fighters = []
+            for k in range(party):
+                w = WEAPONS[self.camp_party[k] if party > 1 else self.camp_pick]
+                spread = (k - (party - 1) * 0.5) * (ARENA.h * 0.16)
+                self.fighters.append(Fighter(
+                    "YOU" if party == 1 else w.NAME, RED, RED_D,
+                    (left[0], left[1] + spread), w,
+                    player=self.human and k == 0, max_hp=mine, team=0))
+            self.fighters.append(
                 Fighter(lv["name"], lv["colour"], lv["dark"], right,
                         lv["weapon"], shape=lv["sides"],
                         max_hp=MAX_HP * lv["hp"], dmg_mult=lv["dmg"],
-                        speed_mult=lv["spd"]),
-            ]
+                        speed_mult=lv["spd"], team=1))
         else:
             self.fighters = [
                 Fighter("RED", RED, RED_D, left, WEAPONS[self.pick[0]],
                         player=self.human),
-                Fighter("BLUE", BLUE, BLUE_D, right, WEAPONS[self.pick[1]]),
+                Fighter("BLUE", BLUE, BLUE_D, right, WEAPONS[self.pick[1]],
+                        team=1),
             ]
         self.projectiles.clear()
         self.minions.clear()
@@ -1990,9 +2187,16 @@ class Game:
         self.slowmo = 0.0
         self.hitstop = 0.0
         self.orb_timer = 7.0
+        self.cam = Vector2()
+        self.camera(1.0)
 
     def knockout(self, loser, winner):
         if self.state != "fight":
+            return
+        self.spark(loser.pos, loser.colour, 40, speed=430)
+        if any(f.hp > 0 for f in self.team_of(loser.team)):
+            SFX.play("ko", 0.5)        # a team-mate went down, not the side
+            self.shake = max(self.shake, 14.0)
             return
         self.state = "ko"
         self.winner = winner
@@ -2003,14 +2207,14 @@ class Game:
         if self.mode == "campaign":
             self.record_level(winner)
         else:
-            self.score[0 if winner is self.fighters[0] else 1] += 1
+            self.score[0 if winner.team == 0 else 1] += 1
         self.spark(loser.pos, loser.colour, 60, speed=520)
         self.spark(loser.pos, (255, 255, 255), 24, speed=300)
         SFX.play("ko", 1.0)
 
     def record_level(self, winner):
         """A campaign win only counts the first time, and it is saved at once."""
-        self.camp_win = winner is self.fighters[0]
+        self.camp_win = winner.team == 0
         self.unlock_text = ""
         if not self.camp_win or self.level != self.cleared:
             return
@@ -2021,6 +2225,8 @@ class Game:
             self.unlock_text = "UNLOCKED:  " + val
         elif kind == "hp":
             self.unlock_text = "REWARD:  +%d%% MAX HP" % round(val * 100.0)
+        elif kind == "crown":
+            self.unlock_text = "REWARD:  THE CROWN"
         else:
             self.unlock_text = "REWARD:  THE BELT"
 
@@ -2033,9 +2239,11 @@ class Game:
                 return
 
     def collide(self):
-        if len(self.fighters) < 2:
-            return
-        a, b = self.fighters
+        for i in range(len(self.fighters)):
+            for j in range(i + 1, len(self.fighters)):
+                self.collide_pair(self.fighters[i], self.fighters[j])
+
+    def collide_pair(self, a, b):
         d = b.pos - a.pos
         dist = d.length()
         touch = a.r + b.r
@@ -2054,6 +2262,26 @@ class Game:
             if -rel > 260:
                 self.spark((a.pos + b.pos) * 0.5, (255, 255, 255), 6, speed=220)
                 self.shake = max(self.shake, 5.0)
+
+    def camera(self, dt):
+        """Centre the view on your side, and never past the walls."""
+        if ARENA.w <= VIEW.w and ARENA.h <= VIEW.h:
+            self.cam = Vector2(VIEW.centerx - ARENA.centerx,
+                               VIEW.centery - ARENA.centery)
+            return
+        mine = [f for f in self.fighters if f.team == 0 and f.hp > 0]
+        if not mine:
+            mine = self.fighters or []
+        if not mine:
+            return
+        focus = Vector2()
+        for f in mine:
+            focus += f.pos
+        focus /= len(mine)
+        want = Vector2(VIEW.centerx - focus.x, VIEW.centery - focus.y)
+        want.x = clamp(want.x, VIEW.right - ARENA.right, VIEW.left - ARENA.left)
+        want.y = clamp(want.y, VIEW.bottom - ARENA.bottom, VIEW.top - ARENA.top)
+        self.cam += (want - self.cam) * min(1.0, 6.0 * dt)
 
     def update(self, dt):
         if self.hitstop > 0.0:
@@ -2091,8 +2319,14 @@ class Game:
                 if len(self.orbs) < 2:
                     self.spawn_orb()
         self.orbs = [o for o in self.orbs if o.update(dt, self)]
+        self.camera(dt)
 
     # -- input -------------------------------------------------------------
+    def party_size(self):
+        if self.mode != "campaign" or self.level >= len(CAMPAIGN):
+            return 1
+        return CAMPAIGN[self.level].get("party", 1)
+
     def unlocked_idx(self):
         names = unlocked_weapons(self.cleared)
         return [i for i, w in enumerate(WEAPONS) if w.NAME in names]
@@ -2117,11 +2351,18 @@ class Game:
     def camp_layout(self):
         """Every clickable thing on the campaign screen."""
         items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
-                 (pygame.Rect(W - 216, 68, 180, 30), "human", None)]
-        top, h, gap = 96, 30, 3
+                 (pygame.Rect(W - 216, 66, 180, 28), "human", None)]
+        top, h, gap = 100, 26, 3
         for i in range(len(CAMPAIGN)):
             items.append((pygame.Rect(56, top + i * (h + gap), W - 112, h),
                           "level", i))
+        party = self.party_size()
+        if party > 1:
+            sw = 116
+            sx = (W - (party * sw + (party - 1) * 8)) // 2
+            for k in range(party):
+                items.append((pygame.Rect(sx + k * (sw + 8), 588, sw, 24),
+                              "slot", k))
         bw, bh, bgap = 84, 42, 8
         span = TIERS * bw + (TIERS - 1) * bgap
         x0 = (W - span) // 2
@@ -2140,6 +2381,8 @@ class Game:
         picks = self.unlocked_idx()
         if self.camp_pick not in picks:
             self.camp_pick = picks[0]
+        self.camp_party = [i if i in picks else picks[0]
+                           for i in self.camp_party]
         SFX.play("click")
 
     def open_versus(self):
@@ -2271,7 +2514,14 @@ class Game:
                     self.level = val
                     SFX.play("click")
                 elif kind == "ball" and val in self.unlocked_idx():
-                    self.camp_pick = val
+                    if self.party_size() > 1:
+                        self.camp_party[self.slot] = val
+                        self.slot = (self.slot + 1) % self.party_size()
+                    else:
+                        self.camp_pick = val
+                    SFX.play("click")
+                elif kind == "slot":
+                    self.slot = val
                     SFX.play("click")
                 elif kind == "human":
                     self.human = not self.human
@@ -2292,10 +2542,11 @@ class Game:
         elif self.state == "campaign":
             self.draw_campaign(s)
         else:
-            off = (0, 0)
+            off = [self.cam.x, self.cam.y]
             if self.shake > 0.2:
-                off = (random.uniform(-self.shake, self.shake) * 0.5,
-                       random.uniform(-self.shake, self.shake) * 0.5)
+                off[0] += random.uniform(-self.shake, self.shake) * 0.5
+                off[1] += random.uniform(-self.shake, self.shake) * 0.5
+            off = tuple(off)
             self.draw_arena(s, off)
             self.draw_hud(s)
             if self.state == "ko":
@@ -2310,10 +2561,10 @@ class Game:
 
     def draw_arena(self, s, off):
         inner = ARENA.move(off)
+        clip = s.get_clip()
+        s.set_clip(VIEW)
         s.blit(city_floor(ARENA.w, ARENA.h), inner.topleft)
 
-        clip = s.get_clip()
-        s.set_clip(ARENA)
         for o in self.orbs:
             o.draw(s, off)
         for m in self.minions:
@@ -2326,7 +2577,6 @@ class Game:
             p.draw(s, off)
         for f in self.floaters:
             f.draw(s, off)
-        s.set_clip(clip)
 
         pygame.draw.rect(s, WALL, inner, 3)
         L = 34
@@ -2336,6 +2586,8 @@ class Game:
                                (inner.right - 1, inner.bottom - 1, -1, -1)):
             pygame.draw.line(s, INK, (cx, cy), (cx + dx * L, cy), 3)
             pygame.draw.line(s, INK, (cx, cy), (cx, cy + dy * L), 3)
+        s.set_clip(clip)
+        self.draw_minimap(s)
 
         tags = []
         if self.speed > 1:
@@ -2343,13 +2595,42 @@ class Game:
         if SFX.muted:
             tags.append("MUTED")
         if tags:
-            text(s, "  ".join(tags), 17, (ARENA.right - 20, ARENA.top + 26),
+            text(s, "  ".join(tags), 17, (VIEW.right - 20, VIEW.top + 26),
                  DIM, right=True)
         if self.human and self.fighters:
             me = self.fighters[0]
             ready = me.dash_cd <= 0
             text(s, "DASH " + ("READY" if ready else "%.1f" % me.dash_cd), 17,
-                 (ARENA.left + 20, ARENA.top + 18), GOLD if ready else DIM)
+                 (VIEW.left + 20, VIEW.top + 18), GOLD if ready else DIM)
+
+    def draw_minimap(self, s):
+        """Only worth drawing when the ground is bigger than the window."""
+        if ARENA.w <= VIEW.w and ARENA.h <= VIEW.h:
+            return
+        mw = 168
+        mh = max(40, int(mw * ARENA.h / ARENA.w))
+        box = pygame.Rect(0, 0, mw, mh)
+        box.bottomright = (VIEW.right - 14, VIEW.bottom - 14)
+        panel = pygame.Surface(box.size, pygame.SRCALPHA)
+        panel.fill((10, 11, 16, 190))
+        s.blit(panel, box.topleft)
+        pygame.draw.rect(s, (70, 76, 94), box, 1)
+
+        def spot(p):
+            return (box.left + int((p.x - ARENA.left) / ARENA.w * mw),
+                    box.top + int((p.y - ARENA.top) / ARENA.h * mh))
+
+        seen = pygame.Rect(0, 0, int(VIEW.w / ARENA.w * mw),
+                           int(VIEW.h / ARENA.h * mh))
+        seen.topleft = spot(Vector2(VIEW.left - self.cam.x, VIEW.top - self.cam.y))
+        pygame.draw.rect(s, (86, 94, 116), seen, 1)
+        for m in self.minions:
+            pygame.draw.circle(s, mix(m.owner.colour, BG, 0.4), spot(m.pos), 1)
+        for f in self.fighters:
+            if f.hp <= 0:
+                continue
+            pygame.draw.circle(s, f.colour, spot(f.pos),
+                               4 if f.r > 30 else 3)
 
     @staticmethod
     def stat_line(f):
@@ -2363,17 +2644,20 @@ class Game:
     def draw_hud(self, s):
         pygame.draw.rect(s, PANEL, (0, 0, W, HUD_H - 6))
         pygame.draw.line(s, (44, 48, 62), (0, HUD_H - 6), (W, HUD_H - 6), 2)
-        if len(self.fighters) < 2:
+        ours, theirs = self.team_of(0), self.team_of(1)
+        if not ours or not theirs:
             return
-        a, b = self.fighters
-        total = max(1e-6, a.hp + b.hp)
-        fa = a.hp / total
+        a_hp = sum(f.hp for f in ours)
+        b_hp = sum(f.hp for f in theirs)
+        fa = a_hp / max(1e-6, a_hp + b_hp)
         pa = int(round(fa * 100))
+        lead, rival = ours[0], theirs[0]
 
-        text(s, a.name, 30, (26, 6), a.colour)
-        text(s, a.weapon.NAME, 17, (27, 44), DIM)
-        text(s, b.name, 30, (W - 26, 23), b.colour, right=True)
-        text(s, b.weapon.NAME, 17, (W - 27, 53), DIM, right=True)
+        text(s, lead.name if len(ours) == 1 else "YOUR TEAM", 30, (26, 6),
+             lead.colour)
+        text(s, "  ".join(f.weapon.NAME for f in ours), 17, (27, 44), DIM)
+        text(s, rival.name, 30, (W - 26, 23), rival.colour, right=True)
+        text(s, rival.weapon.NAME, 17, (W - 27, 53), DIM, right=True)
 
         text(s, "VS", 24, (W // 2, 20), INK, center=True)
         mid = ("LEVEL %d / %d" % (self.level + 1, len(CAMPAIGN))
@@ -2381,16 +2665,17 @@ class Game:
                "%d - %d" % (self.score[0], self.score[1]))
         text(s, mid, 19, (W // 2, 46), DIM, center=True)
 
-        # One bar, split where the two health pools meet - the split is the
-        # whole story of the fight, so the marker sits on it.
+        # One bar, split where the two sides meet - the split is the whole
+        # story of the fight, so the marker sits on it.
         bar = pygame.Rect(250, 62, W - 500, 26)
         pygame.draw.rect(s, (11, 12, 18), bar.inflate(6, 6))
         split = int(bar.w * fa)
-        pygame.draw.rect(s, a.dark, (bar.x, bar.y, split, bar.h))
-        pygame.draw.rect(s, a.colour, (bar.x, bar.y, split, bar.h // 2))
-        pygame.draw.rect(s, b.dark, (bar.x + split, bar.y, bar.w - split, bar.h))
-        pygame.draw.rect(s, b.colour,
-                         (bar.x + split, bar.y, bar.w - split, bar.h // 2))
+        pygame.draw.rect(s, lead.dark, (bar.x, bar.y, split, bar.h))
+        pygame.draw.rect(s, lead.colour, (bar.x, bar.y, split, bar.h // 2))
+        pygame.draw.rect(s, rival.dark, (bar.x + split, bar.y,
+                                         bar.w - split, bar.h))
+        pygame.draw.rect(s, rival.colour, (bar.x + split, bar.y,
+                                           bar.w - split, bar.h // 2))
         pygame.draw.rect(s, (62, 68, 86), bar, 2)
         mx = bar.x + split
         pygame.draw.line(s, INK, (mx, bar.top - 3), (mx, bar.bottom + 3), 2)
@@ -2400,35 +2685,52 @@ class Game:
                                      (mx + 6, bar.bottom + 3),
                                      (mx, bar.bottom - 6)])
 
-        text(s, "%d%%" % pa, 32, (bar.left - 16, bar.centery), a.colour,
-             right=True)
-        text(s, "%d%%" % (100 - pa), 32, (bar.right + 16, bar.centery), b.colour,
-             left=True)
+        # with a party, each ball gets a pip of its own under the bar
+        if len(ours) > 1:
+            px = bar.left
+            for f in ours:
+                w = (bar.w * 0.3) / len(ours)
+                frac = clamp(f.hp / f.max_hp, 0.0, 1.0)
+                pygame.draw.rect(s, (14, 15, 22), (px, bar.bottom + 8, w - 4, 6))
+                pygame.draw.rect(s, f.colour if f.hp > 0 else (60, 64, 78),
+                                 (px, bar.bottom + 8, (w - 4) * frac, 6))
+                px += w
 
-        text(s, self.stat_line(a), 15, (26, 96), DIM)
-        text(s, self.stat_line(b), 15, (W - 26, 104), DIM, right=True)
+        text(s, "%d%%" % pa, 32, (bar.left - 16, bar.centery), lead.colour,
+             right=True)
+        text(s, "%d%%" % (100 - pa), 32, (bar.right + 16, bar.centery),
+             rival.colour, left=True)
+
+        if len(ours) == 1:
+            text(s, self.stat_line(lead), 15, (26, 96), DIM)
+        else:
+            up = sum(1 for f in ours if f.hp > 0)
+            text(s, "%d / %d UP     %d HP" % (up, len(ours), int(a_hp)), 15,
+                 (26, 96), DIM)
+        text(s, self.stat_line(rival), 15, (W - 26, 104), DIM, right=True)
         text(s, "%d:%04.1f" % (int(self.clock_t // 60), self.clock_t % 60), 17,
              (W // 2, 104), DIM, center=True)
 
     def draw_banner(self, s):
         win = self.winner
         t = min(1.0, self.banner_t / 0.35)
-        y = ARENA.centery - 26
+        y = VIEW.centery - 26
         if self.mode == "campaign":
             done = self.camp_win and self.cleared >= len(CAMPAIGN)
             title = ("CAMPAIGN COMPLETE" if done else
                      "LEVEL CLEARED" if self.camp_win else "DEFEATED")
             size = int(lerp(92, 52, t))
-            rule = self.fighters[0].colour if self.camp_win else win.colour
+            rule = (self.team_of(0)[0].colour if self.camp_win
+                    else win.colour)
         else:
             title = "%s WINS" % win.name
             size = int(lerp(120, 66, t))
             rule = win.colour
-        band = pygame.Surface((ARENA.w, 196), pygame.SRCALPHA)
+        band = pygame.Surface((VIEW.w, 196), pygame.SRCALPHA)
         band.fill((8, 9, 14, 208))
-        s.blit(band, (ARENA.left, y - 64))
-        pygame.draw.line(s, rule, (ARENA.left, y - 64), (ARENA.right, y - 64), 2)
-        pygame.draw.line(s, rule, (ARENA.left, y + 132), (ARENA.right, y + 132), 2)
+        s.blit(band, (VIEW.left, y - 64))
+        pygame.draw.line(s, rule, (VIEW.left, y - 64), (VIEW.right, y - 64), 2)
+        pygame.draw.line(s, rule, (VIEW.left, y + 132), (VIEW.right, y + 132), 2)
         text(s, title, size, (W // 2, y), rule, center=True)
         if self.banner_t <= 0.5:
             return
@@ -2451,9 +2753,9 @@ class Game:
         v = pygame.Surface((W, H), pygame.SRCALPHA)
         v.fill((0, 0, 0, 150))
         s.blit(v, (0, 0))
-        text(s, "PAUSED", 72, (W // 2, ARENA.centery - 20), INK, center=True)
+        text(s, "PAUSED", 72, (W // 2, VIEW.centery - 20), INK, center=True)
         text(s, "P  resume        R  rematch        ESC  menu", 20,
-             (W // 2, ARENA.centery + 40), DIM, center=True)
+             (W // 2, VIEW.centery + 40), DIM, center=True)
 
     # -- the menu ----------------------------------------------------------
     def draw_menu(self, s):
@@ -2546,6 +2848,14 @@ class Game:
                 self.draw_level(s, rect, val)
             elif kind == "ball":
                 self.draw_ball(s, rect, val)
+            elif kind == "slot":
+                live = val == self.slot
+                w = WEAPONS[self.camp_party[val]]
+                pygame.draw.rect(s, mix(PANEL, RED, 0.22 if live else 0.06), rect)
+                pygame.draw.rect(s, RED if live else (52, 57, 72), rect,
+                                 2 if live else 1)
+                text(s, "%d.  %s" % (val + 1, w.NAME), 13, rect.center,
+                     INK if live else DIM, center=True)
             elif kind == "start":
                 pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
                 pygame.draw.rect(s, mix((28, 32, 44), (60, 90, 70), pulse), rect)
@@ -2554,14 +2864,18 @@ class Game:
 
         # what the highlighted level actually is
         lv = CAMPAIGN[self.level]
-        text(s, lv["brief"], 14, (56, 560), INK if self.level <= self.cleared
+        text(s, lv["brief"], 14, (56, 546), INK if self.level <= self.cleared
              else DIM)
         text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%    REWARD  %s"
              % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
                 round(lv["dmg"] * 100), reward_label(lv)),
-             12, (56, 580), mix(DIM, lv["colour"], 0.45))
-        text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
-             (W - 56, 570), DIM, right=True)
+             12, (56, 564), mix(DIM, lv["colour"], 0.45))
+        if self.party_size() > 1:
+            text(s, "BRING THREE - click a slot, then a ball", 13,
+                 (W - 56, 564), GOLD, right=True)
+        else:
+            text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
+                 (W - 56, 578), DIM, right=True)
 
     def draw_level(self, s, rect, i):
         lv = CAMPAIGN[i]
