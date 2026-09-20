@@ -11,15 +11,25 @@ who is winning. Red can be handed to a player instead of the CPU.
 Requirements: pygame-ce (or pygame)  ->  pip install pygame-ce
 Run:                                     python ball_brawl.py
 
+There is a campaign too: five shapes on a ladder, each holding a weapon
+you do not have yet. Beat one and you keep its prize, in versus as well.
+Progress is saved outside the game folder and survives a reinstall.
+
 CONTROLS
-  Menu
-    1 / 2 / 3       weapon for the red fighter
-    8 / 9 / 0       weapon for the blue fighter
+  Versus menu
+    1 .. 5          weapon for the red fighter
+    6 .. 0          weapon for the blue fighter
     TAB             red fighter: CPU or PLAYER
     O               health orbs on / off
-    click           all of the above, with the mouse
+    C               open the campaign
     SPACE           fight
-  Fight  (only when red is the PLAYER)
+  Campaign
+    up / down       choose a level
+    left / right    choose your ball
+    TAB             play it yourself, or watch
+    C / ESC         back to versus
+    SPACE           fight
+  Fight  (only when you are the PLAYER)
     WASD / arrows   thrust
     mouse           aim the gun and the bow
     SPACE           dash
@@ -27,11 +37,14 @@ CONTROLS
     P               pause
     F               speed  1x / 2x / 3x
     M               mute
-    R               rematch
-    ESC             back to the menu
+    R               restart the fight
+    ESC             back out one screen
+  Everywhere        the mouse does all of it too
 """
 
+import json
 import math
+import os
 import random
 import sys
 from array import array
@@ -125,6 +138,19 @@ def segs_close(a1, a2, b1, b2, rad):
         return True
     return min(seg_dist(a1, b1, b2), seg_dist(a2, b1, b2),
                seg_dist(b1, a1, a2), seg_dist(b2, a1, a2)) <= rad
+
+
+def shape_points(cx, cy, rad, sides, angle):
+    """A regular polygon - or, when sides is negative, a star with that
+    many points. Campaign enemies are shapes; the player is always a ball."""
+    if sides < 0:
+        n = -sides * 2
+        return [(cx + math.cos(angle + i * TAU / n) * rad * (1.0 if i % 2 else 0.44),
+                 cy + math.sin(angle + i * TAU / n) * rad * (1.0 if i % 2 else 0.44))
+                for i in range(n)]
+    return [(cx + math.cos(angle + i * TAU / sides) * rad,
+             cy + math.sin(angle + i * TAU / sides) * rad)
+            for i in range(sides)]
 
 
 def unit(v, fallback=(1, 0)):
@@ -382,7 +408,7 @@ class Projectile:
                 crit = random.random() < self.crit_chance
                 dmg = self.dmg * (1.9 if crit else 1.0)
                 f.take_damage(dmg, self.owner, world, crit=crit)
-                f.vel += unit(self.vel) * self.knock
+                f.vel += unit(self.vel) * (self.knock / f.weapon.MASS)
                 world.spark(f.pos - unit(self.vel) * f.r, self.owner.colour,
                             10 if crit else 6, speed=220)
                 self.hit.add(f)
@@ -424,6 +450,8 @@ class Weapon:
     RADIUS = 26.0             # the heavy weapon makes a bigger target
     SPEED_MULT = 1.0          # the light weapon is the fast one
     DASH_MULT = 1.0           # multiplies the dash cooldown
+    ARMOUR = 0.0              # ... and it soaks this share of every hit
+    MASS = 1.0                # ... and shrugs off this much of the knockback
     BLURB = ("", "")
     PIPS = (0, 0, 0)          # damage / rate / reach, out of 5, for the menu
 
@@ -438,16 +466,14 @@ class Weapon:
         pass
 
 
-class Sword(Weapon):
-    NAME = "SWORD"
-    PREF = 0.0
-    RADIUS = 23.0
-    SPEED_MULT = 1.22         # carries the least weight, so it runs you down
-    DASH_MULT = 0.62
-    BLURB = ("orbiting blades that cut on",
-             "contact - and swat bullets down")
-    PIPS = (4, 4, 1)
+class Melee(Weapon):
+    """Anything that swings around the ball and cuts what it touches.
 
+    One set of blades, one hit cooldown each, and a parry window - the
+    sword, the dagger and the hammer are the same machine with different
+    numbers bolted on.
+    """
+    PREF = 0.0
     BLADES = 3
     REACH = 60.0
     SPIN = 4.7
@@ -456,6 +482,11 @@ class Sword(Weapon):
     DMG = (26.0, 37.0)
     HIT_CD = 0.32
     CRIT = 0.12
+    PARRY_CD = 0.11
+    PARRY_BAND = 11.0
+    W_BASE = 4.0              # blade width at the hilt, and at the tip
+    W_TIP = 1.3
+    GUARD = 7.0
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -485,20 +516,20 @@ class Sword(Weapon):
                     dmg = random.uniform(*self.DMG) * (1.8 if crit else 1.0)
                     foe.take_damage(dmg, o, world, crit=crit)
                     push = unit(foe.pos - o.pos)
-                    foe.vel += push * self.KNOCK
-                    o.vel += push * self.LUNGE
+                    foe.vel += push * (self.KNOCK / foe.weapon.MASS)
+                    o.vel += push * (self.LUNGE / o.weapon.MASS)
                     self.cool[i] = self.HIT_CD
                     self.flash = 1.0
                     world.spark(foe.pos - push * foe.r, o.colour, 8, speed=240)
                     SFX.play("cut", 0.7)
             if self.parry_cd <= 0:
-                for p in world.projectiles:
-                    if p.owner is o or p.dead:
+                for pr in world.projectiles:
+                    if pr.owner is o or pr.dead:
                         continue
-                    if segs_close(p.prev, p.pos, a, b, 11.0):
-                        p.dead = True
-                        self.parry_cd = 0.11
-                        world.spark(p.pos, (255, 255, 255), 9, speed=260)
+                    if segs_close(pr.prev, pr.pos, a, b, self.PARRY_BAND):
+                        pr.dead = True
+                        self.parry_cd = self.PARRY_CD
+                        world.spark(pr.pos, (255, 255, 255), 9, speed=260)
                         world.shake = max(world.shake, 3.0)
                         SFX.play("parry", 0.45)
                         break
@@ -510,14 +541,106 @@ class Sword(Weapon):
             a, b = a + ov, b + ov
             d = unit(b - a)
             side = Vector2(-d.y, d.x)
-            body = [a + side * 4, b + side * 1.3, b - side * 1.3, a - side * 4]
+            body = [a + side * self.W_BASE, b + side * self.W_TIP,
+                    b - side * self.W_TIP, a - side * self.W_BASE]
             edge = mix(o.colour, (255, 255, 255), 0.55 + 0.45 * self.flash)
             pygame.draw.polygon(s, edge, body)
             pygame.draw.polygon(s, (255, 255, 255), body, 1)
-            pygame.draw.line(s, (206, 211, 224), a + side * 7, a - side * 7, 3)
+            pygame.draw.line(s, (206, 211, 224),
+                             a + side * self.GUARD, a - side * self.GUARD, 3)
             pygame.draw.line(s, (72, 56, 44), a - d * 7, a, 5)
             if self.flash > 0.05:
                 blit_glow(s, b, 26, o.colour, int(90 * self.flash))
+
+
+class Sword(Melee):
+    NAME = "SWORD"
+    RADIUS = 23.0
+    SPEED_MULT = 1.22         # carries the least weight, so it runs you down
+    DASH_MULT = 0.62
+    BLURB = ("orbiting blades that cut on",
+             "contact - and swat bullets down")
+    PIPS = (4, 4, 1)
+
+    BLADES = 3
+    REACH = 60.0
+    SPIN = 4.7
+    KNOCK = 40.0
+    LUNGE = 55.0
+    DMG = (26.0, 37.0)
+    HIT_CD = 0.32
+    CRIT = 0.12
+    PARRY_CD = 0.11
+    PARRY_BAND = 11.0
+
+
+class Dagger(Melee):
+    NAME = "DAGGER"
+    RADIUS = 20.0
+    SPEED_MULT = 1.32         # the smallest, quickest thing in the arena
+    DASH_MULT = 0.50
+    MASS = 0.78               # and the easiest to shove off its line
+    BLURB = ("four little knives, always",
+             "turning - and no reach at all")
+    PIPS = (1, 5, 1)
+
+    # In a scrum, hit rate is set by how often a blade sweeps the target,
+    # not by the cooldown - so what makes this fast is four of them, and
+    # each cut stays small.
+    BLADES = 4
+    REACH = 44.0
+    SPIN = 8.0
+    KNOCK = 22.0
+    LUNGE = 62.0
+    DMG = (15.0, 21.0)
+    HIT_CD = 0.16
+    CRIT = 0.16
+    PARRY_CD = 0.13
+    PARRY_BAND = 9.0
+    W_BASE = 3.0
+    W_TIP = 1.1
+    GUARD = 5.0
+
+
+class Hammer(Melee):
+    NAME = "HAMMER"
+    RADIUS = 27.0
+    SPEED_MULT = 1.06
+    DASH_MULT = 1.35
+    ARMOUR = 0.38             # too heavy for a bullet to matter much
+    MASS = 2.8                # and too heavy to be pushed off its line
+    BLURB = ("one slow head, and a body that",
+             "shrugs off a third of everything")
+    PIPS = (5, 1, 3)
+
+    BLADES = 1
+    REACH = 72.0
+    SPIN = 3.0
+    KNOCK = 330.0             # the knockback IS the weapon
+    LUNGE = 0.0
+    DMG = (78.0, 106.0)
+    HIT_CD = 0.58
+    CRIT = 0.12
+    PARRY_CD = 0.45
+    PARRY_BAND = 16.0
+
+    def draw(self, s, off, world):
+        o = self.owner
+        ov = Vector2(off)
+        for a, b in self.segments():
+            a, b = a + ov, b + ov
+            d = unit(b - a)
+            side = Vector2(-d.y, d.x)
+            pygame.draw.line(s, (108, 78, 48), a - d * 6, b - d * 10, 7)
+            head = [b + side * 14 - d * 16, b + side * 14 + d * 9,
+                    b - side * 14 + d * 9, b - side * 14 - d * 16]
+            face = mix((146, 152, 168), (255, 255, 255), 0.55 * self.flash)
+            pygame.draw.polygon(s, face, head)
+            pygame.draw.polygon(s, mix(o.colour, (255, 255, 255), 0.35), head, 2)
+            pygame.draw.line(s, mix(face, (0, 0, 0), 0.35),
+                             b + side * 14 - d * 3, b - side * 14 - d * 3, 2)
+            if self.flash > 0.05:
+                blit_glow(s, b, 34, o.colour, int(110 * self.flash))
 
 
 class Gun(Weapon):
@@ -644,23 +767,31 @@ class Bow(Weapon):
             blit_glow(s, c + d * 20, 22, o.colour, int(120 * (self.charge - 0.86) / 0.14))
 
 
-WEAPONS = (Sword, Gun, Bow)
+WEAPONS = (Sword, Dagger, Gun, Bow, Hammer)
+STARTERS = ("SWORD", "GUN", "BOW")
 
 
 # ---------------------------------------------------------------------------
 # THE BALLS
 # ---------------------------------------------------------------------------
 class Fighter:
-    def __init__(self, name, colour, dark, pos, weapon_cls, player=False):
+    def __init__(self, name, colour, dark, pos, weapon_cls, player=False,
+                 shape=0, max_hp=MAX_HP, dmg_mult=1.0, speed_mult=1.0):
         self.name = name
         self.colour = colour
         self.dark = dark
         self.pos = Vector2(pos)
         self.vel = unit(Vector2(random.uniform(-1, 1), random.uniform(-1, 1))) * 260
         self.r = weapon_cls.RADIUS
-        self.hp = MAX_HP
+        self.max_hp = max_hp
+        self.hp = max_hp
         self.weapon = weapon_cls(self)
         self.player = player
+        # campaign bosses are not balls, and they do not fight fair
+        self.shape = shape            # 0 = a ball, 3+ = that many sides
+        self.spin_a = random.uniform(0, TAU)
+        self.dmg_mult = dmg_mult
+        self.speed_mult = speed_mult
         self.aim = Vector2(1, 0)
         self.flash = 0.0
         self.trail = []
@@ -675,6 +806,7 @@ class Fighter:
     def take_damage(self, amount, source, world, crit=False):
         if self.hp <= 0:
             return
+        amount *= source.dmg_mult * (1.0 - self.weapon.ARMOUR)
         self.hp = max(0.0, self.hp - amount)
         self.flash = 1.0
         source.dealt += amount
@@ -688,7 +820,7 @@ class Fighter:
             world.knockout(self, source)
 
     def heal(self, amount):
-        self.hp = min(MAX_HP, self.hp + amount)
+        self.hp = min(self.max_hp, self.hp + amount)
 
     # -- steering ----------------------------------------------------------
     def wall_push(self):
@@ -775,7 +907,8 @@ class Fighter:
 
         self.vel *= max(0.0, 1.0 - DRAG * dt)
         sp = self.vel.length()
-        cap = MAX_SPEED * self.weapon.SPEED_MULT * (1.9 if self.dash_t > 0 else 1.0)
+        cap = (MAX_SPEED * self.weapon.SPEED_MULT * self.speed_mult
+               * (1.9 if self.dash_t > 0 else 1.0))
         if sp > cap:
             self.vel.scale_to_length(cap)
         elif sp < MIN_SPEED and self.hp > 0:
@@ -784,6 +917,7 @@ class Fighter:
         self.pos += self.vel * dt
         self.bounce_walls(world)
 
+        self.spin_a += (0.5 + self.vel.length() * 0.004) * dt
         self.trail.append((self.pos.x, self.pos.y))
         if len(self.trail) > 15:
             self.trail.pop(0)
@@ -814,6 +948,13 @@ class Fighter:
                 self.vel.y = -self.vel.y * BOUNCE
 
     # -- drawing -----------------------------------------------------------
+    def body_points(self, p, scale=1.0):
+        """The outline of a non-ball fighter, or None for a ball."""
+        if not self.shape:
+            return None
+        rad = self.r * (1.62 if self.shape < 0 else 1.24) * scale
+        return shape_points(p.x, p.y, rad, self.shape, self.spin_a)
+
     def draw(self, s, off, world):
         ov = Vector2(off)
         p = self.pos + ov
@@ -826,9 +967,14 @@ class Fighter:
 
         if self.hp <= 0:
             husk = mix(self.dark, (44, 46, 56), 0.65)
-            pygame.draw.circle(s, husk, (int(p.x), int(p.y)), int(self.r))
-            pygame.draw.circle(s, mix(husk, (0, 0, 0), 0.45),
-                               (int(p.x), int(p.y)), int(self.r), 2)
+            pts = self.body_points(p)
+            if pts:
+                pygame.draw.polygon(s, husk, pts)
+                pygame.draw.polygon(s, mix(husk, (0, 0, 0), 0.45), pts, 2)
+            else:
+                pygame.draw.circle(s, husk, (int(p.x), int(p.y)), int(self.r))
+                pygame.draw.circle(s, mix(husk, (0, 0, 0), 0.45),
+                                   (int(p.x), int(p.y)), int(self.r), 2)
             split = mix(husk, (0, 0, 0), 0.55)
             seam = [(-0.58, -0.12), (-0.14, 0.06), (0.16, -0.28),
                     (0.14, 0.08), (0.54, 0.32)]
@@ -844,16 +990,24 @@ class Fighter:
         body = mix(self.dark, self.colour, 0.85)
         if self.flash > 0:
             body = mix(body, (255, 255, 255), 0.75 * self.flash)
-        pygame.draw.circle(s, body, (int(p.x), int(p.y)), int(self.r))
-        # a little shading so it reads as a ball, not a disc
-        pygame.draw.circle(s, mix(body, (255, 255, 255), 0.35),
-                           (int(p.x - self.r * 0.3), int(p.y - self.r * 0.33)),
-                           int(self.r * 0.42))
-        pygame.draw.circle(s, mix(self.dark, (0, 0, 0), 0.35),
-                           (int(p.x), int(p.y)), int(self.r), 2)
+        pts = self.body_points(p)
+        lit = mix(body, (255, 255, 255), 0.35)
+        rim = mix(self.dark, (0, 0, 0), 0.35)
+        if pts:
+            pygame.draw.polygon(s, body, pts)
+            pygame.draw.polygon(s, lit, self.body_points(
+                p + Vector2(-self.r * 0.16, -self.r * 0.18), 0.48))
+            pygame.draw.polygon(s, rim, pts, 2)
+        else:
+            pygame.draw.circle(s, body, (int(p.x), int(p.y)), int(self.r))
+            # a little shading so it reads as a ball, not a disc
+            pygame.draw.circle(s, lit,
+                               (int(p.x - self.r * 0.3), int(p.y - self.r * 0.33)),
+                               int(self.r * 0.42))
+            pygame.draw.circle(s, rim, (int(p.x), int(p.y)), int(self.r), 2)
 
         # health ring
-        frac = clamp(self.hp / MAX_HP, 0.0, 1.0)
+        frac = clamp(self.hp / self.max_hp, 0.0, 1.0)
         rr = pygame.Rect(0, 0, self.r * 2 + 14, self.r * 2 + 14)
         rr.center = (int(p.x), int(p.y))
         pygame.draw.arc(s, mix(BG, self.dark, 0.8), rr, 0, TAU, 3)
@@ -909,21 +1063,137 @@ class Orb:
 
 
 # ---------------------------------------------------------------------------
+# THE LADDER
+#
+# Campaign progress is one number: how many levels have been cleared. Every
+# unlock is derived from it, so a save file cannot contradict itself - the
+# worst a missing or corrupt one can do is cost you progress.
+# ---------------------------------------------------------------------------
+def _save_dir():
+    """Where progress goes. Never beside the game, which may be read-only."""
+    if sys.platform == "win32":
+        root = os.environ.get("APPDATA") or os.path.expanduser("~")
+        d = os.path.join(root, "BallBrawl")
+    elif sys.platform == "darwin":
+        d = os.path.expanduser("~/Library/Application Support/BallBrawl")
+    else:
+        root = (os.environ.get("XDG_DATA_HOME")
+                or os.path.expanduser("~/.local/share"))
+        d = os.path.join(root, "ball-brawl")
+    try:
+        os.makedirs(d, exist_ok=True)
+        return d
+    except OSError:
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+SAVE_NAME = "progress.json"
+
+CAMPAIGN = (
+    dict(name="THE CUBE", sides=4, weapon=Sword,
+         colour=(156, 166, 188), dark=(56, 62, 80),
+         hp=0.85, dmg=1.0, spd=1.0,
+         brief="A block with a sword. It knows one plan: straight at you.",
+         reward=("weapon", "DAGGER")),
+    dict(name="THE SHARD", sides=3, weapon=Gun,
+         colour=(104, 214, 178), dark=(20, 76, 64),
+         hp=0.92, dmg=1.0, spd=1.02,
+         brief="Three corners and a gun, and it will not hold still.",
+         reward=("hp", 0.10)),
+    dict(name="THE ANVIL", sides=6, weapon=Bow,
+         colour=(244, 170, 70), dark=(110, 66, 14),
+         hp=1.15, dmg=1.0, spd=0.95,
+         brief="Heavy and patient. It shoots from the far wall and waits.",
+         reward=("weapon", "HAMMER")),
+    dict(name="THE SPINDLE", sides=5, weapon=Dagger,
+         colour=(186, 124, 246), dark=(70, 32, 110),
+         hp=1.0, dmg=1.15, spd=1.12,
+         brief="Fast knives and a mean streak. Nowhere is safe for long.",
+         reward=("hp", 0.10)),
+    dict(name="THE CROWN", sides=-6, weapon=Hammer,
+         colour=(236, 240, 248), dark=(88, 94, 112),
+         hp=1.20, dmg=1.05, spd=0.92,
+         brief="The last one on the ladder. It lands once and you feel it.",
+         reward=("done", None)),
+)
+
+
+def unlocked_weapons(cleared):
+    """Weapon names available after clearing that many levels."""
+    names = set(STARTERS)
+    for lv in CAMPAIGN[:cleared]:
+        kind, val = lv["reward"]
+        if kind == "weapon":
+            names.add(val)
+    return names
+
+
+def hp_bonus(cleared):
+    total = 0.0
+    for lv in CAMPAIGN[:cleared]:
+        kind, val = lv["reward"]
+        if kind == "hp":
+            total += val
+    return total
+
+
+def reward_label(lv):
+    kind, val = lv["reward"]
+    if kind == "weapon":
+        return val
+    if kind == "hp":
+        return "+%d%% MAX HP" % round(val * 100.0)
+    return "THE BELT"
+
+
+def unlock_level(name):
+    """Which level hands this weapon over - 0 if you start with it."""
+    for i, lv in enumerate(CAMPAIGN):
+        if lv["reward"] == ("weapon", name):
+            return i + 1
+    return 0
+
+
+def load_progress():
+    try:
+        with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
+            return int(clamp(int(json.load(fh).get("cleared", 0)),
+                             0, len(CAMPAIGN)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
+
+
+def save_progress(cleared):
+    try:
+        with open(os.path.join(_save_dir(), SAVE_NAME), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"cleared": int(cleared)}, fh)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # THE GAME
 #
-# One object holds the whole world and the three screens it can be showing.
+# One object holds the whole world and the four screens it can be showing.
 # update() never touches a font or the display, so the fight can be run
 # headless - which is how the matchups were balanced.
 # ---------------------------------------------------------------------------
 class Game:
     def __init__(self):
-        self.state = "menu"          # menu | fight | ko
+        self.state = "menu"          # menu | campaign | fight | ko
+        self.mode = "versus"         # versus | campaign
         self.paused = False
         self.speed = 1
         self.orbs_on = True
         self.human = False
-        self.pick = [0, 1]           # weapon index for red, blue
+        self.pick = [0, 2]           # weapon index for red, blue
         self.score = [0, 0]
+        self.cleared = load_progress()
+        self.level = min(self.cleared, len(CAMPAIGN) - 1)
+        self.camp_pick = 0
+        self.camp_win = False
+        self.unlock_text = ""
         self.fighters = []
         self.projectiles = []
         self.particles = []
@@ -956,14 +1226,27 @@ class Game:
                                            colour, random.uniform(2.0, 4.5)))
 
     def start_fight(self):
-        self.fighters = [
-            Fighter("RED", RED, RED_D,
-                    (ARENA.left + ARENA.w * 0.20, ARENA.centery),
-                    WEAPONS[self.pick[0]], player=self.human),
-            Fighter("BLUE", BLUE, BLUE_D,
-                    (ARENA.left + ARENA.w * 0.80, ARENA.centery),
-                    WEAPONS[self.pick[1]]),
-        ]
+        left = (ARENA.left + ARENA.w * 0.20, ARENA.centery)
+        right = (ARENA.left + ARENA.w * 0.80, ARENA.centery)
+        if self.mode == "campaign":
+            if self.level > self.cleared:
+                return
+            lv = CAMPAIGN[self.level]
+            self.fighters = [
+                Fighter("YOU", RED, RED_D, left, WEAPONS[self.camp_pick],
+                        player=self.human,
+                        max_hp=MAX_HP * (1.0 + hp_bonus(self.cleared))),
+                Fighter(lv["name"], lv["colour"], lv["dark"], right,
+                        lv["weapon"], shape=lv["sides"],
+                        max_hp=MAX_HP * lv["hp"], dmg_mult=lv["dmg"],
+                        speed_mult=lv["spd"]),
+            ]
+        else:
+            self.fighters = [
+                Fighter("RED", RED, RED_D, left, WEAPONS[self.pick[0]],
+                        player=self.human),
+                Fighter("BLUE", BLUE, BLUE_D, right, WEAPONS[self.pick[1]]),
+            ]
         self.projectiles.clear()
         self.particles.clear()
         self.floaters.clear()
@@ -987,10 +1270,29 @@ class Game:
         self.slowmo = 1.5
         self.shake = 26.0
         self.flash_t = 0.3
-        self.score[0 if winner is self.fighters[0] else 1] += 1
+        if self.mode == "campaign":
+            self.record_level(winner)
+        else:
+            self.score[0 if winner is self.fighters[0] else 1] += 1
         self.spark(loser.pos, loser.colour, 60, speed=520)
         self.spark(loser.pos, (255, 255, 255), 24, speed=300)
         SFX.play("ko", 1.0)
+
+    def record_level(self, winner):
+        """A campaign win only counts the first time, and it is saved at once."""
+        self.camp_win = winner is self.fighters[0]
+        self.unlock_text = ""
+        if not self.camp_win or self.level != self.cleared:
+            return
+        kind, val = CAMPAIGN[self.level]["reward"]
+        self.cleared = min(len(CAMPAIGN), self.cleared + 1)
+        save_progress(self.cleared)
+        if kind == "weapon":
+            self.unlock_text = "UNLOCKED:  " + val
+        elif kind == "hp":
+            self.unlock_text = "REWARD:  +%d%% MAX HP" % round(val * 100.0)
+        else:
+            self.unlock_text = "every shape on the ladder, beaten"
 
     def spawn_orb(self):
         for _ in range(24):
@@ -1010,13 +1312,15 @@ class Game:
         if dist < 1e-6 or dist >= touch:
             return
         n = d / dist
-        push = (touch - dist) * 0.5
-        a.pos -= n * push
-        b.pos += n * push
+        ma, mb = a.weapon.MASS, b.weapon.MASS
+        push = touch - dist
+        a.pos -= n * push * (mb / (ma + mb))    # the lighter one gives way
+        b.pos += n * push * (ma / (ma + mb))
         rel = (b.vel - a.vel).dot(n)
-        if rel < 0:                       # equal masses, so they swap along n
-            a.vel += n * rel * 1.04
-            b.vel -= n * rel * 1.04
+        if rel < 0:
+            j = -2.04 * rel / (1.0 / ma + 1.0 / mb)
+            a.vel -= n * (j / ma)
+            b.vel += n * (j / mb)
             if -rel > 260:
                 self.spark((a.pos + b.pos) * 0.5, (255, 255, 255), 6, speed=220)
                 self.shake = max(self.shake, 5.0)
@@ -1058,85 +1362,199 @@ class Game:
         self.orbs = [o for o in self.orbs if o.update(dt, self)]
 
     # -- input -------------------------------------------------------------
+    def unlocked_idx(self):
+        names = unlocked_weapons(self.cleared)
+        return [i for i, w in enumerate(WEAPONS) if w.NAME in names]
+
     def menu_layout(self):
-        """Every clickable thing on the menu: (rect, kind, value)."""
-        items = []
-        cw, ch, gap = 396, 98, 10
-        top = 230
+        """Every clickable thing on the versus menu: (rect, kind, value)."""
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "camp", None)]
+        cw, ch, gap = 396, 64, 7
+        top = 146
         for side in (0, 1):
             x = 56 if side == 0 else W - 56 - cw
             for i in range(len(WEAPONS)):
                 items.append((pygame.Rect(x, top + i * (ch + gap), cw, ch),
                               "pick", (side, i)))
         bx = W // 2 - 152
-        items.append((pygame.Rect(bx, 566, 304, 40), "human", None))
-        items.append((pygame.Rect(bx, 612, 304, 40), "orbs", None))
-        items.append((pygame.Rect(bx, 664, 304, 52), "start", None))
+        items.append((pygame.Rect(bx, 548, 304, 38), "human", None))
+        items.append((pygame.Rect(bx, 592, 304, 38), "orbs", None))
+        items.append((pygame.Rect(bx, 640, 304, 50), "start", None))
         return items
+
+    def camp_layout(self):
+        """Every clickable thing on the campaign screen."""
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None)]
+        top, h, gap = 96, 88, 6
+        for i in range(len(CAMPAIGN)):
+            items.append((pygame.Rect(56, top + i * (h + gap), W - 112, h),
+                          "level", i))
+        bw, bh, bgap = 88, 58, 12
+        span = len(WEAPONS) * bw + (len(WEAPONS) - 1) * bgap
+        x0 = (W - span) // 2
+        for i in range(len(WEAPONS)):
+            items.append((pygame.Rect(x0 + i * (bw + bgap), 592, bw, bh),
+                          "ball", i))
+        items.append((pygame.Rect(W // 2 - 152, 658, 304, 36), "human", None))
+        items.append((pygame.Rect(W // 2 - 152, 700, 304, 48), "start", None))
+        return items
+
+    def open_campaign(self):
+        self.mode = "campaign"
+        self.state = "campaign"
+        self.level = min(self.cleared, len(CAMPAIGN) - 1)
+        picks = self.unlocked_idx()
+        if self.camp_pick not in picks:
+            self.camp_pick = picks[0]
+        SFX.play("click")
+
+    def open_versus(self):
+        self.mode = "versus"
+        self.state = "menu"
+        SFX.play("click")
+
+    def set_pick(self, side, i):
+        if WEAPONS[i].NAME in unlocked_weapons(self.cleared):
+            self.pick[side] = i
+            SFX.play("click")
+
+    def after_ko(self):
+        """What SPACE does once someone is down."""
+        if self.mode == "campaign" and self.camp_win:
+            self.level = min(len(CAMPAIGN) - 1, self.level + 1)
+            self.state = "campaign"
+        else:
+            self.start_fight()
 
     def handle(self, ev):
         """False means quit."""
         if ev.type == pygame.KEYDOWN:
-            k = ev.key
-            if k == pygame.K_ESCAPE:
-                if self.state == "menu":
-                    return False
+            return self.handle_key(ev.key)
+        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            self.handle_click(ev.pos)
+        return True
+
+    def handle_key(self, k):
+        if k == pygame.K_ESCAPE:
+            if self.state == "menu":
+                return False
+            if self.state == "campaign":
+                self.open_versus()
+            elif self.mode == "campaign":
+                self.state = "campaign"
+                self.paused = False
+            else:
                 self.state = "menu"
                 self.paused = False
-            elif k == pygame.K_m:
-                SFX.muted = not SFX.muted
-            elif k == pygame.K_f:
-                self.speed = 1 if self.speed >= 3 else self.speed + 1
-            elif k == pygame.K_p and self.state != "menu":
-                self.paused = not self.paused
-            elif self.state == "menu":
-                if k in (pygame.K_1, pygame.K_2, pygame.K_3):
-                    self.pick[0] = k - pygame.K_1
-                    SFX.play("click")
-                elif k in (pygame.K_8, pygame.K_9, pygame.K_0):
-                    self.pick[1] = {pygame.K_8: 0, pygame.K_9: 1, pygame.K_0: 2}[k]
-                    SFX.play("click")
-                elif k == pygame.K_TAB:
+            return True
+        if k == pygame.K_m:
+            SFX.muted = not SFX.muted
+        elif k == pygame.K_f:
+            self.speed = 1 if self.speed >= 3 else self.speed + 1
+        elif k == pygame.K_p and self.state in ("fight", "ko"):
+            self.paused = not self.paused
+        elif k == pygame.K_TAB and self.state in ("menu", "campaign"):
+            self.human = not self.human
+            SFX.play("click")
+        elif self.state == "menu":
+            self.menu_key(k)
+        elif self.state == "campaign":
+            self.campaign_key(k)
+        else:
+            self.fight_key(k)
+        return True
+
+    def menu_key(self, k):
+        if pygame.K_1 <= k <= pygame.K_5:
+            self.set_pick(0, k - pygame.K_1)
+        elif k in (pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9, pygame.K_0):
+            self.set_pick(1, (pygame.K_6, pygame.K_7, pygame.K_8,
+                              pygame.K_9, pygame.K_0).index(k))
+        elif k == pygame.K_o:
+            self.orbs_on = not self.orbs_on
+            SFX.play("click")
+        elif k == pygame.K_c:
+            self.open_campaign()
+        elif k in (pygame.K_SPACE, pygame.K_RETURN):
+            self.start_fight()
+
+    def campaign_key(self, k):
+        picks = self.unlocked_idx()
+        if k in (pygame.K_DOWN, pygame.K_s):
+            self.level = min(self.cleared, len(CAMPAIGN) - 1, self.level + 1)
+            SFX.play("click")
+        elif k in (pygame.K_UP, pygame.K_w):
+            self.level = max(0, self.level - 1)
+            SFX.play("click")
+        elif k in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
+            step = 1 if k in (pygame.K_RIGHT, pygame.K_d) else -1
+            at = picks.index(self.camp_pick) if self.camp_pick in picks else 0
+            self.camp_pick = picks[(at + step) % len(picks)]
+            SFX.play("click")
+        elif pygame.K_1 <= k <= pygame.K_5 and k - pygame.K_1 <= self.cleared:
+            self.level = k - pygame.K_1
+            SFX.play("click")
+        elif k == pygame.K_c:
+            self.open_versus()
+        elif k in (pygame.K_SPACE, pygame.K_RETURN):
+            self.start_fight()
+
+    def fight_key(self, k):
+        if k == pygame.K_r:
+            self.start_fight()
+        elif k == pygame.K_SPACE:
+            if self.state == "ko":
+                self.after_ko()
+            elif self.human and self.fighters and self.fighters[0].dash_cd <= 0:
+                me = self.fighters[0]
+                me.dash(me.aim)
+
+    def handle_click(self, pos):
+        if self.state == "menu":
+            for rect, kind, val in self.menu_layout():
+                if not rect.collidepoint(pos):
+                    continue
+                if kind == "pick":
+                    self.set_pick(val[0], val[1])
+                elif kind == "camp":
+                    self.open_campaign()
+                elif kind == "human":
                     self.human = not self.human
                     SFX.play("click")
-                elif k == pygame.K_o:
+                elif kind == "orbs":
                     self.orbs_on = not self.orbs_on
                     SFX.play("click")
-                elif k in (pygame.K_SPACE, pygame.K_RETURN):
+                elif kind == "start":
                     self.start_fight()
-            else:
-                if k == pygame.K_r:
-                    self.start_fight()
-                elif k == pygame.K_SPACE:
-                    if self.state == "ko":
-                        self.start_fight()
-                    elif self.human and self.fighters and self.fighters[0].dash_cd <= 0:
-                        me = self.fighters[0]
-                        me.dash(me.aim)
-        elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-            if self.state == "menu":
-                for rect, kind, val in self.menu_layout():
-                    if not rect.collidepoint(ev.pos):
-                        continue
+                break
+        elif self.state == "campaign":
+            for rect, kind, val in self.camp_layout():
+                if not rect.collidepoint(pos):
+                    continue
+                if kind == "level" and val <= self.cleared:
+                    self.level = val
                     SFX.play("click")
-                    if kind == "pick":
-                        self.pick[val[0]] = val[1]
-                    elif kind == "human":
-                        self.human = not self.human
-                    elif kind == "orbs":
-                        self.orbs_on = not self.orbs_on
-                    elif kind == "start":
-                        self.start_fight()
-                    break
-            elif self.state == "ko":
-                self.start_fight()
-        return True
+                elif kind == "ball" and val in self.unlocked_idx():
+                    self.camp_pick = val
+                    SFX.play("click")
+                elif kind == "human":
+                    self.human = not self.human
+                    SFX.play("click")
+                elif kind == "back":
+                    self.open_versus()
+                elif kind == "start":
+                    self.start_fight()
+                break
+        elif self.state == "ko":
+            self.after_ko()
 
     # -- drawing -----------------------------------------------------------
     def draw(self, s):
         s.fill(BG)
         if self.state == "menu":
             self.draw_menu(s)
+        elif self.state == "campaign":
+            self.draw_campaign(s)
         else:
             off = (0, 0)
             if self.shake > 0.2:
@@ -1219,24 +1637,27 @@ class Game:
         fa = a.hp / total
         pa = int(round(fa * 100))
 
-        text(s, a.name, 30, (26, 6), RED)
+        text(s, a.name, 30, (26, 6), a.colour)
         text(s, a.weapon.NAME, 17, (27, 44), DIM)
-        text(s, b.name, 30, (W - 26, 23), BLUE, right=True)
+        text(s, b.name, 30, (W - 26, 23), b.colour, right=True)
         text(s, b.weapon.NAME, 17, (W - 27, 53), DIM, right=True)
 
         text(s, "VS", 24, (W // 2, 20), INK, center=True)
-        text(s, "%d - %d" % (self.score[0], self.score[1]), 19,
-             (W // 2, 46), DIM, center=True)
+        mid = ("LEVEL %d / %d" % (self.level + 1, len(CAMPAIGN))
+               if self.mode == "campaign" else
+               "%d - %d" % (self.score[0], self.score[1]))
+        text(s, mid, 19, (W // 2, 46), DIM, center=True)
 
         # One bar, split where the two health pools meet - the split is the
         # whole story of the fight, so the marker sits on it.
         bar = pygame.Rect(250, 62, W - 500, 26)
         pygame.draw.rect(s, (11, 12, 18), bar.inflate(6, 6))
         split = int(bar.w * fa)
-        pygame.draw.rect(s, RED_D, (bar.x, bar.y, split, bar.h))
-        pygame.draw.rect(s, RED, (bar.x, bar.y, split, bar.h // 2))
-        pygame.draw.rect(s, BLUE_D, (bar.x + split, bar.y, bar.w - split, bar.h))
-        pygame.draw.rect(s, BLUE, (bar.x + split, bar.y, bar.w - split, bar.h // 2))
+        pygame.draw.rect(s, a.dark, (bar.x, bar.y, split, bar.h))
+        pygame.draw.rect(s, a.colour, (bar.x, bar.y, split, bar.h // 2))
+        pygame.draw.rect(s, b.dark, (bar.x + split, bar.y, bar.w - split, bar.h))
+        pygame.draw.rect(s, b.colour,
+                         (bar.x + split, bar.y, bar.w - split, bar.h // 2))
         pygame.draw.rect(s, (62, 68, 86), bar, 2)
         mx = bar.x + split
         pygame.draw.line(s, INK, (mx, bar.top - 3), (mx, bar.bottom + 3), 2)
@@ -1246,8 +1667,9 @@ class Game:
                                      (mx + 6, bar.bottom + 3),
                                      (mx, bar.bottom - 6)])
 
-        text(s, "%d%%" % pa, 32, (bar.left - 16, bar.centery), RED, right=True)
-        text(s, "%d%%" % (100 - pa), 32, (bar.right + 16, bar.centery), BLUE,
+        text(s, "%d%%" % pa, 32, (bar.left - 16, bar.centery), a.colour,
+             right=True)
+        text(s, "%d%%" % (100 - pa), 32, (bar.right + 16, bar.centery), b.colour,
              left=True)
 
         text(s, self.stat_line(a), 15, (26, 96), DIM)
@@ -1258,20 +1680,39 @@ class Game:
     def draw_banner(self, s):
         win = self.winner
         t = min(1.0, self.banner_t / 0.35)
-        size = int(lerp(120, 66, t))
         y = ARENA.centery - 26
+        if self.mode == "campaign":
+            done = self.camp_win and self.cleared >= len(CAMPAIGN)
+            title = ("CAMPAIGN COMPLETE" if done else
+                     "LEVEL CLEARED" if self.camp_win else "DEFEATED")
+            size = int(lerp(92, 52, t))
+            rule = self.fighters[0].colour if self.camp_win else win.colour
+        else:
+            title = "%s WINS" % win.name
+            size = int(lerp(120, 66, t))
+            rule = win.colour
         band = pygame.Surface((ARENA.w, 196), pygame.SRCALPHA)
         band.fill((8, 9, 14, 208))
         s.blit(band, (ARENA.left, y - 64))
-        pygame.draw.line(s, win.colour, (ARENA.left, y - 64), (ARENA.right, y - 64), 2)
-        pygame.draw.line(s, win.colour, (ARENA.left, y + 132), (ARENA.right, y + 132), 2)
-        text(s, "%s WINS" % win.name, size, (W // 2, y), win.colour, center=True)
-        if self.banner_t > 0.5:
+        pygame.draw.line(s, rule, (ARENA.left, y - 64), (ARENA.right, y - 64), 2)
+        pygame.draw.line(s, rule, (ARENA.left, y + 132), (ARENA.right, y + 132), 2)
+        text(s, title, size, (W // 2, y), rule, center=True)
+        if self.banner_t <= 0.5:
+            return
+        if self.mode == "campaign":
+            line = self.unlock_text or ("%d hits  -  %d damage"
+                                        % (win.hits, int(win.dealt)))
+            hint = ("SPACE  next level        R  again        ESC  ladder"
+                    if self.camp_win else
+                    "SPACE / R  try again        ESC  back to the ladder")
+            text(s, line, 22, (W // 2, y + 56),
+                 GOLD if self.unlock_text else INK, center=True)
+        else:
             text(s, "%d hits  -  %d damage  -  %.0f DPS"
                  % (win.hits, int(win.dealt), win.dealt / max(1.0, self.clock_t)),
                  22, (W // 2, y + 56), INK, center=True)
-            text(s, "SPACE / click  rematch        ESC  menu", 20,
-                 (W // 2, y + 96), DIM, center=True)
+            hint = "SPACE / click  rematch        ESC  menu"
+        text(s, hint, 20, (W // 2, y + 96), DIM, center=True)
 
     def draw_paused(self, s):
         v = pygame.Surface((W, H), pygame.SRCALPHA)
@@ -1283,22 +1724,21 @@ class Game:
 
     # -- the menu ----------------------------------------------------------
     def draw_menu(self, s):
-        text(s, "BALL BRAWL", 66, (W // 2, 58), INK, center=True)
-        text(s, "two balls, one arena, pick your weapons", 20,
-             (W // 2, 108), DIM, center=True)
+        text(s, "BALL BRAWL", 50, (W // 2, 34), INK, center=True)
+        text(s, "two balls, one arena, pick your weapons", 17,
+             (W // 2, 80), DIM, center=True)
 
-        if self.score[0] or self.score[1]:
-            text(s, "SESSION   RED %d  -  %d BLUE" % (self.score[0], self.score[1]),
-                 18, (W // 2, 140), DIM, center=True)
-        text(s, "RED", 32, (56, 182), RED)
-        text(s, "keys 1 2 3", 16, (150, 192), DIM)
-        r = text(s, "BLUE", 32, (W - 56, 198), BLUE, right=True)
-        text(s, "keys 8 9 0", 16, (r.left - 14, 200), DIM, right=True)
+        text(s, "RED", 26, (56, 104), RED)
+        text(s, "keys 1-5", 14, (124, 112), DIM)
+        r = text(s, "BLUE", 26, (W - 56, 117), BLUE, right=True)
+        text(s, "keys 6-0", 14, (r.left - 12, 119), DIM, right=True)
 
         for rect, kind, val in self.menu_layout():
             if kind == "pick":
                 side, i = val
                 self.draw_card(s, rect, WEAPONS[i], side, self.pick[side] == i)
+            elif kind == "camp":
+                self.draw_button(s, rect, "CAMPAIGN >", GOLD, "C")
             elif kind == "human":
                 self.draw_button(s, rect, "RED IS:  %s" % ("PLAYER" if self.human
                                                            else "CPU"),
@@ -1311,43 +1751,134 @@ class Game:
                 pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
                 pygame.draw.rect(s, mix((28, 32, 44), (60, 90, 70), pulse), rect)
                 pygame.draw.rect(s, mix(GREEN, INK, pulse * 0.5), rect, 2)
-                text(s, "FIGHT   (SPACE)", 28, rect.center, INK, center=True)
+                text(s, "FIGHT   (SPACE)", 27, rect.center, INK, center=True)
 
+        # the chosen weapon says what it does, under its own column
+        for k, line in enumerate(WEAPONS[self.pick[0]].BLURB):
+            text(s, line, 13, (56, 508 + k * 17), DIM)
+        for k, line in enumerate(WEAPONS[self.pick[1]].BLURB):
+            text(s, line, 13, (W - 56, 516 + k * 17), DIM, right=True)
+
+        if self.cleared:
+            text(s, "%d / %d CAMPAIGN LEVELS CLEARED"
+                 % (self.cleared, len(CAMPAIGN)), 14, (W // 2, 706), GREEN,
+                 center=True)
         if self.human:
-            text(s, "WASD move      mouse aim      SPACE dash", 17,
-                 (W // 2, 738), DIM, center=True)
+            text(s, "WASD move      mouse aim      SPACE dash", 16,
+                 (W // 2, 726), DIM, center=True)
+        if self.score[0] or self.score[1]:
+            text(s, "SESSION   RED %d  -  %d BLUE" % (self.score[0], self.score[1]),
+                 16, (W // 2, 746), DIM, center=True)
 
     def draw_card(self, s, rect, wcls, side, selected):
-        base = RED if side == 0 else BLUE
-        bg = mix(PANEL, base, 0.22 if selected else 0.06)
-        pygame.draw.rect(s, bg, rect)
-        pygame.draw.rect(s, base if selected else (52, 57, 72), rect,
-                         3 if selected else 1)
-        icon = (rect.left + 46, rect.centery)
-        self.draw_icon(s, icon, wcls, base)
-        text(s, wcls.NAME, 25, (rect.left + 88, rect.top + 8),
-             INK if selected else DIM)
-        for k, line in enumerate(wcls.BLURB):
-            text(s, line, 13, (rect.left + 88, rect.top + 38 + k * 16), DIM)
-        # stat pips
-        px = rect.left + 88
+        locked = wcls.NAME not in unlocked_weapons(self.cleared)
+        base = (72, 78, 96) if locked else (RED if side == 0 else BLUE)
+        live = selected and not locked
+        pygame.draw.rect(s, mix(PANEL, base, 0.22 if live else 0.05), rect)
+        pygame.draw.rect(s, base if live else (52, 57, 72), rect, 3 if live else 1)
+        self.draw_icon(s, (rect.left + 40, rect.centery), wcls, base)
+        text(s, wcls.NAME, 22, (rect.left + 84, rect.top + 6),
+             INK if live else DIM)
+        if locked:
+            text(s, "locked - clear campaign level %d" % unlock_level(wcls.NAME),
+                 13, (rect.left + 84, rect.top + 36), DIM)
+            return
+        px = rect.left + 84
         for label, n in zip(("DMG", "RATE", "REACH"), wcls.PIPS):
-            text(s, label, 12, (px, rect.bottom - 22), DIM)
+            text(s, label, 11, (px, rect.bottom - 22), DIM)
             for k in range(5):
                 c = base if k < n else (48, 52, 66)
-                pygame.draw.rect(s, c, (px + 44 + k * 9, rect.bottom - 19, 6, 8))
-            px += 98
+                pygame.draw.rect(s, c, (px + 40 + k * 8, rect.bottom - 20, 5, 8))
+            px += 92
+
+    # -- the campaign ------------------------------------------------------
+    def draw_campaign(self, s):
+        text(s, "CAMPAIGN", 38, (56, 20), INK)
+        text(s, "beat a shape, keep what it was holding", 15, (58, 64), DIM)
+        text(s, "%d / %d CLEARED" % (self.cleared, len(CAMPAIGN)), 19,
+             (W - 240, 42), GREEN if self.cleared else DIM, right=True)
+        text(s, "YOUR BALL", 15, (W // 2, 578), DIM, center=True)
+
+        for rect, kind, val in self.camp_layout():
+            if kind == "back":
+                self.draw_button(s, rect, "< VERSUS", DIM, "C")
+            elif kind == "level":
+                self.draw_level(s, rect, val)
+            elif kind == "ball":
+                self.draw_ball(s, rect, val)
+            elif kind == "human":
+                self.draw_button(s, rect, "YOU ARE:  %s"
+                                 % ("PLAYING" if self.human else "WATCHING"),
+                                 GOLD if self.human else DIM, "TAB")
+            elif kind == "start":
+                pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
+                pygame.draw.rect(s, mix((28, 32, 44), (60, 90, 70), pulse), rect)
+                pygame.draw.rect(s, mix(GREEN, INK, pulse * 0.5), rect, 2)
+                text(s, "FIGHT   (SPACE)", 26, rect.center, INK, center=True)
+
+    def draw_level(self, s, rect, i):
+        lv = CAMPAIGN[i]
+        locked = i > self.cleared
+        base = (70, 76, 94) if locked else lv["colour"]
+        sel = i == self.level and not locked
+        pygame.draw.rect(s, mix(PANEL, base, 0.20 if sel else 0.05), rect)
+        pygame.draw.rect(s, base if sel else (52, 57, 72), rect, 3 if sel else 1)
+
+        # the shape itself, turning slowly
+        spin = pygame.time.get_ticks() * 0.0006 + i
+        pts = shape_points(rect.left + 48, rect.centery,
+                           30 if lv["sides"] < 0 else 25, lv["sides"], spin)
+        pygame.draw.polygon(s, mix(base, (0, 0, 0), 0.45), pts)
+        pygame.draw.polygon(s, base, pts, 2)
+
+        text(s, "%d.  %s" % (i + 1, lv["name"]), 22,
+             (rect.left + 96, rect.top + 9), DIM if locked else INK)
+        text(s, lv["brief"], 13, (rect.left + 96, rect.top + 39), DIM)
+        text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%"
+             % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
+                round(lv["dmg"] * 100)),
+             12, (rect.left + 96, rect.top + 61), mix(DIM, base, 0.45))
+
+        text(s, "REWARD  " + reward_label(lv), 14,
+             (rect.right - 18, rect.top + 26), DIM if locked else GOLD, right=True)
+        if i < self.cleared:
+            text(s, "CLEARED", 15, (rect.right - 18, rect.top + 58), GREEN,
+                 right=True)
+        elif locked:
+            text(s, "LOCKED", 15, (rect.right - 18, rect.top + 58), DIM,
+                 right=True)
+        else:
+            text(s, "NEXT UP", 15, (rect.right - 18, rect.top + 58), GOLD,
+                 right=True)
+
+    def draw_ball(self, s, rect, i):
+        wcls = WEAPONS[i]
+        locked = wcls.NAME not in unlocked_weapons(self.cleared)
+        sel = i == self.camp_pick and not locked
+        base = (70, 76, 94) if locked else RED
+        pygame.draw.rect(s, mix(PANEL, base, 0.22 if sel else 0.05), rect)
+        pygame.draw.rect(s, base if sel else (52, 57, 72), rect, 3 if sel else 1)
+        self.draw_icon(s, (rect.centerx - 12, rect.top + 23), wcls, base)
+        label = "LVL %d" % unlock_level(wcls.NAME) if locked else wcls.NAME
+        text(s, label, 12, (rect.centerx, rect.bottom - 12),
+             INK if sel else DIM, center=True)
 
     def draw_icon(self, s, c, wcls, colour):
         cx, cy = c
         pygame.draw.circle(s, mix(PANEL, colour, 0.8), (cx, cy), 15)
         pygame.draw.circle(s, mix(colour, (0, 0, 0), 0.4), (cx, cy), 15, 2)
-        if wcls is Sword:
-            for k in range(3):
-                a = k * TAU / 3 + 0.4
+        if wcls is Sword or wcls is Dagger:
+            n = wcls.BLADES
+            reach = 31 if wcls is Sword else 26
+            for k in range(n):
+                a = k * TAU / n + 0.4
                 d = Vector2(math.cos(a), math.sin(a))
                 pygame.draw.line(s, INK, (cx + d.x * 16, cy + d.y * 16),
-                                 (cx + d.x * 31, cy + d.y * 31), 3)
+                                 (cx + d.x * reach, cy + d.y * reach), 3)
+        elif wcls is Hammer:
+            pygame.draw.line(s, (112, 82, 50), (cx + 12, cy), (cx + 28, cy), 5)
+            pygame.draw.rect(s, (150, 156, 172), (cx + 25, cy - 11, 13, 22))
+            pygame.draw.rect(s, INK, (cx + 25, cy - 11, 13, 22), 1)
         elif wcls is Gun:
             pygame.draw.line(s, (160, 168, 186), (cx + 10, cy), (cx + 34, cy), 6)
             pygame.draw.line(s, (100, 107, 126), (cx + 12, cy + 2),
@@ -1362,8 +1893,8 @@ class Game:
     def draw_button(self, s, rect, label, colour, key):
         pygame.draw.rect(s, PANEL, rect)
         pygame.draw.rect(s, mix((52, 57, 72), colour, 0.5), rect, 2)
-        text(s, label, 21, (rect.centerx - 10, rect.centery), INK, center=True)
-        text(s, key, 15, (rect.right - 10, rect.centery), DIM, right=True)
+        text(s, label, 20, (rect.left + 16, rect.centery), INK, left=True)
+        text(s, key, 15, (rect.right - 12, rect.centery), DIM, right=True)
 
 
 # ---------------------------------------------------------------------------
