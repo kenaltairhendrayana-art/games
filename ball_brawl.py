@@ -1674,7 +1674,7 @@ class Summoner(Weapon):
     DASH_MULT = 1.3
     ARMOUR = 0.18
     MASS = 1.8
-    HP_MULT = 1.70
+    HP_MULT = 1.50            # it was the tankiest thing short of a boss
     BLURB = ("throws out little balls, and",
              "throws out more as it goes on")
     PIPS = (1, 3, 5)
@@ -1682,10 +1682,10 @@ class Summoner(Weapon):
     FIRST = 1.0               # first one arrives quickly
     GAP = 2.0                 # then this long between them ...
     RAMP = 0.045              # ... shrinking every second ...
-    GAP_MIN = 0.80            # ... to this
-    CAP = 5                   # this many alive at first ...
-    CAP_EVERY = 10.0          # ... one more every this many seconds ...
-    CAP_MAX = 13              # ... up to this
+    GAP_MIN = 1.05            # ... to this
+    CAP = 4                   # this many alive at first ...
+    CAP_EVERY = 12.0          # ... one more every this many seconds ...
+    CAP_MAX = 8               # ... up to this
     PER_SUMMON = 1            # how many arrive at once
     MINION_SCALE = 1.0        # and how tough each one is
 
@@ -1890,7 +1890,7 @@ class Brood(Summoner):
     ART_REF = 22.0
     SPEED_MULT = 0.78
     ARMOUR = 0.20
-    HP_MULT = 1.70
+    HP_MULT = 1.45
     BLURB = ("sends them two at a time, and",
              "they take some killing")
     PIPS = (2, 4, 5)
@@ -1898,10 +1898,10 @@ class Brood(Summoner):
     PER_SUMMON = 2
     MINION_SCALE = 1.5
     GAP = 3.0                 # two at a time, but you wait for them
-    GAP_MIN = 1.1
-    CAP = 4
-    CAP_EVERY = 12.0
-    CAP_MAX = 10
+    GAP_MIN = 1.35
+    CAP = 3
+    CAP_EVERY = 14.0
+    CAP_MAX = 6
 
 
 # ---------------------------------------------------------------------------
@@ -3097,9 +3097,9 @@ class Fighter:
 # ---------------------------------------------------------------------------
 class Minion:
     R = 8.0
-    HP = 80.0
-    DMG = (12.0, 17.0)
-    HIT_CD = 0.55
+    HP = 62.0                 # fewer of them, so each one bites harder
+    DMG = (16.0, 22.0)
+    HIT_CD = 0.60
     SPEED = 430.0             # faster than anything can run
     LIFE = 26.0
 
@@ -3115,7 +3115,7 @@ class Minion:
         self.flash = 0.0
         self.life = self.LIFE
 
-    BURST = (18.0, 26.0)
+    BURST = (21.0, 29.0)
     BURST_R = 38.0
 
     def hurt(self, amount, world):
@@ -3382,7 +3382,7 @@ CAMPAIGN = (
          reward=("weapon", "FLURRY")),
     dict(name="THE HIVE", sides=4, weapon=Summoner,
          colour=(126, 200, 246), dark=(28, 74, 112),
-         hp=1.50, dmg=1.0, spd=0.95,
+         hp=1.45, dmg=1.0, spd=0.95,
          brief="It never comes to you. It just keeps sending the little ones.",
          reward=("weapon", "SUMMONER")),
     dict(name="THE TITAN", sides=4, weapon=Fists,
@@ -3417,7 +3417,7 @@ CAMPAIGN = (
          reward=("weapon", "GAUNTLETS")),
     dict(name="THE NEST", sides=4, weapon=Brood,
          colour=(150, 170, 250), dark=(44, 60, 130),
-         hp=1.60, dmg=1.0, spd=0.92,
+         hp=1.30, dmg=1.0, spd=0.92,
          brief="The hive, but worse. They come two at a time and they last.",
          reward=("weapon", "BROOD")),
     dict(name="THE PIKE", sides=4, weapon=Spear,
