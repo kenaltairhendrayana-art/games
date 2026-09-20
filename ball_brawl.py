@@ -141,13 +141,7 @@ def segs_close(a1, a2, b1, b2, rad):
 
 
 def shape_points(cx, cy, rad, sides, angle):
-    """A regular polygon - or, when sides is negative, a star with that
-    many points. Campaign enemies are shapes; the player is always a ball."""
-    if sides < 0:
-        n = -sides * 2
-        return [(cx + math.cos(angle + i * TAU / n) * rad * (1.0 if i % 2 else 0.44),
-                 cy + math.sin(angle + i * TAU / n) * rad * (1.0 if i % 2 else 0.44))
-                for i in range(n)]
+    """A regular polygon. Campaign enemies are cubes; you are always a ball."""
     return [(cx + math.cos(angle + i * TAU / sides) * rad,
              cy + math.sin(angle + i * TAU / sides) * rad)
             for i in range(sides)]
@@ -952,8 +946,8 @@ class Fighter:
         """The outline of a non-ball fighter, or None for a ball."""
         if not self.shape:
             return None
-        rad = self.r * (1.62 if self.shape < 0 else 1.24) * scale
-        return shape_points(p.x, p.y, rad, self.shape, self.spin_a)
+        return shape_points(p.x, p.y, self.r * 1.24 * scale,
+                            self.shape, self.spin_a)
 
     def draw(self, s, off, world):
         ov = Vector2(off)
@@ -1095,25 +1089,25 @@ CAMPAIGN = (
          hp=0.85, dmg=1.0, spd=1.0,
          brief="A block with a sword. It knows one plan: straight at you.",
          reward=("weapon", "DAGGER")),
-    dict(name="THE SHARD", sides=3, weapon=Gun,
+    dict(name="THE BRICK", sides=4, weapon=Gun,
          colour=(104, 214, 178), dark=(20, 76, 64),
          hp=0.92, dmg=1.0, spd=1.02,
-         brief="Three corners and a gun, and it will not hold still.",
+         brief="A block that picked up a gun, and it will not hold still.",
          reward=("hp", 0.10)),
-    dict(name="THE ANVIL", sides=6, weapon=Bow,
+    dict(name="THE SLAB", sides=4, weapon=Bow,
          colour=(244, 170, 70), dark=(110, 66, 14),
          hp=1.15, dmg=1.0, spd=0.95,
          brief="Heavy and patient. It shoots from the far wall and waits.",
          reward=("weapon", "HAMMER")),
-    dict(name="THE SPINDLE", sides=5, weapon=Dagger,
+    dict(name="THE DIE", sides=4, weapon=Dagger,
          colour=(186, 124, 246), dark=(70, 32, 110),
          hp=1.0, dmg=1.15, spd=1.12,
-         brief="Fast knives and a mean streak. Nowhere is safe for long.",
+         brief="A block with four knives and a mean streak. Nowhere is safe.",
          reward=("hp", 0.10)),
-    dict(name="THE CROWN", sides=-6, weapon=Hammer,
-         colour=(236, 240, 248), dark=(88, 94, 112),
+    dict(name="THE MONOLITH", sides=4, weapon=Hammer,
+         colour=(198, 208, 230), dark=(76, 82, 100),
          hp=1.20, dmg=1.05, spd=0.92,
-         brief="The last one on the ladder. It lands once and you feel it.",
+         brief="The last block on the ladder. It lands once and you feel it.",
          reward=("done", None)),
 )
 
@@ -1826,8 +1820,8 @@ class Game:
 
         # the shape itself, turning slowly
         spin = pygame.time.get_ticks() * 0.0006 + i
-        pts = shape_points(rect.left + 48, rect.centery,
-                           30 if lv["sides"] < 0 else 25, lv["sides"], spin)
+        pts = shape_points(rect.left + 48, rect.centery, 25,
+                           lv["sides"], spin)
         pygame.draw.polygon(s, mix(base, (0, 0, 0), 0.45), pts)
         pygame.draw.polygon(s, base, pts, 2)
 
