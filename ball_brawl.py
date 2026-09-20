@@ -1118,20 +1118,20 @@ class Summoner(Weapon):
     PREF = 300.0              # it would rather you came to it
     SPEED_MULT = 0.85
     DASH_MULT = 1.3
-    ARMOUR = 0.10
+    ARMOUR = 0.18
     MASS = 1.8
-    HP_MULT = 1.25
+    HP_MULT = 1.70
     BLURB = ("throws out little balls, and",
              "throws out more as it goes on")
     PIPS = (1, 3, 5)
 
     FIRST = 1.0               # first one arrives quickly
-    GAP = 2.6                 # then this long between them ...
+    GAP = 2.0                 # then this long between them ...
     RAMP = 0.045              # ... shrinking every second ...
     GAP_MIN = 0.80            # ... to this
-    CAP = 3                   # this many alive at first ...
-    CAP_EVERY = 13.0          # ... one more every this many seconds ...
-    CAP_MAX = 11              # ... up to this
+    CAP = 5                   # this many alive at first ...
+    CAP_EVERY = 10.0          # ... one more every this many seconds ...
+    CAP_MAX = 13              # ... up to this
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -1179,21 +1179,21 @@ class Flurry(Melee):
     RADIUS = 13.0
     ART_REF = 20.0            # drawn at the dagger's proportions
     SPEED_MULT = 1.28
-    DASH_MULT = 0.45
+    DASH_MULT = 0.85
     MASS = 0.82
     BLURB = ("eight knives instead of four,",
              "and a lunge that spins them up")
     PIPS = (2, 5, 1)
 
     BLADES = 8                # twice the dagger, each one cutting less
-    REACH = 46.0
+    REACH = 42.0
     SPIN = 8.0
-    DASH_SPIN = 27.0          # while lunging, it is a saw blade
+    DASH_SPIN = 20.0          # while lunging, it is a saw blade
     LUNGE_AT = 240.0          # how close before it throws itself at you
     KNOCK = 20.0
     LUNGE = 60.0
-    DMG = (13.0, 18.0)
-    HIT_CD = 0.16
+    DMG = (8.0, 12.0)
+    HIT_CD = 0.20
     CRIT = 0.16
     PARRY_CD = 0.11
     PARRY_BAND = 8.0
@@ -1495,11 +1495,11 @@ class Fighter:
 # be the thing that wins or loses the fight.
 # ---------------------------------------------------------------------------
 class Minion:
-    R = 7.0
-    HP = 26.0
-    DMG = (7.0, 11.0)
+    R = 8.0
+    HP = 80.0
+    DMG = (12.0, 17.0)
     HIT_CD = 0.55
-    SPEED = 250.0
+    SPEED = 430.0             # faster than anything can run
     LIFE = 26.0
 
     def __init__(self, owner, pos):
@@ -1512,11 +1512,22 @@ class Minion:
         self.flash = 0.0
         self.life = self.LIFE
 
+    BURST = (18.0, 26.0)
+    BURST_R = 38.0
+
     def hurt(self, amount, world):
         self.hp -= amount
         self.flash = 1.0
-        if self.hp <= 0:
-            world.spark(self.pos, self.owner.colour, 7, speed=190)
+        if self.hp > 0:
+            return
+        # it goes off when it dies, so clearing the swarm is not free
+        world.spark(self.pos, self.owner.colour, 12, speed=240)
+        world.shake = max(world.shake, 3.0)
+        foe = world.foe(self.owner)
+        if foe and foe.hp > 0:
+            if (foe.pos - self.pos).length() <= self.BURST_R + foe.r:
+                foe.take_damage(random.uniform(*self.BURST), self.owner, world)
+                foe.vel += unit(foe.pos - self.pos) * (120.0 / foe.weapon.MASS)
 
     def update(self, dt, world):
         self.life -= dt
@@ -1657,12 +1668,12 @@ CAMPAIGN = (
          reward=("done", None)),
     dict(name="THE LATHE", sides=4, weapon=Flurry,
          colour=(240, 96, 152), dark=(108, 24, 62),
-         hp=1.35, dmg=1.0, spd=1.05,
+         hp=1.05, dmg=1.0, spd=1.05,
          brief="The cube came back with eight knives and somewhere to be.",
          reward=("weapon", "FLURRY")),
     dict(name="THE HIVE", sides=4, weapon=Summoner,
          colour=(126, 200, 246), dark=(28, 74, 112),
-         hp=1.30, dmg=1.0, spd=0.95,
+         hp=1.50, dmg=1.0, spd=0.95,
          brief="It never comes to you. It just keeps sending the little ones.",
          reward=("weapon", "SUMMONER")),
     dict(name="THE TITAN", sides=4, weapon=Fists,
