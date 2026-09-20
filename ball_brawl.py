@@ -84,6 +84,7 @@ BLUE    = (58, 148, 246)
 BLUE_D  = (20, 62, 124)
 GOLD    = (255, 206, 84)
 GREEN   = (86, 224, 138)
+VENOM   = (162, 232, 92)
 
 # Physics. Fighters are always under thrust, so drag and the speed clamp
 # are what actually decide how fast the fight looks, not the acceleration.
@@ -607,14 +608,14 @@ class Floater:
     """A damage number, drifting up off the ball that just got hit."""
     __slots__ = ("pos", "vel", "life", "full", "colour", "txt", "size")
 
-    def __init__(self, pos, amount, colour, crit=False):
+    def __init__(self, pos, amount, colour, crit=False, small=False):
         self.pos = Vector2(pos)
         self.vel = Vector2(random.uniform(-26, 26), random.uniform(-92, -64))
-        self.life = self.full = 0.95 if crit else 0.7
+        self.life = self.full = 0.95 if crit else (0.5 if small else 0.7)
         self.colour = GOLD if crit else colour
         self.txt = str(int(round(amount)))
         # the fighters are small now; a number must not outgrow one
-        self.size = 27 if crit else 19
+        self.size = 27 if crit else (13 if small else 19)
 
     def update(self, dt):
         self.life -= dt
@@ -837,6 +838,7 @@ class Melee(Weapon):
                 self.flash = 1.0
                 world.spark(foe.pos - push * foe.r, o.colour, 8, speed=240)
                 SFX.play("cut", 0.7)
+                self.on_hit(foe, world)
             for m in world.minions:
                 if m.owner.team != o.team and m.hp > 0:
                     if seg_dist(m.pos, a, b) <= m.r + 4:
@@ -853,6 +855,9 @@ class Melee(Weapon):
                         world.shake = max(world.shake, 3.0)
                         SFX.play("parry", 0.45)
                         break
+
+    def on_hit(self, foe, world):
+        """Whatever this weapon does beyond the damage and the shove."""
 
     def draw(self, s, off, world):
         o = self.owner
@@ -1814,6 +1819,102 @@ class Beam(Weapon):
         blit_glow(s, emitter, 14 * k, o.colour, 90)
 
 
+class Mech(Melee):
+    """A walker on eight legs. The legs barely hurt; the venom does.
+
+    It walks, and it does not need to do better than that: whatever it
+    touches gets slower still and keeps taking damage after the leg has
+    come back out.
+    """
+    NAME = "MECH"
+    RADIUS = 21.0
+    ART_REF = 28.0
+    PREF = 0.0
+    SPEED_MULT = 0.82         # it walks; almost nothing walks slower
+    DASH_MULT = 1.3
+    MASS = 2.6
+    ARMOUR = 0.28
+    HP_MULT = 1.32
+    BLURB = ("eight legs that poison what",
+             "they touch, and slow it down")
+    PIPS = (2, 5, 2)
+
+    BLADES = 8
+    REACH = 48.0
+    SPIN = 0.9                # the body turns; the legs do the walking
+    KNOCK = 0.0               # it wants you close, so it never shoves
+    LUNGE = 30.0
+    DMG = (4.0, 6.5)          # a leg is a needle - the venom is the weapon
+    HIT_CD = 0.62
+    CRIT = 0.04
+    PARRY_CD = 0.26
+    PARRY_BAND = 11.0
+
+    GAIT = 2.6                # step cycles per second
+    SHIN = 0.45               # the share of a leg that is past the knee
+    VENOM_DPS = 9.0           # one dose, per second; three can stack
+    VENOM_T = 4.0             # how long one bite keeps working
+    SLOW = 0.74               # what it cuts your top speed to
+    SLOW_T = 1.5              # long enough to close, short enough to flee
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.phase = random.uniform(0, TAU)
+
+    def leg(self, i):
+        """Direction, hip and foot of leg i, part way through its step."""
+        o = self.owner
+        a = self.angle + i * TAU / self.BLADES
+        d = Vector2(math.cos(a), math.sin(a))
+        # two sets of four, so half the legs are always planted
+        step = math.sin(self.phase + (0.0 if i % 2 else math.pi))
+        out = 0.66 + 0.34 * step
+        return d, o.pos + d * o.r * 0.92, o.pos + d * (o.r + self.REACH * out)
+
+    def segments(self):
+        """Only the shin bites; the thigh is tucked up by the body."""
+        for i in range(self.BLADES):
+            _, hip, foot = self.leg(i)
+            yield hip + (foot - hip) * (1.0 - self.SHIN), foot
+
+    def update(self, dt, world):
+        self.phase = (self.phase + self.GAIT * TAU * dt) % TAU
+        super().update(dt, world)
+
+    def on_hit(self, foe, world):
+        foe.envenom(self.VENOM_DPS, self.VENOM_T, self.SLOW, self.SLOW_T,
+                    self.owner)
+        world.spark(foe.pos, VENOM, 6, speed=170)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        ov = Vector2(off)
+        k = o.r / self.ART_REF
+        p = o.pos + ov
+        steel = mix((138, 146, 166), o.colour, 0.25)
+        dark = mix(steel, (0, 0, 0), 0.5)
+        for i in range(self.BLADES):
+            d, hip, foot = self.leg(i)
+            hip, foot = hip + ov, foot + ov
+            # the knee kicks out to one side so the leg reads as jointed
+            side = Vector2(-d.y, d.x) * (1 if i % 2 else -1)
+            knee = hip + (foot - hip) * 0.5 + side * 10 * k
+            pygame.draw.lines(s, dark, False, [hip, knee, foot],
+                              max(3, int(6 * k)))
+            pygame.draw.lines(s, steel, False, [hip, knee, foot],
+                              max(1, int(3 * k)))
+            pygame.draw.circle(s, mix(VENOM, (255, 255, 255), self.flash),
+                               (int(foot.x), int(foot.y)),
+                               max(2, int(3.4 * k)))
+        # a plate over the body, and two fangs along the aim
+        pygame.draw.circle(s, mix(o.dark, (0, 0, 0), 0.3),
+                           (int(p.x), int(p.y)), max(3, int(o.r * 0.54)))
+        pygame.draw.circle(s, mix(VENOM, (0, 0, 0), 0.2),
+                           (int(p.x), int(p.y)), max(2, int(o.r * 0.26)))
+        if self.flash > 0.05:
+            blit_glow(s, p, o.r * 1.6, VENOM, int(70 * self.flash))
+
+
 # Every weapon belongs to a family: a base, and its upgrade if it has
 # one. The grids read straight off this - one row per family, the base in
 # the first column and the upgrade beside it - so adding a weapon means
@@ -1821,7 +1922,7 @@ class Beam(Weapon):
 FAMILIES = ((Sword, Greatsword), (Dagger, Flurry), (Gun, Repeater),
             (Bow, Ballista), (Hammer, Maul), (Fists, Gauntlets),
             (Summoner, Brood), (Spear, None), (Shield, None),
-            (Chain, None), (Mines, None), (Beam, None))
+            (Chain, None), (Mines, None), (Beam, None), (Mech, None))
 WEAPONS = tuple(w for fam in FAMILIES for w in fam if w is not None)
 TIERS = len(FAMILIES)          # rows in every weapon grid
 
@@ -1870,23 +1971,68 @@ class Fighter:
         self.dash_t = 0.0
         self.dealt = 0.0
         self.hits = 0
+        # a bite that keeps working after the leg has gone
+        self.venom_t = 0.0
+        self.venom_dose = 0.0     # what one bite is worth, per second
+        self.venom_stacks = 0     # and how many of them are in you
+        self.venom_src = None
+        self.venom_tick = 0.0
+        self.slow_t = 0.0
+        self.slow_f = 1.0
 
     # -- damage ------------------------------------------------------------
-    def take_damage(self, amount, source, world, crit=False):
+    POISON_TICK = 0.35        # venom lands in bites, not once a frame
+
+    def take_damage(self, amount, source, world, crit=False, poison=False):
         if self.hp <= 0:
             return
-        amount *= source.dmg_mult * (1.0 - self.weapon.ARMOUR)
+        # venom is already inside you; armour has nothing to say about it
+        amount *= source.dmg_mult * (1.0 if poison
+                                     else 1.0 - self.weapon.ARMOUR)
         self.hp = max(0.0, self.hp - amount)
-        self.flash = 1.0
+        self.flash = max(self.flash, 0.3 if poison else 1.0)
         source.dealt += amount
-        source.hits += 1
+        if not poison:            # a tick is not a hit; the HUD counts hits
+            source.hits += 1
         world.floaters.append(
-            Floater(self.pos + Vector2(0, -self.r - 8), amount, source.colour, crit))
-        world.shake = max(world.shake, 3.0 + amount * 0.06 + (6.0 if crit else 0.0))
-        world.hitstop = max(world.hitstop, 0.055 if crit else 0.02)
-        SFX.play("crit" if crit else "hit", 0.55)
+            Floater(self.pos + Vector2(0, -self.r - 8), amount,
+                    VENOM if poison else source.colour, crit, small=poison))
+        if not poison:
+            world.shake = max(world.shake,
+                              3.0 + amount * 0.06 + (6.0 if crit else 0.0))
+            world.hitstop = max(world.hitstop, 0.055 if crit else 0.02)
+            SFX.play("crit" if crit else "hit", 0.55)
         if self.hp <= 0:
             world.knockout(self, source)
+
+    def envenom(self, dps, secs, slow, slow_secs, source, cap=3):
+        """A leg went in. Doses pile up; the limp only ever refreshes."""
+        if self.venom_t <= 0:
+            self.venom_stacks = 0
+        self.venom_dose = max(self.venom_dose, dps)
+        self.venom_stacks = min(cap, self.venom_stacks + 1)
+        self.venom_t = max(self.venom_t, secs)
+        self.venom_src = source
+        self.slow_f = min(self.slow_f, slow) if self.slow_t > 0 else slow
+        self.slow_t = max(self.slow_t, slow_secs)
+
+    def tick_venom(self, dt, world):
+        if self.slow_t > 0:
+            self.slow_t = max(0.0, self.slow_t - dt)
+            if self.slow_t <= 0:
+                self.slow_f = 1.0
+        if self.venom_t <= 0 or self.hp <= 0:
+            return
+        self.venom_t = max(0.0, self.venom_t - dt)
+        if self.venom_t <= 0:
+            self.venom_stacks = 0
+            return
+        self.venom_tick -= dt
+        if self.venom_tick <= 0:
+            self.venom_tick = self.POISON_TICK
+            self.take_damage(
+                self.venom_dose * self.venom_stacks * self.POISON_TICK,
+                self.venom_src or self, world, poison=True)
 
     def heal(self, amount):
         self.hp = min(self.max_hp, self.hp + amount)
@@ -1967,6 +2113,7 @@ class Fighter:
         self.flash = max(0.0, self.flash - dt * 4.0)
         self.dash_cd = max(0.0, self.dash_cd - dt)
         self.dash_t = max(0.0, self.dash_t - dt)
+        self.tick_venom(dt, world)
         foe = world.foe(self)
         if self.hp > 0:
             if self.player:
@@ -1976,13 +2123,14 @@ class Fighter:
 
         self.vel *= max(0.0, 1.0 - DRAG * dt)
         sp = self.vel.length()
-        cap = (MAX_SPEED * self.weapon.SPEED_MULT * self.speed_mult
+        limp = self.slow_f if self.slow_t > 0 else 1.0
+        cap = (MAX_SPEED * self.weapon.SPEED_MULT * self.speed_mult * limp
                * (1.9 if self.dash_t > 0 else 1.0))
         if sp > cap:
             self.vel.scale_to_length(cap)
-        elif sp < MIN_SPEED and self.hp > 0:
+        elif sp < MIN_SPEED * limp and self.hp > 0:
             self.vel = unit(self.vel, (random.uniform(-1, 1),
-                                       random.uniform(-1, 1))) * MIN_SPEED
+                                       random.uniform(-1, 1))) * MIN_SPEED * limp
         self.pos += self.vel * dt
         self.bounce_walls(world)
 
@@ -2089,6 +2237,18 @@ class Fighter:
         if frac > 0.01:
             pygame.draw.arc(s, self.colour, rr,
                             TAU * 0.25, TAU * 0.25 + TAU * frac, 3)
+        if self.venom_t > 0:
+            # a sick green ring, plus a limp mark while the slow is on
+            pygame.draw.arc(s, VENOM, rr, 0, TAU, 1 + self.venom_stacks)
+            blit_glow(s, p, int(self.r * 1.25), VENOM,
+                      int(16 + 8 * self.venom_stacks
+                          + 16 * math.sin(world.clock_t * 9.0)))
+            if self.slow_t > 0:
+                for i in range(3):
+                    a = world.clock_t * 2.0 + i * TAU / 3
+                    q = (p.x + math.cos(a) * (self.r + 11),
+                         p.y + math.sin(a) * (self.r + 11))
+                    pygame.draw.circle(s, VENOM, (int(q[0]), int(q[1])), 2)
         if self.dash_t > 0:
             # a wide white halo buries a small ball instead of flagging it
             blit_glow(s, p, int(self.r * 2.1), (255, 255, 255), 48)
@@ -2405,6 +2565,11 @@ CAMPAIGN = (
          hp=1.35, dmg=1.0, spd=0.98,
          brief="It cuts in a straight line until it has to stop and cool.",
          reward=("weapon", "BEAM")),
+    dict(name="THE WEAVER", sides=4, weapon=Mech,
+         colour=(150, 226, 120), dark=(46, 92, 34),
+         hp=1.40, dmg=1.0, spd=0.90,
+         brief="Eight legs. It does not have to catch you, only touch you.",
+         reward=("weapon", "MECH")),
     dict(name="THE COLOSSUS", sides=4, weapon=Buster,
          colour=(236, 92, 72), dark=(104, 26, 20),
          hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3,
@@ -2799,7 +2964,7 @@ class Game:
         return [i for i, w in enumerate(WEAPONS) if w.NAME in names]
 
     def ball_grid(self, top):
-        """Nineteen picker buttons, ten to a row."""
+        """Twenty picker buttons, ten to a row."""
         out = []
         bw, bh, gap, per = 96, 46, 4, 10
         span = per * bw + (per - 1) * gap
@@ -2814,12 +2979,12 @@ class Game:
         """Every clickable thing on the versus menu: (rect, kind, value)."""
         items = [(pygame.Rect(W - 216, 22, 180, 40), "camp", None),
                  (pygame.Rect(W - 216, 68, 180, 34), "rush", None)]
-        cw, ch, gap = 188, 34, 2
+        cw, ch, gap = 188, 31, 2
         for side in (0, 1):
             for i, col, row in grid_slots():
                 x = (56 + col * (cw + 6) if side == 0
                      else W - 56 - cw - (1 - col) * (cw + 6))
-                items.append((pygame.Rect(x, 118 + row * (ch + gap), cw, ch),
+                items.append((pygame.Rect(x, 112 + row * (ch + gap), cw, ch),
                               "pick", (side, i)))
         bx = W // 2 - 152
         items.append((pygame.Rect(bx, 606, 304, 32), "human", None))
@@ -2843,10 +3008,10 @@ class Game:
             sw = 116
             sx = (W - (party * sw + (party - 1) * 8)) // 2
             for k in range(party):
-                items.append((pygame.Rect(sx + k * (sw + 8), 444, sw, 24),
+                items.append((pygame.Rect(sx + k * (sw + 8), 470, sw, 24),
                               "slot", k))
-        items += self.ball_grid(482)
-        items.append((pygame.Rect(W // 2 - 152, 592, 304, 46), "start", None))
+        items += self.ball_grid(502)
+        items.append((pygame.Rect(W // 2 - 152, 612, 304, 46), "start", None))
         return items
 
     def rush_layout(self):
@@ -3333,13 +3498,13 @@ class Game:
             w = WEAPONS[self.pick[side]]
             x = 56 if side == 0 else W - 56
             for k, line in enumerate(w.BLURB):
-                text(s, line, 13, (x, 560 + k * 16), DIM, right=side == 1)
+                text(s, line, 13, (x, 550 + k * 16), DIM, right=side == 1)
             px = x if side == 0 else x - 300
             for label, n in zip(("DMG", "RATE", "REACH"), w.PIPS):
-                text(s, label, 11, (px, 594), DIM)
+                text(s, label, 11, (px, 588), DIM)
                 for k in range(5):
                     c = base if k < n else (48, 52, 66)
-                    pygame.draw.rect(s, c, (px + 40 + k * 8, 596, 5, 8))
+                    pygame.draw.rect(s, c, (px + 40 + k * 8, 590, 5, 8))
                 px += 100
 
         if self.score[0] or self.score[1]:
@@ -3406,18 +3571,18 @@ class Game:
 
         # what the highlighted level actually is
         lv = CAMPAIGN[self.level]
-        text(s, lv["brief"], 14, (56, 400), INK if self.level <= self.cleared
+        text(s, lv["brief"], 14, (56, 428), INK if self.level <= self.cleared
              else DIM)
         text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%    REWARD  %s"
              % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
                 round(lv["dmg"] * 100), reward_label(lv)),
-             12, (56, 420), mix(DIM, lv["colour"], 0.45))
+             12, (56, 448), mix(DIM, lv["colour"], 0.45))
         if self.party_size() > 1:
             text(s, "BRING THREE - click a slot, then a ball", 13,
-                 (W - 56, 420), GOLD, right=True)
+                 (W - 56, 448), GOLD, right=True)
         else:
             text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
-                 (W - 56, 420), DIM, right=True)
+                 (W - 56, 448), DIM, right=True)
 
     def draw_rush(self, s):
         text(s, "RUSH", 42, (56, 20), (236, 110, 96))
@@ -3521,6 +3686,16 @@ class Game:
                 head.center = at(30, a)
                 pygame.draw.rect(s, (150, 156, 172), head)
                 pygame.draw.rect(s, INK, head, 1)
+        elif issubclass(wcls, Mech):
+            for i in range(8):
+                a = i * TAU / 8 + 0.2
+                d = Vector2(math.cos(a), math.sin(a))
+                knee = at(23, a) + Vector2(-d.y, d.x) * 6 * scale * (
+                    1 if i % 2 else -1)
+                pygame.draw.lines(s, (150, 158, 178), False,
+                                  [at(12, a), knee, at(33, a)], px(3))
+            pygame.draw.circle(s, mix(colour, (0, 0, 0), 0.35), (cx, cy), px(9))
+            pygame.draw.circle(s, VENOM, (cx, cy), px(4))
         elif issubclass(wcls, Shield):
             for i in range(2):
                 a = i * TAU / 2 + 0.4
