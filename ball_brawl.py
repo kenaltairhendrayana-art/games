@@ -879,6 +879,13 @@ class Melee(Weapon):
                 blit_glow(s, b, 26 * k, o.colour, int(90 * self.flash))
 
 
+# ---------------------------------------------------------------------------
+# THE FIRST SEVEN
+#
+# The weapon each family starts with. The sword is what you are handed;
+# the other six come off the first blocks on the ladder, and every one of
+# them is the plain statement of an idea the second tier then overdoes.
+# ---------------------------------------------------------------------------
 class Sword(Melee):
     NAME = "SWORD"
     RADIUS = 14.0
@@ -1226,6 +1233,36 @@ class Summoner(Weapon):
             blit_glow(s, p, o.r * 1.5, o.colour, int(60 * (ready - 0.55) / 0.45))
 
 
+# ---------------------------------------------------------------------------
+# THE SECOND TIER
+#
+# One upgrade per starting weapon, each the same idea taken further: more
+# blades, more barrels, more of whatever made the original what it was.
+# They cost something for it - weight, speed, or a longer wait between
+# swings - and they are all won late, off the blocks carrying them.
+# ---------------------------------------------------------------------------
+class Greatsword(Sword):
+    NAME = "GREATSWORD"
+    RADIUS = 18.0             # a wider target than the sword
+    ART_REF = 23.0
+    SPEED_MULT = 0.90         # and far too heavy to chase with
+    DASH_MULT = 1.25
+    MASS = 1.5
+    HP_MULT = 1.10
+    BLURB = ("five long blades, swung slow -",
+             "everything the sword is, doubled")
+    PIPS = (5, 3, 4)
+
+    BLADES = 5
+    REACH = 78.0
+    SPIN = 3.2
+    DMG = (25.0, 35.0)        # each blade lands softer than the sword's
+    HIT_CD = 0.40
+    W_BASE = 5.0
+    W_TIP = 1.6
+    GUARD = 9.0
+
+
 class Flurry(Melee):
     NAME = "FLURRY"
     RADIUS = 13.0
@@ -1274,36 +1311,6 @@ class Flurry(Melee):
         if self.owner.dash_t > 0:
             blit_glow(s, self.owner.pos + Vector2(off),
                       (self.owner.r + self.REACH) * 0.9, self.owner.colour, 55)
-
-
-# ---------------------------------------------------------------------------
-# THE SECOND TIER
-#
-# One upgrade per weapon, each the same idea taken further: more blades,
-# more barrels, more of whatever made the original what it was. They cost
-# something for it - weight, speed, or a longer wait between swings - and
-# they are all won late, off the blocks carrying them.
-# ---------------------------------------------------------------------------
-class Greatsword(Sword):
-    NAME = "GREATSWORD"
-    RADIUS = 18.0             # a wider target than the sword
-    ART_REF = 23.0
-    SPEED_MULT = 0.90         # and far too heavy to chase with
-    DASH_MULT = 1.25
-    MASS = 1.5
-    HP_MULT = 1.10
-    BLURB = ("five long blades, swung slow -",
-             "everything the sword is, doubled")
-    PIPS = (5, 3, 4)
-
-    BLADES = 5
-    REACH = 78.0
-    SPIN = 3.2
-    DMG = (25.0, 35.0)        # each blade lands softer than the sword's
-    HIT_CD = 0.40
-    W_BASE = 5.0
-    W_TIP = 1.6
-    GUARD = 9.0
 
 
 class Repeater(Gun):
@@ -1398,6 +1405,12 @@ class Brood(Summoner):
     CAP_MAX = 10
 
 
+# ---------------------------------------------------------------------------
+# WHAT THE BOSS CARRIES
+#
+# One weapon, belonging to one block at the end of the ladder. It is in
+# no family and no grid, because you never get to hold it.
+# ---------------------------------------------------------------------------
 class Buster(Melee):
     """A slab of a blade, and two cannons bolted to the back of the ball.
 
@@ -1519,6 +1532,14 @@ class Buster(Melee):
                 blit_glow(s, b, o.r * 0.8, o.colour, int(120 * self.flash))
 
 
+# ---------------------------------------------------------------------------
+# THE LATER ARRIVALS
+#
+# Not upgrades of anything: each of these opens a family of its own with
+# an empty second column. They exist to answer the question the first
+# fourteen all answered the same way - how do you get at something that
+# will not stand still? - and no two of them answer it alike.
+# ---------------------------------------------------------------------------
 class Spear(Melee):
     """One long point that stabs in and out instead of going round."""
     NAME = "SPEAR"
@@ -1915,16 +1936,21 @@ class Mech(Melee):
             blit_glow(s, p, o.r * 1.6, VENOM, int(70 * self.flash))
 
 
-# Every weapon belongs to a family: a base, and its upgrade if it has
-# one. The grids read straight off this - one row per family, the base in
-# the first column and the upgrade beside it - so adding a weapon means
-# adding a row here and nothing else.
+# ---------------------------------------------------------------------------
+# THE ROSTER
+#
+# Every weapon belongs to a family: a base, and its upgrade if it has one.
+# Every grid in the game reads straight off the table below - one row per
+# family, the base in the first column and the upgrade beside it - so
+# adding a weapon means adding a row here and nothing else.
+# ---------------------------------------------------------------------------
 FAMILIES = ((Sword, Greatsword), (Dagger, Flurry), (Gun, Repeater),
             (Bow, Ballista), (Hammer, Maul), (Fists, Gauntlets),
             (Summoner, Brood), (Spear, None), (Shield, None),
             (Chain, None), (Mines, None), (Beam, None), (Mech, None))
 WEAPONS = tuple(w for fam in FAMILIES for w in fam if w is not None)
 TIERS = len(FAMILIES)          # rows in every weapon grid
+STARTERS = ("SWORD",)          # what you own before you have beaten anything
 
 
 def grid_slots():
@@ -1936,7 +1962,6 @@ def grid_slots():
                 out.append((i, col, row))
                 i += 1
     return out
-STARTERS = ("SWORD",)
 
 
 # ---------------------------------------------------------------------------
@@ -2449,26 +2474,6 @@ class Orb:
 # unlock is derived from it, so a save file cannot contradict itself - the
 # worst a missing or corrupt one can do is cost you progress.
 # ---------------------------------------------------------------------------
-def _save_dir():
-    """Where progress goes. Never beside the game, which may be read-only."""
-    if sys.platform == "win32":
-        root = os.environ.get("APPDATA") or os.path.expanduser("~")
-        d = os.path.join(root, "BallBrawl")
-    elif sys.platform == "darwin":
-        d = os.path.expanduser("~/Library/Application Support/BallBrawl")
-    else:
-        root = (os.environ.get("XDG_DATA_HOME")
-                or os.path.expanduser("~/.local/share"))
-        d = os.path.join(root, "ball-brawl")
-    try:
-        os.makedirs(d, exist_ok=True)
-        return d
-    except OSError:
-        return os.path.dirname(os.path.abspath(__file__))
-
-
-SAVE_NAME = "progress.json"
-
 CAMPAIGN = (
     dict(name="THE CUBE", sides=4, weapon=Dagger,
          colour=(156, 166, 188), dark=(56, 62, 80),
@@ -2578,6 +2583,7 @@ CAMPAIGN = (
 )
 
 
+# -- what the number buys you ----------------------------------------------
 def unlocked_weapons(cleared):
     """Weapon names available after clearing that many levels."""
     names = set(STARTERS)
@@ -2608,6 +2614,28 @@ def unlock_level(name):
     return 0
 
 
+# -- what is kept between runs ---------------------------------------------
+def _save_dir():
+    """Where progress goes. Never beside the game, which may be read-only."""
+    if sys.platform == "win32":
+        root = os.environ.get("APPDATA") or os.path.expanduser("~")
+        d = os.path.join(root, "BallBrawl")
+    elif sys.platform == "darwin":
+        d = os.path.expanduser("~/Library/Application Support/BallBrawl")
+    else:
+        root = (os.environ.get("XDG_DATA_HOME")
+                or os.path.expanduser("~/.local/share"))
+        d = os.path.join(root, "ball-brawl")
+    try:
+        os.makedirs(d, exist_ok=True)
+        return d
+    except OSError:
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+SAVE_NAME = "progress.json"
+
+
 def load_progress():
     """How far up the ladder, and how deep into the waves."""
     try:
@@ -2632,8 +2660,13 @@ def save_progress(cleared=None, best_wave=None):
         pass
 
 
-# What comes at you, and when. Early waves are all blades so the mode
-# reads as a rush; the shooters arrive once you have had a moment.
+# ---------------------------------------------------------------------------
+# THE WAVES
+#
+# What rush mode sends at you, and when. The early waves are all blades,
+# so the mode reads as a rush; the shooters arrive once you have had a
+# moment to settle.
+# ---------------------------------------------------------------------------
 RUSH_EARLY = (Dagger, Sword, Fists)
 RUSH_LATE = (Flurry, Hammer, Gun, Bow, Gauntlets, Maul, Greatsword)
 RUSH_COLOURS = (((140, 216, 120), (38, 92, 34)),   # never the player's red
@@ -2717,6 +2750,7 @@ class Game:
             self.particles.append(Particle(pos, v, random.uniform(0.18, 0.48),
                                            colour, random.uniform(2.0, 4.5)))
 
+    # -- the fight ---------------------------------------------------------
     def start_fight(self):
         global ARENA
         lv = (CAMPAIGN[self.level] if self.mode == "campaign"
@@ -2953,7 +2987,7 @@ class Game:
                         self.spawn_orb()
         self.camera(dt)
 
-    # -- input -------------------------------------------------------------
+    # -- the screens, and what can be clicked on them -----------------------
     def party_size(self):
         if self.mode != "campaign" or self.level >= len(CAMPAIGN):
             return 1
@@ -3058,6 +3092,7 @@ class Game:
         else:
             self.start_fight()
 
+    # -- keys and clicks ----------------------------------------------------
     def handle(self, ev):
         """False means quit."""
         if ev.type == pygame.KEYDOWN:
@@ -3220,7 +3255,7 @@ class Game:
         elif self.state == "ko":
             self.after_ko()
 
-    # -- drawing -----------------------------------------------------------
+    # -- drawing the fight --------------------------------------------------
     def draw(self, s):
         s.fill(BG)
         if self.state == "menu":
@@ -3584,6 +3619,7 @@ class Game:
             text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
                  (W - 56, 448), DIM, right=True)
 
+    # -- the rush screen ----------------------------------------------------
     def draw_rush(self, s):
         text(s, "RUSH", 42, (56, 20), (236, 110, 96))
         text(s, "endless waves, and all of them come at you", 15,
@@ -3611,6 +3647,7 @@ class Game:
                 pygame.draw.rect(s, mix((236, 110, 96), INK, pulse * 0.5), rect, 2)
                 text(s, "RUSH   (SPACE)", 26, rect.center, INK, center=True)
 
+    # -- the small pieces every screen shares -------------------------------
     def draw_level(self, s, rect, i):
         lv = CAMPAIGN[i]
         locked = i > self.cleared
