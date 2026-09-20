@@ -741,6 +741,49 @@ class Projectile:
             pygame.draw.line(s, mix(c, (255, 255, 255), 0.8), p - d * 11, p, 2)
 
 
+class Shock:
+    """A ring of broken ground running outward from where it landed.
+
+    It catches each fighter once, on the way past, so standing still is
+    what hurts and walking through it early is the same as walking
+    through it late.
+    """
+    SPEED = 430.0
+    BAND = 24.0               # how thick the front is
+
+    def __init__(self, owner, pos, reach, dmg, knock=280.0):
+        self.owner = owner
+        self.pos = Vector2(pos)
+        self.r = 12.0
+        self.reach = reach
+        self.dmg = dmg
+        self.knock = knock
+        self.caught = set()   # ids of whoever the front has already passed
+
+    def update(self, dt, world):
+        self.r += self.SPEED * dt
+        for t in world.foes(self.owner):
+            if t.hp <= 0 or id(t) in self.caught:
+                continue
+            if abs((t.pos - self.pos).length() - self.r) <= self.BAND + t.r:
+                self.caught.add(id(t))
+                t.take_damage(random.uniform(*self.dmg), self.owner, world)
+                t.vel += (unit(t.pos - self.pos)
+                          * (self.knock / t.weapon.MASS))
+                world.spark(t.pos, (255, 206, 132), 11, speed=250)
+        return self.r < self.reach
+
+    def draw(self, s, off):
+        p = self.pos + Vector2(off)
+        fade = clamp(1.0 - self.r / self.reach, 0.0, 1.0)
+        col = mix(self.owner.colour, (255, 224, 176), 0.7)
+        box = pygame.Rect(0, 0, int(self.r * 2), int(self.r * 2))
+        box.center = (int(p.x), int(p.y))
+        pygame.draw.ellipse(s, mix(col, BG, 0.6), box.inflate(20, 20),
+                            max(1, int(5 * fade)))
+        pygame.draw.ellipse(s, col, box, max(2, int(10 * fade)))
+
+
 # ---------------------------------------------------------------------------
 # WEAPONS
 #
@@ -1406,10 +1449,12 @@ class Brood(Summoner):
 
 
 # ---------------------------------------------------------------------------
-# WHAT THE BOSS CARRIES
+# WHAT THE BOSSES CARRY
 #
-# One weapon, belonging to one block at the end of the ladder. It is in
-# no family and no grid, because you never get to hold it.
+# Four weapons, one for each block at the end of the ladder. None of them
+# is in a family or a grid, because you never get to hold them: the buster
+# swings and shells at once, the choir hides behind a ring it grows back,
+# the piston throws the street at you, and the core is two fights in one.
 # ---------------------------------------------------------------------------
 class Buster(Melee):
     """A slab of a blade, and two cannons bolted to the back of the ball.
@@ -1530,6 +1575,307 @@ class Buster(Melee):
                              a - side * o.r * 0.22, max(4, int(o.r * 0.10)))
             if self.flash > 0.05:
                 blit_glow(s, b, o.r * 0.8, o.colour, int(120 * self.flash))
+
+
+class Choir(Melee):
+    """A block that fights from behind a ring of guards.
+
+    It barely fights at all itself: it hangs back, swings twice a second
+    at anything that reaches it, and lets the nodes do the shooting. The
+    ring grows back, so clearing it is not a job you finish, only a
+    window you open.
+    """
+    NAME = "CHOIR"
+    RADIUS = 46.0
+    ART_REF = 27.0
+    PREF = 300.0              # it would rather keep the ring between you
+    SPEED_MULT = 0.68
+    DASH_MULT = 2.4
+    MASS = 5.0
+    ARMOUR = 0.38
+    HP_MULT = 1.0             # the level supplies the health
+    BLURB = ("a ring of guards, and a block",
+             "that waits behind them")
+    PIPS = (3, 2, 4)
+
+    BLADES = 2
+    REACH = 96.0
+    SPIN = 1.9
+    KNOCK = 300.0
+    LUNGE = 0.0
+    DMG = (56.0, 76.0)
+    HIT_CD = 0.90
+    CRIT = 0.08
+    PARRY_CD = 0.45
+    PARRY_BAND = 20.0
+
+    NODES = 6                 # how many stations the ring has
+    RING = 138.0              # and how far out they sit
+    REGROW = 4.0              # a broken ring reforms whole, this long after
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.regrow = self.REGROW
+        self.seeded = False
+
+    def guards(self, world):
+        return [m for m in world.minions
+                if isinstance(m, Node) and m.owner is self.owner and m.hp > 0]
+
+    def update(self, dt, world):
+        super().update(dt, world)
+        o = self.owner
+        if o.hp <= 0 or world.state != "fight":
+            return
+        live = self.guards(world)
+        if not self.seeded:
+            self.seeded = True
+            for k in range(self.NODES):
+                self.grow(k, world, quiet=True)
+            return
+        if len(live) >= self.NODES:
+            self.regrow = self.REGROW
+            return
+        self.regrow -= dt
+        if self.regrow > 0:
+            return
+        # the whole ring at once, so clearing it buys a window and not a
+        # slow attrition against a queue of replacements
+        self.regrow = self.REGROW
+        used = {m.slot for m in live}
+        for k in range(self.NODES):
+            if k not in used:
+                self.grow(k, world)
+
+    def grow(self, slot, world, quiet=False):
+        o = self.owner
+        node = Node(o, o.pos, slot=slot, of=self.NODES, ring=self.RING)
+        node.pos = node.station(world)
+        world.minions.append(node)
+        if not quiet:
+            world.spark(node.pos, o.colour, 12, speed=200)
+            SFX.play("pickup", 0.4)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        p = o.pos + Vector2(off)
+        # the ring it keeps, drawn whether or not anything is standing on it
+        box = pygame.Rect(0, 0, int(self.RING * 2), int(self.RING * 2))
+        box.center = (int(p.x), int(p.y))
+        pygame.draw.ellipse(s, mix(o.dark, BG, 0.55), box, 2)
+        super().draw(s, off, world)
+        pygame.draw.circle(s, mix(o.dark, (0, 0, 0), 0.35),
+                           (int(p.x), int(p.y)), int(o.r * 0.5))
+        pygame.draw.circle(s, mix(o.colour, (255, 255, 255), 0.3),
+                           (int(p.x), int(p.y)), int(o.r * 0.2))
+
+
+class Piston(Melee):
+    """A slab on a hydraulic leg. It does not chase you; it lands.
+
+    Every few seconds it braces, then drives the leg into the street and
+    throws a ring of broken ground outward. The ring catches you once, so
+    the fight is about where you are standing when it lands.
+    """
+    NAME = "PISTON"
+    RADIUS = 56.0
+    ART_REF = 27.0
+    PREF = 120.0
+    SPEED_MULT = 0.58
+    DASH_MULT = 2.6
+    MASS = 7.0
+    ARMOUR = 0.42
+    HP_MULT = 1.0
+    BLURB = ("it braces, it lands, and the",
+             "street goes out in a ring")
+    PIPS = (5, 1, 5)
+
+    BLADES = 2
+    REACH = 104.0
+    SPIN = 1.2
+    KNOCK = 380.0
+    LUNGE = 0.0
+    DMG = (62.0, 84.0)
+    HIT_CD = 1.1
+    CRIT = 0.08
+    PARRY_CD = 0.5
+    PARRY_BAND = 22.0
+
+    SLAM = 3.4                # seconds between landings
+    WIND = 0.75               # ... braced for this long beforehand
+    RING = 560.0              # how far the ring runs
+    RING_DMG = (42.0, 58.0)
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.timer = 2.2
+
+    def bracing(self):
+        return 0.0 < self.timer <= self.WIND
+
+    def update(self, dt, world):
+        super().update(dt, world)
+        o = self.owner
+        if o.hp <= 0 or world.state != "fight":
+            return
+        self.timer -= dt
+        if self.bracing():
+            o.vel *= max(0.0, 1.0 - 7.0 * dt)   # it plants itself first
+        if self.timer > 0:
+            return
+        self.timer = self.SLAM
+        world.shocks.append(Shock(o, o.pos, self.RING, self.RING_DMG))
+        world.shake = max(world.shake, 18.0)
+        world.spark(o.pos, (255, 206, 132), 28, speed=360)
+        SFX.play("ko", 0.45)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        p = o.pos + Vector2(off)
+        super().draw(s, off, world)
+        # the leg, seen from above: a collar and a head that drops
+        pygame.draw.circle(s, mix(o.dark, (0, 0, 0), 0.4),
+                           (int(p.x), int(p.y)), int(o.r * 0.58))
+        pygame.draw.circle(s, (128, 134, 152), (int(p.x), int(p.y)),
+                           int(o.r * 0.58), 3)
+        if self.bracing():
+            k = 1.0 - self.timer / self.WIND        # 0 braced, 1 about to land
+            rad = int(o.r * 0.6 + self.RING * 0.14 * (1.0 - k))
+            box = pygame.Rect(0, 0, rad * 2, rad * 2)
+            box.center = (int(p.x), int(p.y))
+            pygame.draw.ellipse(s, (255, 206, 132), box, max(2, int(2 + 5 * k)))
+            blit_glow(s, p, o.r * (0.8 + 0.5 * k), (255, 186, 110),
+                      int(60 + 90 * k))
+        pygame.draw.circle(s, mix((196, 202, 216), o.colour, 0.3),
+                           (int(p.x), int(p.y)), int(o.r * 0.26))
+
+
+class Core(Melee):
+    """Artillery inside a shell. Crack the shell and it comes for you.
+
+    Above half health it will not come near: it sits off and lobs fans of
+    heavy shells. Below half the shell splits, the armour goes with it,
+    and what is left is fast and all blade.
+    """
+    NAME = "CORE"
+    RADIUS = 50.0
+    ART_REF = 27.0
+    PREF = 430.0              # phase one wants the whole street between you
+    SPEED_MULT = 0.56
+    DASH_MULT = 2.4
+    MASS = 6.5
+    ARMOUR = 0.52
+    HP_MULT = 1.0
+    BLURB = ("shells while the shell holds,",
+             "and blades once it does not")
+    PIPS = (4, 3, 5)
+
+    BLADES = 1
+    REACH = 118.0
+    SPIN = 1.0
+    KNOCK = 300.0
+    LUNGE = 0.0
+    DMG = (52.0, 70.0)
+    HIT_CD = 0.85
+    CRIT = 0.08
+    PARRY_CD = 0.5
+    PARRY_BAND = 22.0
+
+    CRACK = 0.5               # the share of health where it opens up
+    LOB = 2.2                 # seconds between salvos, while it is shut
+    LOB_DMG = (38.0, 52.0)
+    LOB_SPEED = 400.0
+    FAN = 3                   # shells per salvo
+    FAN_ARC = 0.30            # how wide the fan opens
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.open = False
+        self.lob = 1.4
+        self.muzzle = 0.0
+
+    def crack(self, world):
+        """Everything about it changes at once, and only once."""
+        self.open = True
+        self.PREF = 0.0
+        self.SPEED_MULT = 1.02
+        self.ARMOUR = 0.14
+        self.SPIN = 5.2
+        self.BLADES = 3
+        self.DMG = (58.0, 78.0)
+        self.HIT_CD = 0.44
+        self.REACH = 96.0
+        self.cool = [0.0] * self.BLADES
+        o = self.owner
+        world.shake = max(world.shake, 22.0)
+        world.spark(o.pos, (255, 236, 190), 46, speed=430)
+        world.spark(o.pos, o.colour, 34, speed=300)
+        SFX.play("ko", 0.7)
+
+    def update(self, dt, world):
+        super().update(dt, world)
+        o = self.owner
+        self.muzzle = max(0.0, self.muzzle - dt * 4.0)
+        if o.hp <= 0 or world.state != "fight":
+            return
+        if not self.open and o.hp <= o.max_hp * self.CRACK:
+            self.crack(world)
+            return
+        if self.open:
+            return
+        self.lob -= dt
+        if self.lob > 0:
+            return
+        self.lob = self.LOB
+        foe = world.foe(o)
+        if foe is None:
+            return
+        aim = unit(o.lead(foe), o.aim)
+        for k in range(self.FAN):
+            off = (k - (self.FAN - 1) * 0.5) * self.FAN_ARC
+            world.projectiles.append(Projectile(
+                o, o.pos + aim * (o.r + 6), aim.rotate_rad(off) * self.LOB_SPEED,
+                random.uniform(*self.LOB_DMG), "shell", crit_chance=0.06,
+                pierce=1, knock=240.0, size=9.0, life=3.4))
+            self.shots += 1
+        self.muzzle = 1.0
+        world.shake = max(world.shake, 6.0)
+        world.spark(o.pos + aim * o.r, (255, 214, 150), 9, speed=220)
+        SFX.play("arrow", 0.55)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        p = o.pos + Vector2(off)
+        super().draw(s, off, world)
+        plate = mix(o.dark, (0, 0, 0), 0.3)
+        if self.open:
+            # the shell is off: two halves thrown wide, and a bright middle
+            side = Vector2(-o.aim.y, o.aim.x)
+            for sgn in (-1, 1):
+                q = p + side * sgn * o.r * 0.78
+                pygame.draw.circle(s, plate, (int(q.x), int(q.y)),
+                                   int(o.r * 0.34))
+                pygame.draw.circle(s, mix(o.colour, (0, 0, 0), 0.4),
+                                   (int(q.x), int(q.y)), int(o.r * 0.34), 2)
+            blit_glow(s, p, o.r * 1.5, (255, 236, 190), 120)
+            pygame.draw.circle(s, (255, 240, 205), (int(p.x), int(p.y)),
+                               int(o.r * 0.38))
+            pygame.draw.circle(s, mix(o.colour, (255, 255, 255), 0.5),
+                               (int(p.x), int(p.y)), int(o.r * 0.24))
+            return
+        pygame.draw.circle(s, plate, (int(p.x), int(p.y)), int(o.r * 0.72))
+        pygame.draw.circle(s, (150, 156, 174), (int(p.x), int(p.y)),
+                           int(o.r * 0.72), 3)
+        # the slit the shells come out of
+        side = Vector2(-o.aim.y, o.aim.x)
+        lip, root = p + o.aim * o.r * 0.72, p + o.aim * o.r * 0.30
+        slit = [lip + side * o.r * 0.16, lip - side * o.r * 0.16,
+                root - side * o.r * 0.08, root + side * o.r * 0.08]
+        pygame.draw.polygon(s, (22, 23, 32), slit)
+        if self.muzzle > 0.1:
+            blit_glow(s, p + o.aim * o.r * 0.7, o.r * 0.6 * self.muzzle,
+                      (255, 208, 140), int(180 * self.muzzle))
+
 
 
 # ---------------------------------------------------------------------------
@@ -2233,7 +2579,10 @@ class Fighter:
                              (p.x - 0.22 * self.r, p.y + 0.56 * self.r), 2)
             return
 
-        blit_glow(s, p, int(self.r * 1.9), self.colour, 62)
+        # the same glow on a boss-sized body is a floodlight, so it
+        # thins out as the body grows
+        blit_glow(s, p, int(self.r * 1.9), self.colour,
+                  int(62 * clamp(26.0 / self.r, 0.42, 1.0)))
         body = mix(self.dark, self.colour, 0.85)
         if self.flash > 0:
             # a small ball washed fully white stops reading as its own side
@@ -2375,6 +2724,77 @@ class Minion:
 # ---------------------------------------------------------------------------
 # PICKUPS
 # ---------------------------------------------------------------------------
+class Node(Minion):
+    """A guard that keeps its station on the ring and shoots from it.
+
+    It never chases and it never rams. Killing one opens a gap in the
+    ring, and the block behind grows it back.
+    """
+    R = 15.0
+    HP = 300.0
+    LIFE = 9.0e9              # it stands there until something kills it
+    BITE = 0.25               # nothing may hurt it faster than this
+    BURST = (14.0, 20.0)
+    BURST_R = 50.0
+    GAP = 1.7                 # seconds between its shots
+    SHOT_DMG = (15.0, 21.0)
+    SHOT_SPEED = 470.0
+    ORBIT = 0.85              # radians a second, around its block
+
+    def __init__(self, owner, pos, scale=1.0, slot=0, of=5, ring=130.0):
+        super().__init__(owner, pos, scale)
+        self.slot = slot
+        self.of = of
+        self.ring = ring
+        self.vel = Vector2()
+        self.timer = random.uniform(0.4, self.GAP)
+        self.bite = 0.0
+
+    def hurt(self, amount, world):
+        """Melee hits minions once a frame, which would make any guard
+        worth building die the moment a blade touched it."""
+        if self.bite > 0:
+            return
+        self.bite = self.BITE
+        super().hurt(amount, world)
+
+    def station(self, world):
+        a = world.clock_t * self.ORBIT + self.slot * TAU / self.of
+        return self.owner.pos + Vector2(math.cos(a), math.sin(a)) * self.ring
+
+    def update(self, dt, world):
+        self.flash = max(0.0, self.flash - dt * 4.0)
+        self.bite = max(0.0, self.bite - dt)
+        if self.hp <= 0 or self.owner.hp <= 0:
+            return False
+        self.pos = self.station(world)
+        foe = world.foe(self.owner)
+        self.timer -= dt
+        if self.timer > 0 or foe is None or foe.hp <= 0:
+            return True
+        self.timer = self.GAP
+        world.projectiles.append(Projectile(
+            self.owner, self.pos, unit(foe.pos - self.pos) * self.SHOT_SPEED,
+            random.uniform(*self.SHOT_DMG), "bullet", crit_chance=0.05,
+            knock=70.0, size=5.0, life=2.4))
+        world.spark(self.pos, self.owner.colour, 4, speed=170)
+        SFX.play("shoot", 0.3)
+        return True
+
+    def draw(self, s, off):
+        p = self.pos + Vector2(off)
+        col = mix(self.owner.colour, (255, 255, 255), 0.5 * self.flash)
+        blit_glow(s, p, self.r * 2.0, self.owner.colour, 50)
+        pts = shape_points(p.x, p.y, self.r, 6, self.slot * 0.4)
+        pygame.draw.polygon(s, mix(self.owner.dark, col, 0.7), pts)
+        pygame.draw.polygon(s, mix(self.owner.dark, (0, 0, 0), 0.4), pts, 2)
+        pygame.draw.circle(s, col, (int(p.x), int(p.y)),
+                           max(2, int(self.r * 0.36)))
+        # a thread back to whatever is keeping it alive
+        pygame.draw.line(s, mix(self.owner.dark, BG, 0.45), p,
+                         self.owner.pos + Vector2(off), 1)
+
+
 class Mine(Minion):
     """It lands, it arms, it follows you home, and then it does not."""
     R = 9.0
@@ -2580,6 +3000,21 @@ CAMPAIGN = (
          hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3,
          brief="It fills the street. Bring three, and keep them apart.",
          reward=("crown", None)),
+    dict(name="THE CHORUS", sides=4, weapon=Choir,
+         colour=(90, 80, 210), dark=(26, 22, 86),
+         hp=6.5, dmg=1.15, spd=0.80, arena=2.4, party=3,
+         brief="Five guards on a ring, and they grow back. Find the gap.",
+         reward=("trophy", "THE SILENCE")),
+    dict(name="THE PISTON", sides=4, weapon=Piston,
+         colour=(240, 60, 250), dark=(104, 16, 110),
+         hp=6.0, dmg=1.20, spd=0.72, arena=2.8, party=3,
+         brief="It braces before it lands. That is all the warning there is.",
+         reward=("trophy", "THE STILL GROUND")),
+    dict(name="THE CORE", sides=4, weapon=Core,
+         colour=(100, 190, 60), dark=(30, 72, 16),
+         hp=7.0, dmg=1.25, spd=0.74, arena=3.0, party=3,
+         brief="Shelled artillery, until you crack it. Then it is neither.",
+         reward=("trophy", "THE LAST LIGHT")),
 )
 
 
@@ -2601,7 +3036,7 @@ def hp_bonus(cleared):
 
 def reward_label(lv):
     kind, val = lv["reward"]
-    if kind == "weapon":
+    if kind in ("weapon", "trophy"):
         return val
     return "THE CROWN" if kind == "crown" else "THE BELT"
 
@@ -2719,6 +3154,7 @@ class Game:
         self.fighters = []
         self.projectiles = []
         self.minions = []
+        self.shocks = []
         self.particles = []
         self.floaters = []
         self.orbs = []
@@ -2833,6 +3269,7 @@ class Game:
             ]
         self.projectiles.clear()
         self.minions.clear()
+        self.shocks.clear()
         self.particles.clear()
         self.floaters.clear()
         self.orbs.clear()
@@ -2891,6 +3328,8 @@ class Game:
             self.unlock_text = "UNLOCKED:  " + val
         elif kind == "hp":
             self.unlock_text = "REWARD:  +%d%% MAX HP" % round(val * 100.0)
+        elif kind == "trophy":
+            self.unlock_text = "REWARD:  " + val
         elif kind == "crown":
             self.unlock_text = "REWARD:  THE CROWN"
         else:
@@ -3003,6 +3442,7 @@ class Game:
             p.update(dt, self)
         self.projectiles = [p for p in self.projectiles if not p.dead]
         self.minions = [m for m in self.minions if m.update(dt, self)]
+        self.shocks = [w for w in self.shocks if w.update(dt, self)]
         self.particles = [p for p in self.particles if p.update(dt)]
         self.floaters = [f for f in self.floaters if f.update(dt)]
 
@@ -3070,7 +3510,7 @@ class Game:
         items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
                  (pygame.Rect(W - 216, 66, 180, 28), "human", None)]
         rows = (len(CAMPAIGN) + 1) // 2          # two columns of levels
-        cw, h, gap = (W - 130) // 2, 26, 3
+        cw, h, gap = (W - 130) // 2, 24, 2
         for i in range(len(CAMPAIGN)):
             col, row = divmod(i, rows)
             items.append((pygame.Rect(56 + col * (cw + 18),
@@ -3081,10 +3521,10 @@ class Game:
             sw = 116
             sx = (W - (party * sw + (party - 1) * 8)) // 2
             for k in range(party):
-                items.append((pygame.Rect(sx + k * (sw + 8), 470, sw, 24),
+                items.append((pygame.Rect(sx + k * (sw + 8), 466, sw, 24),
                               "slot", k))
-        items += self.ball_grid(502)
-        items.append((pygame.Rect(W // 2 - 152, 612, 304, 46), "start", None))
+        items += self.ball_grid(496)
+        items.append((pygame.Rect(W // 2 - 152, 608, 304, 46), "start", None))
         return items
 
     def tourney_layout(self):
@@ -3535,6 +3975,8 @@ class Game:
 
         for o in self.orbs:
             o.draw(s, off)
+        for w in self.shocks:
+            w.draw(s, off)
         for m in self.minions:
             m.draw(s, off)
         for p in self.projectiles:
@@ -4029,18 +4471,18 @@ class Game:
 
         # what the highlighted level actually is
         lv = CAMPAIGN[self.level]
-        text(s, lv["brief"], 14, (56, 428), INK if self.level <= self.cleared
+        text(s, lv["brief"], 14, (56, 424), INK if self.level <= self.cleared
              else DIM)
         text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%    REWARD  %s"
              % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
                 round(lv["dmg"] * 100), reward_label(lv)),
-             12, (56, 448), mix(DIM, lv["colour"], 0.45))
+             12, (56, 444), mix(DIM, lv["colour"], 0.45))
         if self.party_size() > 1:
             text(s, "BRING THREE - click a slot, then a ball", 13,
-                 (W - 56, 448), GOLD, right=True)
+                 (W - 56, 444), GOLD, right=True)
         else:
             text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
-                 (W - 56, 448), DIM, right=True)
+                 (W - 56, 444), DIM, right=True)
 
     # -- the rush screen ----------------------------------------------------
     def draw_rush(self, s):
