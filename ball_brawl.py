@@ -260,6 +260,21 @@ ROADLINE  = (84, 88, 102)
 CROSSWALK = (74, 78, 92)
 SHADOW    = (15, 16, 22)
 PARKLAND  = (25, 40, 31)
+CONCRETE  = (40, 42, 52)      # the yard
+JOINT     = (33, 35, 44)
+RAIL      = (78, 80, 92)
+SLEEPER   = (46, 42, 38)
+HAZARD    = (96, 84, 42)
+CRATES    = ((64, 52, 44), (44, 58, 62), (66, 58, 40), (50, 48, 60))
+GRASS     = (26, 42, 30)      # the green
+GRASS_2   = (31, 49, 35)
+PATH      = (54, 52, 48)
+WATER     = (19, 27, 35)      # dark enough not to argue with a blue ball
+WATER_2   = (26, 37, 47)
+BITUMEN   = (33, 34, 42)      # the roofs
+GRIT      = (45, 46, 56)
+PARAPET   = (58, 61, 74)
+DUCT      = (60, 63, 76)
 ROOFS = ((34, 36, 46), (38, 36, 46), (31, 34, 44), (36, 38, 48))
 CARS = ((58, 62, 76), (74, 58, 60), (52, 66, 78), (66, 64, 54), (46, 50, 62))
 
@@ -498,10 +513,237 @@ def _district(w, h, seed):
     return s
 
 
-def city_floor(w, h):
-    """The arena floor. Built on first use per size, then reused."""
-    if (w, h) in _city_floors:
-        return _city_floors[(w, h)]
+def _yard(w, h, seed):
+    """A freight yard: concrete, a rail line, and containers to fight round."""
+    rng = random.Random(seed)
+    s = pygame.Surface((w, h))
+    s.fill(CONCRETE)
+    for x in range(0, w, 130):                       # slab joints
+        pygame.draw.line(s, JOINT, (x, 0), (x, h), 3)
+    for y in range(0, h, 130):
+        pygame.draw.line(s, JOINT, (0, y), (w, y), 3)
+    for _ in range(14):                              # oil, old and dry
+        x, y = rng.randrange(w), rng.randrange(h)
+        pygame.draw.ellipse(s, mix(CONCRETE, (0, 0, 0), 0.35),
+                            (x, y, rng.randint(40, 110), rng.randint(24, 60)))
+
+    track = h // 2 - 30                              # the line across it
+    pygame.draw.rect(s, mix(CONCRETE, (0, 0, 0), 0.22), (0, track - 18, w, 96))
+    for x in range(10, w, 58):
+        pygame.draw.rect(s, SLEEPER, (x, track - 12, 34, 84))
+        pygame.draw.rect(s, mix(SLEEPER, (0, 0, 0), 0.4),
+                         (x, track - 12, 34, 84), 1)
+    for y in (track + 6, track + 54):
+        pygame.draw.line(s, RAIL, (0, y), (w, y), 7)
+        pygame.draw.line(s, mix(RAIL, (255, 255, 255), 0.25), (0, y - 2),
+                         (w, y - 2), 2)
+
+    for x in range(60, w - 160, 260):                # bay numbers, in paint
+        pygame.draw.rect(s, HAZARD, (x, 40, 150, 6))
+        pygame.draw.rect(s, HAZARD, (x, 40, 6, 74))
+
+    def container(cx, cy, long_way):
+        col = CRATES[rng.randrange(len(CRATES))]
+        r = (pygame.Rect(cx, cy, 244, 78) if long_way
+             else pygame.Rect(cx, cy, 78, 244))
+        pygame.draw.rect(s, SHADOW, r.move(10, 10))
+        pygame.draw.rect(s, col, r)
+        pygame.draw.rect(s, mix(col, (0, 0, 0), 0.5), r, 3)
+        ribs = range(r.left + 12, r.right - 6, 16) if long_way else \
+            range(r.top + 12, r.bottom - 6, 16)
+        for k in ribs:
+            if long_way:
+                pygame.draw.line(s, mix(col, (0, 0, 0), 0.25),
+                                 (k, r.top + 5), (k, r.bottom - 5), 2)
+            else:
+                pygame.draw.line(s, mix(col, (0, 0, 0), 0.25),
+                                 (r.left + 5, k), (r.right - 5, k), 2)
+        pygame.draw.rect(s, mix(col, (160, 166, 184), 0.28),
+                         r.inflate(-r.w // 3, -r.h // 3), 2)
+
+    for cx in range(30, w - 260, 300):               # a row along the top
+        container(cx + rng.randint(-14, 14), 116, True)
+    for cx in range(120, w - 90, 330):               # and stacks along the foot
+        container(cx + rng.randint(-20, 20), h - 268, False)
+    for _ in range(6):                               # pallets left about
+        x = rng.randrange(40, max(50, w - 90))
+        y = rng.randrange(40, max(50, h - 90))
+        if track - 40 < y < track + 110:
+            continue
+        r = pygame.Rect(x, y, 56, 56)
+        pygame.draw.rect(s, (58, 50, 38), r)
+        pygame.draw.rect(s, (40, 34, 26), r, 2)
+        for k in range(r.left + 8, r.right - 4, 14):
+            pygame.draw.line(s, (44, 38, 29), (k, r.top + 3),
+                             (k, r.bottom - 3), 3)
+    return s
+
+
+def _green(w, h, seed):
+    """A park: mown grass, a path across it, and a pond you can walk over."""
+    rng = random.Random(seed)
+    s = pygame.Surface((w, h))
+    s.fill(GRASS)
+    for y in range(0, h, 74):                        # the mower's stripes
+        pygame.draw.rect(s, GRASS_2, (0, y, w, 37))
+
+    path = pygame.Rect(0, h // 2 - 46, w, 92)        # the main walk
+    pygame.draw.rect(s, PATH, path)
+    pygame.draw.rect(s, mix(PATH, (0, 0, 0), 0.4), path, 3)
+    for x in range(0, w, 46):
+        pygame.draw.line(s, mix(PATH, (0, 0, 0), 0.22), (x, path.top + 2),
+                         (x, path.bottom - 2), 1)
+    spur = pygame.Rect(w // 2 + 120, path.bottom, 78, h - path.bottom)
+    pygame.draw.rect(s, PATH, spur)
+    pygame.draw.rect(s, mix(PATH, (0, 0, 0), 0.4), spur, 3)
+
+    pond = pygame.Rect(90, h - 250, 330, 190)        # a pond, shallow enough
+    pygame.draw.ellipse(s, mix(GRASS, (0, 0, 0), 0.3), pond.inflate(22, 22))
+    pygame.draw.ellipse(s, WATER, pond)
+    pygame.draw.ellipse(s, WATER_2, pond.inflate(-34, -34), 3)
+    pygame.draw.ellipse(s, WATER_2, pond.inflate(-120, -110), 2)
+
+    keep_off = pond.inflate(70, 70)
+    planted = []
+    for _ in range(40):                              # trees, off the path
+        if len(planted) >= 12:
+            break
+        big = rng.randint(24, 38)                    # no two the same size
+        x = rng.randrange(big + 10, max(big + 20, w - big - 10))
+        y = rng.randrange(big + 10, max(big + 20, h - big - 10))
+        here = pygame.Rect(x - big, y - big, big * 2, big * 2)
+        if (path.inflate(0, 30).colliderect(here) or spur.colliderect(here)
+                or keep_off.collidepoint(x, y)
+                or any(here.colliderect(t) for t in planted)):
+            continue
+        planted.append(here.inflate(18, 18))
+        pygame.draw.ellipse(s, mix(GRASS, (0, 0, 0), 0.35), here)
+        for k, col in ((0, (20, 38, 26)), (5, (26, 48, 32)), (16, (34, 60, 41))):
+            rad = big - k
+            pygame.draw.circle(s, col, (x - k // 3 - 2, y - k // 3 - 2), rad)
+    for k in range(4):                               # benches along the walk
+        x = 150 + k * 280
+        if x > w - 120:
+            break
+        for y in (path.top - 34, path.bottom + 16):
+            r = pygame.Rect(x, y, 104, 20)
+            if keep_off.colliderect(r) or spur.colliderect(r):
+                continue
+            pygame.draw.rect(s, (62, 52, 40), r)
+            pygame.draw.rect(s, (40, 34, 26), r, 2)
+            pygame.draw.line(s, (48, 40, 31), (r.left + 4, r.centery),
+                             (r.right - 4, r.centery), 2)
+    return s
+
+
+def _rooftop(w, h, seed):
+    """The roofs: gravel, plant, and the parapets between one and the next."""
+    rng = random.Random(seed)
+    s = pygame.Surface((w, h))
+    s.fill(BITUMEN)
+    for _ in range(900):                             # grit, so it is not flat
+        pygame.draw.rect(s, GRIT, (rng.randrange(w), rng.randrange(h), 2, 2))
+
+    split = w // 2 + rng.randint(-60, 60)            # two roofs, one wall
+    for r in (pygame.Rect(0, 0, split, h),
+              pygame.Rect(split, 0, w - split, h)):
+        pygame.draw.rect(s, mix(BITUMEN, (255, 255, 255), 0.04), r)
+        pygame.draw.rect(s, PARAPET, r, 7)
+        pygame.draw.rect(s, mix(PARAPET, (0, 0, 0), 0.45), r, 2)
+    pygame.draw.rect(s, SHADOW, (split - 9, 0, 18, h))
+    pygame.draw.rect(s, PARAPET, (split - 9, 0, 18, h), 3)
+
+    taken = []
+    pad = pygame.Rect(split + 90, 120, 260, 260)     # somewhere to land
+    if pad.right < w - 20:
+        taken.append(pad.inflate(40, 40))
+        pygame.draw.circle(s, mix(BITUMEN, (255, 255, 255), 0.06), pad.center,
+                           pad.w // 2)
+        pygame.draw.circle(s, (86, 90, 74), pad.center, pad.w // 2, 5)
+        pygame.draw.circle(s, (86, 90, 74), pad.center, pad.w // 2 - 22, 2)
+        cx, cy = pad.center
+        pygame.draw.rect(s, (86, 90, 74), (cx - 42, cy - 39, 14, 78))
+        pygame.draw.rect(s, (86, 90, 74), (cx + 28, cy - 39, 14, 78))
+        pygame.draw.rect(s, (86, 90, 74), (cx - 42, cy - 7, 84, 14))
+
+    duct = h - 150                                   # a duct run along the foot
+    run = pygame.Rect(30, duct, split - 90, 44)
+    taken.append(run.inflate(22, 22))
+    pygame.draw.rect(s, DUCT, run)
+    pygame.draw.rect(s, mix(DUCT, (0, 0, 0), 0.5), run, 3)
+    for x in range(run.left + 14, run.right - 10, 40):
+        pygame.draw.line(s, mix(DUCT, (0, 0, 0), 0.3), (x, run.top + 3),
+                         (x, run.bottom - 3), 2)
+
+    def clear(r):
+        return (abs(r.centerx - split) > 110
+                and not any(r.colliderect(t) for t in taken))
+
+    placed = 0
+    for _ in range(80):                              # air handling units
+        if placed >= 5:
+            break
+        x = rng.randrange(40, max(50, w - 160))
+        y = rng.randrange(40, max(50, h - 130))
+        r = pygame.Rect(x, y, rng.randint(96, 150), rng.randint(70, 104))
+        if not clear(r):
+            continue
+        placed += 1
+        taken.append(r.inflate(26, 26))
+        pygame.draw.rect(s, SHADOW, r.move(9, 9))
+        pygame.draw.rect(s, (52, 55, 67), r)
+        pygame.draw.rect(s, mix((52, 55, 67), (0, 0, 0), 0.5), r, 3)
+        fan = min(r.w, r.h) // 2 - 9
+        pygame.draw.circle(s, (38, 40, 50), r.center, fan)
+        pygame.draw.circle(s, (70, 74, 90), r.center, fan, 2)
+        for k in range(4):
+            a = k * TAU / 4 + 0.4
+            pygame.draw.line(s, (62, 66, 80), r.center,
+                             (r.centerx + math.cos(a) * fan,
+                              r.centery + math.sin(a) * fan), 3)
+
+    placed = 0
+    for _ in range(80):                              # skylights
+        if placed >= 4:
+            break
+        x = rng.randrange(60, max(70, w - 140))
+        y = rng.randrange(60, max(70, h - 110))
+        r = pygame.Rect(x, y, 116, 80)
+        if not clear(r):
+            continue
+        placed += 1
+        taken.append(r.inflate(26, 26))
+        pygame.draw.rect(s, (44, 50, 62), r)
+        pygame.draw.rect(s, (74, 82, 100), r, 3)
+        pygame.draw.line(s, (74, 82, 100), (r.centerx, r.top),
+                         (r.centerx, r.bottom), 2)
+        pygame.draw.line(s, (60, 68, 86), (r.left, r.centery),
+                         (r.right, r.centery), 2)
+
+    return s
+
+
+# Every map is one panel drawn at a fixed scale and tiled, so a bigger
+# arena is more of the place rather than a stretched picture of it.
+MAPS = (("CITY", _district), ("YARD", _yard), ("GREEN", _green),
+        ("ROOF", _rooftop))
+MAP_NAMES = tuple(n for n, _ in MAPS)
+
+
+def map_index(name):
+    """The map called that, or the city if it is called nothing."""
+    for i, (n, _) in enumerate(MAPS):
+        if n == name:
+            return i
+    return 0
+
+
+def arena_floor(w, h, which=0):
+    """The arena floor. Built on first use per size and map, then reused."""
+    which = which % len(MAPS)
+    if (w, h, which) in _city_floors:
+        return _city_floors[(w, h, which)]
+    panel = MAPS[which][1]
     cols = max(1, int(round(w / VIEW.w)))
     rows = max(1, int(round(h / VIEW.h)))
     xs = [w * c // cols for c in range(cols + 1)]
@@ -509,10 +751,10 @@ def city_floor(w, h):
     s = pygame.Surface((w, h))
     for r in range(rows):
         for c in range(cols):
-            tile = _district(xs[c + 1] - xs[c], ys[r + 1] - ys[r],
-                             20260920 + r * 31 + c)
+            tile = panel(xs[c + 1] - xs[c], ys[r + 1] - ys[r],
+                         20260920 + which * 977 + r * 31 + c)
             s.blit(tile, (xs[c], ys[r]))
-    _city_floors[(w, h)] = s
+    _city_floors[(w, h, which)] = s
     return s
 
 
@@ -3008,7 +3250,7 @@ CAMPAIGN = (
          reward=("weapon", "MECH")),
     dict(name="THE COLOSSUS", sides=4, weapon=Buster,
          colour=(236, 92, 72), dark=(104, 26, 20),
-         hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3,
+         hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3, map="CITY",
          brief="It fills the street. Bring three, and keep them apart.",
          reward=("crown", None)),
     dict(name="THE CHORUS", sides=4, weapon=Choir,
@@ -3167,6 +3409,8 @@ class Game:
         self.speed = 1
         self.orbs_on = True
         self.human = False
+        self.map_pick = -1           # -1 draws one at random per fight
+        self.map_now = 0             # ... and this is the one in front of you
         self.pick = [0, 0]           # weapon index for red, blue
         self.score = [0, 0]
         (self.cleared, self.best_wave, self.crowns,
@@ -3310,6 +3554,8 @@ class Game:
                     WEAPONS[self.roy_field[k]],
                     player=self.roy_seat == k, team=k))
         elif self.mode == "gauntlet":
+            if not self.gaunt_order or self.gaunt_round >= len(self.gaunt_order):
+                self.draw_lots()       # started without going through the screen
             w = WEAPONS[self.camp_pick]
             me = Fighter("YOU", RED, RED_D, left, w, player=self.human,
                          max_hp=MAX_HP * GAUNTLET_HP)
@@ -3337,6 +3583,10 @@ class Game:
                 Fighter("BLUE", BLUE, BLUE_D, right, WEAPONS[self.pick[1]],
                         team=1),
             ]
+        self.map_now = (self.level_map(self.level)
+                        if self.mode == "campaign" and lv is not None
+                        else random.randrange(len(MAPS))
+                        if self.map_pick < 0 else self.map_pick)
         self.projectiles.clear()
         self.minions.clear()
         self.shocks.clear()
@@ -3551,6 +3801,24 @@ class Game:
             return 1
         return CAMPAIGN[self.level].get("party", 1)
 
+    def cycle_map(self):
+        """Random, then each map in turn, then back to random."""
+        self.map_pick = (-1 if self.map_pick >= len(MAPS) - 1
+                         else self.map_pick + 1)
+        SFX.play("click")
+
+    def map_label(self):
+        return ("MAP:  RANDOM" if self.map_pick < 0
+                else "MAP:  " + MAP_NAMES[self.map_pick])
+
+    def level_map(self, i):
+        """Which place level i is fought in. A level may name one;
+        otherwise the ladder moves on every sixth block."""
+        lv = CAMPAIGN[i]
+        if "map" in lv:
+            return map_index(lv["map"])
+        return (i // 6) % len(MAPS)
+
     def unlocked_idx(self):
         names = unlocked_weapons(self.cleared)
         return [i for i, w in enumerate(WEAPONS) if w.NAME in names]
@@ -3584,7 +3852,8 @@ class Game:
                               "pick", (side, i)))
         bx = W // 2 - 152
         items.append((pygame.Rect(bx, 606, 304, 32), "human", None))
-        items.append((pygame.Rect(bx, 642, 304, 32), "orbs", None))
+        items.append((pygame.Rect(bx, 642, 148, 32), "orbs", None))
+        items.append((pygame.Rect(bx + 156, 642, 148, 32), "map", None))
         items.append((pygame.Rect(bx, 678, 304, 46), "start", None))
         return items
 
@@ -3612,7 +3881,8 @@ class Game:
 
     def tourney_layout(self):
         """Setting one up: how big, who is in it, and who you are."""
-        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None)]
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
+                 (pygame.Rect(W - 216, 66, 180, 28), "map", None)]
         for k, n in enumerate(TOURNEY_SIZES):
             items.append((pygame.Rect(56 + k * 84, 118, 76, 30),
                           "size", n))
@@ -3637,7 +3907,8 @@ class Game:
         return items
 
     def royale_layout(self):
-        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None)]
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
+                 (pygame.Rect(W - 216, 66, 180, 28), "map", None)]
         for k, n in enumerate(ROYALE_SIZES):
             items.append((pygame.Rect(56 + k * 84, 118, 76, 30),
                           "size", n))
@@ -3655,14 +3926,16 @@ class Game:
 
     def gauntlet_layout(self):
         items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
-                 (pygame.Rect(W - 216, 66, 180, 28), "human", None)]
+                 (pygame.Rect(W - 216, 66, 180, 28), "human", None),
+                 (pygame.Rect(W - 216, 100, 180, 28), "map", None)]
         items += self.ball_grid(430)
         items.append((pygame.Rect(W // 2 - 200, 560, 400, 52), "start", None))
         return items
 
     def rush_layout(self):
         items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
-                 (pygame.Rect(W - 216, 66, 180, 28), "human", None)]
+                 (pygame.Rect(W - 216, 66, 180, 28), "human", None),
+                 (pygame.Rect(W - 216, 100, 180, 28), "map", None)]
         items += self.ball_grid(430)
         items.append((pygame.Rect(W // 2 - 152, 560, 304, 52), "start", None))
         return items
@@ -3811,13 +4084,16 @@ class Game:
             self.camp_pick = picks[0]
         SFX.play("click")
 
-    def start_gauntlet(self):
+    def draw_lots(self):
         """A fresh run: the whole roster, shuffled, and full health."""
         self.gaunt_order = list(range(len(WEAPONS)))
         random.shuffle(self.gaunt_order)
         self.gaunt_round = 0
         self.gaunt_won = False
         self.gaunt_hp = MAX_HP * GAUNTLET_HP
+
+    def start_gauntlet(self):
+        self.draw_lots()
         self.start_fight()
 
     def record_round(self):
@@ -3963,6 +4239,8 @@ class Game:
             self.open_royale()
         elif k == pygame.K_g:
             self.open_gauntlet()
+        elif k == pygame.K_n:
+            self.cycle_map()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_fight()
 
@@ -3978,6 +4256,8 @@ class Game:
             SFX.play("click")
         elif k == pygame.K_v:
             self.open_versus()
+        elif k == pygame.K_n:
+            self.cycle_map()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_royale()
 
@@ -3990,6 +4270,8 @@ class Game:
             SFX.play("click")
         elif k == pygame.K_g:
             self.open_versus()
+        elif k == pygame.K_n:
+            self.cycle_map()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_gauntlet()
 
@@ -4005,6 +4287,8 @@ class Game:
             SFX.play("click")
         elif k == pygame.K_b:
             self.open_versus()
+        elif k == pygame.K_n:
+            self.cycle_map()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_tourney()
 
@@ -4025,6 +4309,8 @@ class Game:
             SFX.play("click")
         elif k == pygame.K_x:
             self.open_versus()
+        elif k == pygame.K_n:
+            self.cycle_map()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_fight()
 
@@ -4081,6 +4367,8 @@ class Game:
                 elif kind == "orbs":
                     self.orbs_on = not self.orbs_on
                     SFX.play("click")
+                elif kind == "map":
+                    self.cycle_map()
                 elif kind == "start":
                     self.start_fight()
                 break
@@ -4094,6 +4382,8 @@ class Game:
                 elif kind == "human":
                     self.human = not self.human
                     SFX.play("click")
+                elif kind == "map":
+                    self.cycle_map()
                 elif kind == "back":
                     self.open_versus()
                 elif kind == "start":
@@ -4123,6 +4413,8 @@ class Game:
                 elif kind == "who":
                     self.cycle_seat()
                     SFX.play("click")
+                elif kind == "map":
+                    self.cycle_map()
                 elif kind == "back":
                     self.open_versus()
                 elif kind == "start":
@@ -4152,6 +4444,8 @@ class Game:
                 elif kind == "who":
                     self.cycle_roy_seat()
                     SFX.play("click")
+                elif kind == "map":
+                    self.cycle_map()
                 elif kind == "back":
                     self.open_versus()
                 elif kind == "start":
@@ -4167,6 +4461,8 @@ class Game:
                 elif kind == "human":
                     self.human = not self.human
                     SFX.play("click")
+                elif kind == "map":
+                    self.cycle_map()
                 elif kind == "back":
                     self.open_versus()
                 elif kind == "start":
@@ -4252,7 +4548,7 @@ class Game:
         inner = ARENA.move(off)
         clip = s.get_clip()
         s.set_clip(VIEW)
-        s.blit(city_floor(ARENA.w, ARENA.h), inner.topleft)
+        s.blit(arena_floor(ARENA.w, ARENA.h, self.map_now), inner.topleft)
 
         for o in self.orbs:
             o.draw(s, off)
@@ -4545,9 +4841,12 @@ class Game:
                                                            else "CPU"),
                                  GOLD if self.human else DIM, "TAB")
             elif kind == "orbs":
-                self.draw_button(s, rect, "HEALTH ORBS:  %s" % ("ON" if self.orbs_on
-                                                                else "OFF"),
-                                 GREEN if self.orbs_on else DIM, "O")
+                self.draw_button(s, rect, "ORBS:  %s" % ("ON" if self.orbs_on
+                                                         else "OFF"),
+                                 GREEN if self.orbs_on else DIM, "O", size=16)
+            elif kind == "map":
+                self.draw_button(s, rect, self.map_label(), (146, 190, 150),
+                                 "N", size=16)
             elif kind == "start":
                 pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
                 pygame.draw.rect(s, mix((28, 32, 44), (60, 90, 70), pulse), rect)
@@ -4606,7 +4905,10 @@ class Game:
         text(s, "BRACKET SIZE", 12, (56, 102), DIM)
         ready = self.field_ready()
         for rect, kind, val in self.tourney_layout():
-            if kind == "back":
+            if kind == "map":
+                self.draw_button(s, rect, self.map_label(),
+                                 (146, 190, 150), "N", size=15)
+            elif kind == "back":
                 self.draw_button(s, rect, "< VERSUS", DIM, "B")
             elif kind == "size":
                 on = val == self.tour_size
@@ -4768,7 +5070,10 @@ class Game:
         text(s, "HOW MANY", 12, (56, 102), DIM)
         ready = self.roy_ready()
         for rect, kind, val in self.royale_layout():
-            if kind == "back":
+            if kind == "map":
+                self.draw_button(s, rect, self.map_label(),
+                                 (146, 190, 150), "N", size=15)
+            elif kind == "back":
                 self.draw_button(s, rect, "< VERSUS", DIM, "V")
             elif kind == "size":
                 on = val == self.roy_size
@@ -4880,7 +5185,10 @@ class Game:
         text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 14,
              (W // 2, 398), INK, center=True)
         for rect, kind, val in self.gauntlet_layout():
-            if kind == "back":
+            if kind == "map":
+                self.draw_button(s, rect, self.map_label(),
+                                 (146, 190, 150), "N", size=15)
+            elif kind == "back":
                 self.draw_button(s, rect, "< VERSUS", DIM, "G")
             elif kind == "human":
                 self.draw_button(s, rect, "PLAY" if self.human else "WATCH",
@@ -4963,7 +5271,10 @@ class Game:
              (W // 2, 402), INK, center=True)
 
         for rect, kind, val in self.rush_layout():
-            if kind == "back":
+            if kind == "map":
+                self.draw_button(s, rect, self.map_label(),
+                                 (146, 190, 150), "N", size=15)
+            elif kind == "back":
                 self.draw_button(s, rect, "< VERSUS", DIM, "X")
             elif kind == "human":
                 self.draw_button(s, rect, "PLAY" if self.human else "WATCH",
