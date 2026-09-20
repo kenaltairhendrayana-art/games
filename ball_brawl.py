@@ -1244,21 +1244,21 @@ class Flurry(Melee):
 # ---------------------------------------------------------------------------
 class Greatsword(Sword):
     NAME = "GREATSWORD"
-    RADIUS = 17.0
+    RADIUS = 18.0             # a wider target than the sword
     ART_REF = 23.0
-    SPEED_MULT = 1.04
-    DASH_MULT = 0.80
+    SPEED_MULT = 0.90         # and far too heavy to chase with
+    DASH_MULT = 1.25
     MASS = 1.5
-    HP_MULT = 1.15
+    HP_MULT = 1.10
     BLURB = ("five long blades, swung slow -",
              "everything the sword is, doubled")
     PIPS = (5, 3, 4)
 
     BLADES = 5
     REACH = 78.0
-    SPIN = 3.6
-    DMG = (33.0, 46.0)
-    HIT_CD = 0.36
+    SPIN = 3.2
+    DMG = (25.0, 35.0)        # each blade lands softer than the sword's
+    HIT_CD = 0.40
     W_BASE = 5.0
     W_TIP = 1.6
     GUARD = 9.0
@@ -1274,11 +1274,11 @@ class Repeater(Gun):
              "reload - the gun, without pauses")
     PIPS = (3, 5, 4)
 
-    DMG = (10.0, 14.0)
+    DMG = (7.0, 10.0)
     BURST = 5
     BURST_GAP = 0.07
-    RELOAD = 0.44
-    SPREAD = 0.055
+    RELOAD = 0.50
+    SPREAD = 0.080            # it sprays; the gun aims
 
 
 class Ballista(Bow):
@@ -1293,66 +1293,67 @@ class Ballista(Bow):
     PIPS = (5, 1, 5)
 
     ARROWS = 3
-    FAN = 0.20
-    DRAW_TIME = 1.95
-    DMG = (38.0, 52.0)
+    FAN = 0.24
+    DRAW_TIME = 2.02
+    DMG = (30.0, 41.0)
 
 
 class Maul(Hammer):
     NAME = "MAUL"
-    RADIUS = 19.0
+    RADIUS = 20.0
     ART_REF = 27.0
-    SPEED_MULT = 0.98
+    SPEED_MULT = 0.86
     MASS = 3.2
-    ARMOUR = 0.40
-    HP_MULT = 1.20
+    ARMOUR = 0.36
+    HP_MULT = 1.15
     BLURB = ("a head at each end, so there is",
              "no safe side to stand on")
     PIPS = (5, 2, 5)
 
     BLADES = 2
     REACH = 74.0
-    SPIN = 2.8
-    DMG = (68.0, 92.0)
-    HIT_CD = 0.62
+    SPIN = 2.6
+    DMG = (52.0, 70.0)
+    HIT_CD = 0.68
 
 
 class Gauntlets(Fists):
     NAME = "GAUNTLETS"
-    RADIUS = 28.0
+    RADIUS = 30.0
     ART_REF = 26.0
-    SPEED_MULT = 0.95
+    SPEED_MULT = 0.84
     MASS = 2.6
-    ARMOUR = 0.38
-    HP_MULT = 1.70
+    ARMOUR = 0.34
+    HP_MULT = 1.55
     BLURB = ("four fists on a bigger ball -",
              "no gap left to slip through")
     PIPS = (4, 4, 2)
 
     BLADES = 4
-    REACH = 46.0
-    SPIN = 3.2
-    DMG = (29.0, 41.0)
-    HIT_CD = 0.38
+    REACH = 44.0
+    SPIN = 3.0
+    DMG = (22.0, 31.0)
+    HIT_CD = 0.42
 
 
 class Brood(Summoner):
     NAME = "BROOD"
-    RADIUS = 24.0
+    RADIUS = 26.0
     ART_REF = 22.0
-    ARMOUR = 0.22
-    HP_MULT = 1.90
+    SPEED_MULT = 0.78
+    ARMOUR = 0.20
+    HP_MULT = 1.70
     BLURB = ("sends them two at a time, and",
              "they take some killing")
     PIPS = (2, 4, 5)
 
     PER_SUMMON = 2
     MINION_SCALE = 1.5
-    GAP = 2.2
-    GAP_MIN = 0.7
-    CAP = 6
-    CAP_EVERY = 9.0
-    CAP_MAX = 16
+    GAP = 3.0                 # two at a time, but you wait for them
+    GAP_MIN = 1.1
+    CAP = 4
+    CAP_EVERY = 12.0
+    CAP_MAX = 10
 
 
 # bases first, then each one's upgrade in the same order
@@ -1822,7 +1823,7 @@ CAMPAIGN = (
          reward=("weapon", "FISTS")),
     dict(name="THE BULWARK", sides=4, weapon=Greatsword,
          colour=(214, 206, 158), dark=(96, 88, 48),
-         hp=1.30, dmg=1.0, spd=0.98,
+         hp=1.10, dmg=1.0, spd=0.98,
          brief="The cube that grew up. Five blades and all the time it needs.",
          reward=("weapon", "GREATSWORD")),
     dict(name="THE BATTERY", sides=4, weapon=Repeater,
