@@ -2050,21 +2050,37 @@ def unlock_level(name):
 
 
 def load_progress():
+    """How far up the ladder, and how deep into the waves."""
     try:
         with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
-            return int(clamp(int(json.load(fh).get("cleared", 0)),
-                             0, len(CAMPAIGN)))
+            data = json.load(fh)
+        return (int(clamp(int(data.get("cleared", 0)), 0, len(CAMPAIGN))),
+                max(0, int(data.get("best_wave", 0))))
     except (OSError, ValueError, TypeError, AttributeError):
-        return 0
+        return (0, 0)
 
 
-def save_progress(cleared):
+def save_progress(cleared=None, best_wave=None):
+    """Write one field without clobbering the other."""
+    was_cleared, was_best = load_progress()
+    data = {"cleared": was_cleared if cleared is None else int(cleared),
+            "best_wave": was_best if best_wave is None else int(best_wave)}
     try:
         with open(os.path.join(_save_dir(), SAVE_NAME), "w",
                   encoding="utf-8") as fh:
-            json.dump({"cleared": int(cleared)}, fh)
+            json.dump(data, fh)
     except OSError:
         pass
+
+
+# What comes at you, and when. Early waves are all blades so the mode
+# reads as a rush; the shooters arrive once you have had a moment.
+RUSH_EARLY = (Dagger, Sword, Fists)
+RUSH_LATE = (Flurry, Hammer, Gun, Bow, Gauntlets, Maul, Greatsword)
+RUSH_COLOURS = (((140, 216, 120), (38, 92, 34)),   # never the player's red
+                ((196, 124, 236), (76, 34, 108)),
+                ((104, 196, 226), (24, 76, 100)),
+                ((232, 176, 84), (106, 72, 18)))
 
 
 # ---------------------------------------------------------------------------
@@ -2084,7 +2100,10 @@ class Game:
         self.human = False
         self.pick = [0, 0]           # weapon index for red, blue
         self.score = [0, 0]
-        self.cleared = load_progress()
+        self.cleared, self.best_wave = load_progress()
+        self.wave = 0
+        self.kills = 0
+        self.wave_gap = 0.0
         self.level = min(self.cleared, len(CAMPAIGN) - 1)
         self.camp_pick = 0
         self.camp_party = [0, 0, 0]
@@ -2144,11 +2163,21 @@ class Game:
         lv = (CAMPAIGN[self.level] if self.mode == "campaign"
               and self.level < len(CAMPAIGN) else None)
         big = lv.get("arena", 1.0) if lv else 1.0
+        if self.mode == "rush":
+            big = 1.6
         ARENA = pygame.Rect(VIEW.left, VIEW.top,
                             int(VIEW.w * big), int(VIEW.h * big))
         left = (ARENA.left + ARENA.w * 0.20, ARENA.centery)
         right = (ARENA.left + ARENA.w * 0.80, ARENA.centery)
-        if self.mode == "campaign":
+        if self.mode == "rush":
+            self.wave = 0
+            self.kills = 0
+            self.wave_gap = 0.8
+            self.fighters = [Fighter(
+                "YOU", RED, RED_D, (ARENA.centerx, ARENA.centery),
+                WEAPONS[self.camp_pick], player=self.human,
+                max_hp=MAX_HP * 1.9, team=0)]
+        elif self.mode == "campaign":
             if self.level > self.cleared:
                 return
             party = lv.get("party", 1)
@@ -2194,6 +2223,9 @@ class Game:
         if self.state != "fight":
             return
         self.spark(loser.pos, loser.colour, 40, speed=430)
+        if self.mode == "rush" and loser.team == 1:
+            self.kills += 1
+            return
         if any(f.hp > 0 for f in self.team_of(loser.team)):
             SFX.play("ko", 0.5)        # a team-mate went down, not the side
             self.shake = max(self.shake, 14.0)
@@ -2204,7 +2236,10 @@ class Game:
         self.slowmo = 1.5
         self.shake = 26.0
         self.flash_t = 0.3
-        if self.mode == "campaign":
+        if self.mode == "rush":
+            self.best_wave = max(self.best_wave, self.wave - 1)
+            save_progress(best_wave=self.best_wave)
+        elif self.mode == "campaign":
             self.record_level(winner)
         else:
             self.score[0 if winner.team == 0 else 1] += 1
@@ -2220,7 +2255,7 @@ class Game:
             return
         kind, val = CAMPAIGN[self.level]["reward"]
         self.cleared = min(len(CAMPAIGN), self.cleared + 1)
-        save_progress(self.cleared)
+        save_progress(cleared=self.cleared)
         if kind == "weapon":
             self.unlock_text = "UNLOCKED:  " + val
         elif kind == "hp":
@@ -2229,6 +2264,34 @@ class Game:
             self.unlock_text = "REWARD:  THE CROWN"
         else:
             self.unlock_text = "REWARD:  THE BELT"
+
+    def spawn_wave(self):
+        """Each one bigger and meaner than the last, forever."""
+        self.wave += 1
+        self.best_wave = max(self.best_wave, self.wave - 1)
+        me = self.team_of(0)[0]
+        count = min(10, 1 + self.wave // 3)
+        tough = 1.0 + 0.11 * (self.wave - 1)
+        pool = RUSH_EARLY if self.wave <= 3 else RUSH_EARLY + RUSH_LATE
+        colour, dark = RUSH_COLOURS[(self.wave - 1) % len(RUSH_COLOURS)]
+        for _ in range(count):
+            spot = None
+            for _try in range(24):
+                p = Vector2(random.uniform(ARENA.left + 40, ARENA.right - 40),
+                            random.uniform(ARENA.top + 40, ARENA.bottom - 40))
+                if (p - me.pos).length() > 360:
+                    spot = p
+                    break
+            if spot is None:
+                spot = Vector2(ARENA.left + 60, ARENA.top + 60)
+            w = pool[random.randrange(len(pool))]
+            self.fighters.append(Fighter(
+                "WAVE %d" % self.wave, colour, dark, spot, w, shape=4,
+                max_hp=MAX_HP * 0.24 * tough,
+                dmg_mult=min(1.6, 0.32 + 0.035 * self.wave),
+                speed_mult=min(1.35, 0.95 + 0.025 * self.wave), team=1))
+        self.shake = max(self.shake, 8.0)
+        SFX.play("ko", 0.45)
 
     def spawn_orb(self):
         for _ in range(24):
@@ -2319,6 +2382,16 @@ class Game:
                 if len(self.orbs) < 2:
                     self.spawn_orb()
         self.orbs = [o for o in self.orbs if o.update(dt, self)]
+        if self.mode == "rush" and self.state == "fight":
+            self.fighters = [f for f in self.fighters
+                             if f.team == 0 or f.hp > 0]
+            if not self.foes(self.fighters[0]):
+                self.wave_gap -= dt
+                if self.wave_gap <= 0:
+                    self.wave_gap = 2.2
+                    self.spawn_wave()
+                    if self.wave > 1 and len(self.orbs) < 2:
+                        self.spawn_orb()
         self.camera(dt)
 
     # -- input -------------------------------------------------------------
@@ -2333,7 +2406,8 @@ class Game:
 
     def menu_layout(self):
         """Every clickable thing on the versus menu: (rect, kind, value)."""
-        items = [(pygame.Rect(W - 216, 22, 180, 40), "camp", None)]
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "camp", None),
+                 (pygame.Rect(W - 216, 68, 180, 34), "rush", None)]
         cw, ch, gap = 188, 42, 4
         for side in (0, 1):
             for i in range(len(WEAPONS)):
@@ -2373,6 +2447,28 @@ class Game:
                           "ball", i))
         items.append((pygame.Rect(W // 2 - 152, 710, 304, 46), "start", None))
         return items
+
+    def rush_layout(self):
+        items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None),
+                 (pygame.Rect(W - 216, 66, 180, 28), "human", None)]
+        bw, bh, bgap = 84, 42, 8
+        span = TIERS * bw + (TIERS - 1) * bgap
+        x0 = (W - span) // 2
+        for i in range(len(WEAPONS)):
+            col, row = divmod(i, TIERS)
+            items.append((pygame.Rect(x0 + row * (bw + bgap),
+                                      356 + col * (bh + 6), bw, bh),
+                          "ball", i))
+        items.append((pygame.Rect(W // 2 - 152, 500, 304, 52), "start", None))
+        return items
+
+    def open_rush(self):
+        self.mode = "rush"
+        self.state = "rush"
+        picks = self.unlocked_idx()
+        if self.camp_pick not in picks:
+            self.camp_pick = picks[0]
+        SFX.play("click")
 
     def open_campaign(self):
         self.mode = "campaign"
@@ -2415,10 +2511,10 @@ class Game:
         if k == pygame.K_ESCAPE:
             if self.state == "menu":
                 return False
-            if self.state == "campaign":
+            if self.state in ("campaign", "rush"):
                 self.open_versus()
-            elif self.mode == "campaign":
-                self.state = "campaign"
+            elif self.mode in ("campaign", "rush"):
+                self.state = self.mode
                 self.paused = False
             else:
                 self.state = "menu"
@@ -2430,13 +2526,15 @@ class Game:
             self.speed = 1 if self.speed >= 3 else self.speed + 1
         elif k == pygame.K_p and self.state in ("fight", "ko"):
             self.paused = not self.paused
-        elif k == pygame.K_TAB and self.state in ("menu", "campaign"):
+        elif k == pygame.K_TAB and self.state in ("menu", "campaign", "rush"):
             self.human = not self.human
             SFX.play("click")
         elif self.state == "menu":
             self.menu_key(k)
         elif self.state == "campaign":
             self.campaign_key(k)
+        elif self.state == "rush":
+            self.rush_key(k)
         else:
             self.fight_key(k)
         return True
@@ -2454,6 +2552,20 @@ class Game:
             SFX.play("click")
         elif k == pygame.K_c:
             self.open_campaign()
+        elif k == pygame.K_x:
+            self.open_rush()
+        elif k in (pygame.K_SPACE, pygame.K_RETURN):
+            self.start_fight()
+
+    def rush_key(self, k):
+        picks = self.unlocked_idx()
+        if k in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
+            step = 1 if k in (pygame.K_RIGHT, pygame.K_d) else -1
+            at = picks.index(self.camp_pick) if self.camp_pick in picks else 0
+            self.camp_pick = picks[(at + step) % len(picks)]
+            SFX.play("click")
+        elif k == pygame.K_x:
+            self.open_versus()
         elif k in (pygame.K_SPACE, pygame.K_RETURN):
             self.start_fight()
 
@@ -2506,6 +2618,21 @@ class Game:
                 elif kind == "start":
                     self.start_fight()
                 break
+        elif self.state == "rush":
+            for rect, kind, val in self.rush_layout():
+                if not rect.collidepoint(pos):
+                    continue
+                if kind == "ball" and val in self.unlocked_idx():
+                    self.camp_pick = val
+                    SFX.play("click")
+                elif kind == "human":
+                    self.human = not self.human
+                    SFX.play("click")
+                elif kind == "back":
+                    self.open_versus()
+                elif kind == "start":
+                    self.start_fight()
+                break
         elif self.state == "campaign":
             for rect, kind, val in self.camp_layout():
                 if not rect.collidepoint(pos):
@@ -2541,6 +2668,8 @@ class Game:
             self.draw_menu(s)
         elif self.state == "campaign":
             self.draw_campaign(s)
+        elif self.state == "rush":
+            self.draw_rush(s)
         else:
             off = [self.cam.x, self.cam.y]
             if self.shake > 0.2:
@@ -2660,9 +2789,12 @@ class Game:
         text(s, rival.weapon.NAME, 17, (W - 27, 53), DIM, right=True)
 
         text(s, "VS", 24, (W // 2, 20), INK, center=True)
-        mid = ("LEVEL %d / %d" % (self.level + 1, len(CAMPAIGN))
-               if self.mode == "campaign" else
-               "%d - %d" % (self.score[0], self.score[1]))
+        if self.mode == "rush":
+            mid = "WAVE %d" % self.wave
+        elif self.mode == "campaign":
+            mid = "LEVEL %d / %d" % (self.level + 1, len(CAMPAIGN))
+        else:
+            mid = "%d - %d" % (self.score[0], self.score[1])
         text(s, mid, 19, (W // 2, 46), DIM, center=True)
 
         # One bar, split where the two sides meet - the split is the whole
@@ -2701,7 +2833,10 @@ class Game:
         text(s, "%d%%" % (100 - pa), 32, (bar.right + 16, bar.centery),
              rival.colour, left=True)
 
-        if len(ours) == 1:
+        if self.mode == "rush":
+            text(s, "%s     %d KILLS" % (self.stat_line(lead), self.kills),
+                 15, (26, 96), DIM)
+        elif len(ours) == 1:
             text(s, self.stat_line(lead), 15, (26, 96), DIM)
         else:
             up = sum(1 for f in ours if f.hp > 0)
@@ -2715,7 +2850,11 @@ class Game:
         win = self.winner
         t = min(1.0, self.banner_t / 0.35)
         y = VIEW.centery - 26
-        if self.mode == "campaign":
+        if self.mode == "rush":
+            title = "WAVE %d" % max(0, self.wave - 1)
+            size = int(lerp(110, 62, t))
+            rule = (236, 110, 96)
+        elif self.mode == "campaign":
             done = self.camp_win and self.cleared >= len(CAMPAIGN)
             title = ("CAMPAIGN COMPLETE" if done else
                      "LEVEL CLEARED" if self.camp_win else "DEFEATED")
@@ -2734,7 +2873,12 @@ class Game:
         text(s, title, size, (W // 2, y), rule, center=True)
         if self.banner_t <= 0.5:
             return
-        if self.mode == "campaign":
+        if self.mode == "rush":
+            line = "%d waves survived  -  %d blocks broken" % (
+                max(0, self.wave - 1), self.kills)
+            hint = "SPACE / click  go again        ESC  back"
+            text(s, line, 22, (W // 2, y + 56), GOLD, center=True)
+        elif self.mode == "campaign":
             line = self.unlock_text or ("%d hits  -  %d damage"
                                         % (win.hits, int(win.dealt)))
             hint = ("SPACE  next level        R  again        ESC  ladder"
@@ -2773,6 +2917,8 @@ class Game:
                 self.draw_card(s, rect, WEAPONS[i], side, self.pick[side] == i)
             elif kind == "camp":
                 self.draw_button(s, rect, "CAMPAIGN >", GOLD, "C")
+            elif kind == "rush":
+                self.draw_button(s, rect, "RUSH >", (236, 110, 96), "X")
             elif kind == "human":
                 self.draw_button(s, rect, "RED IS:  %s" % ("PLAYER" if self.human
                                                            else "CPU"),
@@ -2876,6 +3022,33 @@ class Game:
         else:
             text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
                  (W - 56, 578), DIM, right=True)
+
+    def draw_rush(self, s):
+        text(s, "RUSH", 42, (56, 20), (236, 110, 96))
+        text(s, "endless waves, and all of them come at you", 15,
+             (58, 70), DIM)
+        text(s, "%d" % self.best_wave, 92, (W // 2, 180), GOLD, center=True)
+        text(s, "BEST WAVE", 18, (W // 2, 240), DIM, center=True)
+        text(s, "one ball, no second chances - a bigger wave every time the",
+             14, (W // 2, 278), DIM, center=True)
+        text(s, "last one falls, and a health orb between them", 14,
+             (W // 2, 298), DIM, center=True)
+        text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 14,
+             (W // 2, 334), INK, center=True)
+
+        for rect, kind, val in self.rush_layout():
+            if kind == "back":
+                self.draw_button(s, rect, "< VERSUS", DIM, "X")
+            elif kind == "human":
+                self.draw_button(s, rect, "PLAY" if self.human else "WATCH",
+                                 GOLD if self.human else DIM, "TAB")
+            elif kind == "ball":
+                self.draw_ball(s, rect, val)
+            elif kind == "start":
+                pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.005)
+                pygame.draw.rect(s, mix((30, 28, 34), (96, 52, 46), pulse), rect)
+                pygame.draw.rect(s, mix((236, 110, 96), INK, pulse * 0.5), rect, 2)
+                text(s, "RUSH   (SPACE)", 26, rect.center, INK, center=True)
 
     def draw_level(self, s, rect, i):
         lv = CAMPAIGN[i]
