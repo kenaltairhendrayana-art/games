@@ -17,14 +17,14 @@ Progress is saved outside the game folder and survives a reinstall.
 
 CONTROLS
   Versus menu
-    1 .. 6          weapon for the red fighter
-    Q .. Y          weapon for the blue fighter
+    1 .. 7          weapon for the red fighter
+    Q .. U          weapon for the blue fighter
     TAB             red fighter: CPU or PLAYER
     O               health orbs on / off
     C               open the campaign
     SPACE           fight
   Campaign
-    up / down       choose a level (or 1 .. 6)
+    up / down       choose a level (or 1 .. 7)
     left / right    choose your ball
     TAB             play it yourself, or watch
     C / ESC         back to versus
@@ -677,6 +677,16 @@ class Projectile:
                 self.pierce -= 1
                 self.vel *= 0.8
 
+        for m in world.minions:
+            if m.owner is self.owner or m.hp <= 0:
+                continue
+            if seg_dist(m.pos, self.prev, self.pos) <= m.R + self.size:
+                m.hurt(self.dmg, world)
+                if self.pierce <= 0:
+                    self.dead = True
+                    return
+                self.pierce -= 1
+
     def draw(self, s, off):
         p = self.pos + Vector2(off)
         d = unit(self.vel)
@@ -713,6 +723,8 @@ class Weapon:
     MASS = 1.0                # ... and shrugs off this much of the knockback
     HP_MULT = 1.0             # ... and a bigger body holds more of a beating
     PULL_MULT = 1.0           # how hard the ball drifts toward its foe
+    CLOSE_RANGE = 0.0         # inside this it eases off the throttle ...
+    CLOSE_SLOW = 1.0          # ... down to this share of cruising speed
     ART_REF = 26.0            # the body size this weapon was drawn for
     BLURB = ("", "")
     PIPS = (0, 0, 0)          # damage / rate / reach, out of 5, for the menu
@@ -736,6 +748,8 @@ class Melee(Weapon):
     numbers bolted on.
     """
     PULL_MULT = 2.3           # it has to get there to do anything
+    CLOSE_RANGE = 110.0
+    CLOSE_SLOW = 0.35
     BLADES = 3
     REACH = 64.0
     SPIN = 4.7
@@ -784,6 +798,11 @@ class Melee(Weapon):
                     self.flash = 1.0
                     world.spark(foe.pos - push * foe.r, o.colour, 8, speed=240)
                     SFX.play("cut", 0.7)
+            for m in world.minions:
+                if m.owner is not o and m.hp > 0:
+                    if seg_dist(m.pos, a, b) <= m.R + 4:
+                        m.hurt(random.uniform(*self.DMG), world)
+                        self.flash = max(self.flash, 0.6)
             if self.parry_cd <= 0:
                 for pr in world.projectiles:
                     if pr.owner is o or pr.dead:
@@ -862,6 +881,7 @@ class Dagger(Melee):
     CRIT = 0.16
     PARRY_CD = 0.13
     PARRY_BAND = 7.0
+    CLOSE_RANGE = 90.0
     W_BASE = 3.0
     W_TIP = 1.1
     GUARD = 5.0
@@ -876,6 +896,8 @@ class Hammer(Melee):
     ARMOUR = 0.35             # too heavy for a bullet to matter much
     MASS = 2.8                # and too heavy to be pushed off its line
     PULL_MULT = 2.0
+    CLOSE_RANGE = 125.0
+    CLOSE_SLOW = 0.40
     BLURB = ("one slow head, and a body that",
              "shrugs off a third of everything")
     PIPS = (5, 1, 3)
@@ -1053,6 +1075,8 @@ class Fists(Melee):
     ARMOUR = 0.34
     MASS = 2.2
     PULL_MULT = 2.0
+    CLOSE_RANGE = 105.0
+    CLOSE_SLOW = 0.40
     HP_MULT = 1.5             # all that ball is worth something
     BLURB = ("a big ball with two fists -",
              "no reach, but it hits back hard")
@@ -1092,7 +1116,70 @@ class Fists(Melee):
                 blit_glow(s, b, 30 * k, o.colour, int(110 * self.flash))
 
 
-WEAPONS = (Sword, Dagger, Gun, Bow, Hammer, Fists)
+class Summoner(Weapon):
+    NAME = "SUMMONER"
+    RADIUS = 22.0
+    ART_REF = 22.0
+    SPEED_MULT = 0.85
+    DASH_MULT = 1.3
+    PULL_MULT = 0.50          # it has no reason to come to you
+    ARMOUR = 0.10
+    MASS = 1.8
+    HP_MULT = 1.25
+    BLURB = ("throws out little balls, and",
+             "throws out more as it goes on")
+    PIPS = (1, 3, 5)
+
+    FIRST = 1.0               # first one arrives quickly
+    GAP = 2.6                 # then this long between them ...
+    RAMP = 0.045              # ... shrinking every second ...
+    GAP_MIN = 0.80            # ... to this
+    CAP = 3                   # this many alive at first ...
+    CAP_EVERY = 13.0          # ... one more every this many seconds ...
+    CAP_MAX = 11              # ... up to this
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.timer = self.FIRST
+        self.ring = random.uniform(0, TAU)
+
+    def update(self, dt, world):
+        o = self.owner
+        self.ring += dt * 1.6
+        if o.hp <= 0 or world.state != "fight":
+            return
+        self.timer -= dt
+        if self.timer > 0:
+            return
+        self.timer = max(self.GAP_MIN, self.GAP - self.RAMP * world.clock_t)
+        cap = min(self.CAP_MAX,
+                  self.CAP + int(world.clock_t / self.CAP_EVERY))
+        if sum(1 for m in world.minions if m.owner is o) >= cap:
+            return
+        a = random.uniform(0, TAU)
+        d = Vector2(math.cos(a), math.sin(a))
+        world.minions.append(Minion(o, o.pos + d * (o.r + 12)))
+        self.shots += 1
+        world.spark(o.pos + d * o.r, o.colour, 6, speed=170)
+        SFX.play("pickup", 0.35)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        p = o.pos + Vector2(off)
+        k = o.r / self.ART_REF
+        for i in range(3):
+            a = self.ring + i * TAU / 3
+            q = p + Vector2(math.cos(a), math.sin(a)) * (o.r + 11 * k)
+            pygame.draw.circle(s, mix(o.colour, (255, 255, 255), 0.4),
+                               (int(q.x), int(q.y)), max(2, int(5 * k)))
+            pygame.draw.circle(s, mix(o.dark, (0, 0, 0), 0.3),
+                               (int(q.x), int(q.y)), max(2, int(5 * k)), 1)
+        ready = clamp(1.0 - self.timer / max(0.2, self.GAP), 0.0, 1.0)
+        if ready > 0.55:
+            blit_glow(s, p, o.r * 1.5, o.colour, int(60 * (ready - 0.55) / 0.45))
+
+
+WEAPONS = (Sword, Dagger, Gun, Bow, Hammer, Fists, Summoner)
 STARTERS = ("SWORD",)
 
 
@@ -1204,6 +1291,11 @@ class Fighter:
         # Hold the cruising speed, but ease back to it rather than snapping,
         # so a hammer blow or an arrow still visibly throws you.
         target = CRUISE * self.weapon.SPEED_MULT * self.speed_mult
+        near = self.weapon.CLOSE_RANGE
+        if near > 0 and foe and foe.hp > 0:
+            gap = (foe.pos - self.pos).length()
+            if gap < near:
+                target *= lerp(self.weapon.CLOSE_SLOW, 1.0, gap / near)
         sp = self.vel.length()
         if sp < 1e-6:
             self.vel = unit(Vector2(random.uniform(-1, 1),
@@ -1324,6 +1416,82 @@ class Fighter:
         self.weapon.draw(s, off, world)
 
 
+
+
+# ---------------------------------------------------------------------------
+# THE LITTLE ONES
+#
+# Summoned balls live beside the two fighters rather than among them: the
+# whole game assumes exactly two, from who the HUD belongs to down to who
+# won. A minion can be shot and cut like anything else, but it can never
+# be the thing that wins or loses the fight.
+# ---------------------------------------------------------------------------
+class Minion:
+    R = 7.0
+    HP = 26.0
+    DMG = (7.0, 11.0)
+    HIT_CD = 0.55
+    SPEED = 250.0
+    LIFE = 26.0
+
+    def __init__(self, owner, pos):
+        self.owner = owner
+        self.pos = Vector2(pos)
+        self.vel = unit(Vector2(random.uniform(-1, 1),
+                                random.uniform(-1, 1))) * self.SPEED
+        self.hp = self.HP
+        self.cool = 0.0
+        self.flash = 0.0
+        self.life = self.LIFE
+
+    def hurt(self, amount, world):
+        self.hp -= amount
+        self.flash = 1.0
+        if self.hp <= 0:
+            world.spark(self.pos, self.owner.colour, 7, speed=190)
+
+    def update(self, dt, world):
+        self.life -= dt
+        self.cool = max(0.0, self.cool - dt)
+        self.flash = max(0.0, self.flash - dt * 4.0)
+        if self.hp <= 0 or self.life <= 0 or self.owner.hp <= 0:
+            return False
+
+        foe = world.foe(self.owner)
+        if foe and foe.hp > 0:
+            self.vel += unit(foe.pos - self.pos) * 420.0 * dt
+        self.vel.scale_to_length(self.SPEED)
+        self.pos += self.vel * dt
+
+        if self.pos.x < ARENA.left + self.R:
+            self.pos.x, self.vel.x = ARENA.left + self.R, abs(self.vel.x)
+        elif self.pos.x > ARENA.right - self.R:
+            self.pos.x, self.vel.x = ARENA.right - self.R, -abs(self.vel.x)
+        if self.pos.y < ARENA.top + self.R:
+            self.pos.y, self.vel.y = ARENA.top + self.R, abs(self.vel.y)
+        elif self.pos.y > ARENA.bottom - self.R:
+            self.pos.y, self.vel.y = ARENA.bottom - self.R, -abs(self.vel.y)
+
+        if foe and foe.hp > 0 and self.cool <= 0:
+            if (foe.pos - self.pos).length() <= foe.r + self.R:
+                foe.take_damage(random.uniform(*self.DMG), self.owner, world)
+                push = unit(self.pos - foe.pos)
+                self.vel += push * 260
+                self.cool = self.HIT_CD
+        return True
+
+    def draw(self, s, off):
+        p = self.pos + Vector2(off)
+        col = mix(self.owner.colour, (255, 255, 255), 0.45 * self.flash)
+        fade = self.life < 4.0 and int(self.life * 6) % 2 == 0
+        if fade:
+            col = mix(col, BG, 0.5)
+        blit_glow(s, p, self.R * 2.2, self.owner.colour, 45)
+        pygame.draw.circle(s, col, (int(p.x), int(p.y)), int(self.R))
+        pygame.draw.circle(s, mix(self.owner.dark, (0, 0, 0), 0.3),
+                           (int(p.x), int(p.y)), int(self.R), 1)
+
+
 # ---------------------------------------------------------------------------
 # PICKUPS
 # ---------------------------------------------------------------------------
@@ -1419,6 +1587,11 @@ CAMPAIGN = (
          hp=1.20, dmg=1.05, spd=0.92,
          brief="The last block on the ladder. It lands once and you feel it.",
          reward=("done", None)),
+    dict(name="THE HIVE", sides=4, weapon=Summoner,
+         colour=(126, 200, 246), dark=(28, 74, 112),
+         hp=1.30, dmg=1.0, spd=0.95,
+         brief="It never comes to you. It just keeps sending the little ones.",
+         reward=("weapon", "SUMMONER")),
     dict(name="THE TITAN", sides=4, weapon=Fists,
          colour=(250, 124, 92), dark=(112, 38, 24),
          hp=1.25, dmg=1.0, spd=0.95,
@@ -1497,6 +1670,7 @@ class Game:
         self.unlock_text = ""
         self.fighters = []
         self.projectiles = []
+        self.minions = []
         self.particles = []
         self.floaters = []
         self.orbs = []
@@ -1549,6 +1723,7 @@ class Game:
                 Fighter("BLUE", BLUE, BLUE_D, right, WEAPONS[self.pick[1]]),
             ]
         self.projectiles.clear()
+        self.minions.clear()
         self.particles.clear()
         self.floaters.clear()
         self.orbs.clear()
@@ -1651,6 +1826,7 @@ class Game:
         for p in self.projectiles:
             p.update(dt, self)
         self.projectiles = [p for p in self.projectiles if not p.dead]
+        self.minions = [m for m in self.minions if m.update(dt, self)]
         self.particles = [p for p in self.particles if p.update(dt)]
         self.floaters = [f for f in self.floaters if f.update(dt)]
 
@@ -1670,34 +1846,34 @@ class Game:
     def menu_layout(self):
         """Every clickable thing on the versus menu: (rect, kind, value)."""
         items = [(pygame.Rect(W - 216, 22, 180, 40), "camp", None)]
-        cw, ch, gap = 396, 58, 6
-        top = 140
+        cw, ch, gap = 396, 52, 5
+        top = 136
         for side in (0, 1):
             x = 56 if side == 0 else W - 56 - cw
             for i in range(len(WEAPONS)):
                 items.append((pygame.Rect(x, top + i * (ch + gap), cw, ch),
                               "pick", (side, i)))
         bx = W // 2 - 152
-        items.append((pygame.Rect(bx, 560, 304, 38), "human", None))
-        items.append((pygame.Rect(bx, 604, 304, 38), "orbs", None))
-        items.append((pygame.Rect(bx, 650, 304, 50), "start", None))
+        items.append((pygame.Rect(bx, 576, 304, 36), "human", None))
+        items.append((pygame.Rect(bx, 618, 304, 36), "orbs", None))
+        items.append((pygame.Rect(bx, 660, 304, 50), "start", None))
         return items
 
     def camp_layout(self):
         """Every clickable thing on the campaign screen."""
         items = [(pygame.Rect(W - 216, 22, 180, 40), "back", None)]
-        top, h, gap = 92, 74, 5
+        top, h, gap = 88, 64, 4
         for i in range(len(CAMPAIGN)):
             items.append((pygame.Rect(56, top + i * (h + gap), W - 112, h),
                           "level", i))
-        bw, bh, bgap = 84, 54, 10
+        bw, bh, bgap = 84, 52, 9
         span = len(WEAPONS) * bw + (len(WEAPONS) - 1) * bgap
         x0 = (W - span) // 2
         for i in range(len(WEAPONS)):
-            items.append((pygame.Rect(x0 + i * (bw + bgap), 586, bw, bh),
+            items.append((pygame.Rect(x0 + i * (bw + bgap), 584, bw, bh),
                           "ball", i))
-        items.append((pygame.Rect(W // 2 - 152, 650, 304, 36), "human", None))
-        items.append((pygame.Rect(W // 2 - 152, 694, 304, 50), "start", None))
+        items.append((pygame.Rect(W // 2 - 152, 646, 304, 34), "human", None))
+        items.append((pygame.Rect(W // 2 - 152, 688, 304, 48), "start", None))
         return items
 
     def open_campaign(self):
@@ -1765,11 +1941,11 @@ class Game:
             self.fight_key(k)
         return True
 
-    BLUE_KEYS = (pygame.K_q, pygame.K_w, pygame.K_e,
-                 pygame.K_r, pygame.K_t, pygame.K_y)
+    BLUE_KEYS = (pygame.K_q, pygame.K_w, pygame.K_e, pygame.K_r,
+                 pygame.K_t, pygame.K_y, pygame.K_u)
 
     def menu_key(self, k):
-        if pygame.K_1 <= k <= pygame.K_6:
+        if pygame.K_1 <= k <= pygame.K_7:
             self.set_pick(0, k - pygame.K_1)
         elif k in self.BLUE_KEYS:
             self.set_pick(1, self.BLUE_KEYS.index(k))
@@ -1794,7 +1970,7 @@ class Game:
             at = picks.index(self.camp_pick) if self.camp_pick in picks else 0
             self.camp_pick = picks[(at + step) % len(picks)]
             SFX.play("click")
-        elif pygame.K_1 <= k <= pygame.K_6 and k - pygame.K_1 <= self.cleared:
+        elif pygame.K_1 <= k <= pygame.K_7 and k - pygame.K_1 <= self.cleared:
             self.level = k - pygame.K_1
             SFX.play("click")
         elif k == pygame.K_c:
@@ -1883,6 +2059,8 @@ class Game:
         s.set_clip(ARENA)
         for o in self.orbs:
             o.draw(s, off)
+        for m in self.minions:
+            m.draw(s, off)
         for p in self.projectiles:
             p.draw(s, off)
         for f in self.fighters:
@@ -1919,8 +2097,10 @@ class Game:
     @staticmethod
     def stat_line(f):
         parts = ["%d HP" % int(f.hp), "%d HITS" % f.hits]
-        if f.weapon.shots:
+        if f.weapon.shots and getattr(f.weapon, "SPEED", 0):
             parts.append("%d%% ACC" % round(100.0 * f.hits / f.weapon.shots))
+        elif isinstance(f.weapon, Summoner):
+            parts.append("%d SUMMONED" % f.weapon.shots)
         return "   ".join(parts)
 
     def draw_hud(self, s):
@@ -2025,9 +2205,9 @@ class Game:
              (W // 2, 80), DIM, center=True)
 
         text(s, "RED", 26, (56, 100), RED)
-        text(s, "keys 1-6", 14, (124, 108), DIM)
+        text(s, "keys 1-7", 14, (124, 108), DIM)
         r = text(s, "BLUE", 26, (W - 56, 113), BLUE, right=True)
-        text(s, "keys Q-Y", 14, (r.left - 12, 115), DIM, right=True)
+        text(s, "keys Q-U", 14, (r.left - 12, 115), DIM, right=True)
 
         for rect, kind, val in self.menu_layout():
             if kind == "pick":
@@ -2051,20 +2231,20 @@ class Game:
 
         # the chosen weapon says what it does, under its own column
         for k, line in enumerate(WEAPONS[self.pick[0]].BLURB):
-            text(s, line, 13, (56, 520 + k * 17), DIM)
+            text(s, line, 13, (56, 541 + k * 16), DIM)
         for k, line in enumerate(WEAPONS[self.pick[1]].BLURB):
-            text(s, line, 13, (W - 56, 528 + k * 17), DIM, right=True)
+            text(s, line, 13, (W - 56, 549 + k * 16), DIM, right=True)
 
         if self.cleared:
             text(s, "%d / %d CAMPAIGN LEVELS CLEARED"
-                 % (self.cleared, len(CAMPAIGN)), 14, (W // 2, 714), GREEN,
+                 % (self.cleared, len(CAMPAIGN)), 14, (W // 2, 720), GREEN,
                  center=True)
         if self.human:
             text(s, "WASD move      mouse aim      SPACE dash", 16,
-                 (W // 2, 734), DIM, center=True)
+                 (W // 2, 738), DIM, center=True)
         if self.score[0] or self.score[1]:
             text(s, "SESSION   RED %d  -  %d BLUE" % (self.score[0], self.score[1]),
-                 16, (W // 2, 752), DIM, center=True)
+                 16, (W // 2, 754), DIM, center=True)
 
     def draw_card(self, s, rect, wcls, side, selected):
         locked = wcls.NAME not in unlocked_weapons(self.cleared)
@@ -2072,19 +2252,19 @@ class Game:
         live = selected and not locked
         pygame.draw.rect(s, mix(PANEL, base, 0.22 if live else 0.05), rect)
         pygame.draw.rect(s, base if live else (52, 57, 72), rect, 3 if live else 1)
-        self.draw_icon(s, (rect.left + 40, rect.centery), wcls, base)
-        text(s, wcls.NAME, 21, (rect.left + 84, rect.top + 3),
+        self.draw_icon(s, (rect.left + 38, rect.centery), wcls, base)
+        text(s, wcls.NAME, 20, (rect.left + 82, rect.top + 2),
              INK if live else DIM)
         if locked:
             text(s, "locked - clear campaign level %d" % unlock_level(wcls.NAME),
-                 13, (rect.left + 84, rect.top + 31), DIM)
+                 12, (rect.left + 82, rect.top + 28), DIM)
             return
-        px = rect.left + 84
+        px = rect.left + 82
         for label, n in zip(("DMG", "RATE", "REACH"), wcls.PIPS):
-            text(s, label, 11, (px, rect.bottom - 20), DIM)
+            text(s, label, 11, (px, rect.bottom - 18), DIM)
             for k in range(5):
                 c = base if k < n else (48, 52, 66)
-                pygame.draw.rect(s, c, (px + 40 + k * 8, rect.bottom - 18, 5, 8))
+                pygame.draw.rect(s, c, (px + 40 + k * 8, rect.bottom - 16, 5, 8))
             px += 92
 
     # -- the campaign ------------------------------------------------------
@@ -2096,7 +2276,7 @@ class Game:
         if self.cleared:
             text(s, "+%d%% MAX HP" % round(hp_bonus(self.cleared) * 100), 15,
                  (W - 240, 66), GREEN, right=True)
-        text(s, "YOUR BALL", 15, (W // 2, 572), DIM, center=True)
+        text(s, "YOUR BALL", 15, (W // 2, 570), DIM, center=True)
 
         for rect, kind, val in self.camp_layout():
             if kind == "back":
@@ -2125,29 +2305,29 @@ class Game:
 
         # the shape itself, turning slowly
         spin = pygame.time.get_ticks() * 0.0006 + i
-        pts = shape_points(rect.left + 48, rect.centery, 23,
+        pts = shape_points(rect.left + 46, rect.centery, 21,
                            lv["sides"], spin)
         pygame.draw.polygon(s, mix(base, (0, 0, 0), 0.45), pts)
         pygame.draw.polygon(s, base, pts, 2)
 
-        text(s, "%d.  %s" % (i + 1, lv["name"]), 21,
-             (rect.left + 96, rect.top + 5), DIM if locked else INK)
-        text(s, lv["brief"], 13, (rect.left + 96, rect.top + 31), DIM)
+        text(s, "%d.  %s" % (i + 1, lv["name"]), 20,
+             (rect.left + 92, rect.top + 3), DIM if locked else INK)
+        text(s, lv["brief"], 13, (rect.left + 92, rect.top + 26), DIM)
         text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%"
              % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
                 round(lv["dmg"] * 100)),
-             12, (rect.left + 96, rect.top + 51), mix(DIM, base, 0.45))
+             12, (rect.left + 92, rect.top + 45), mix(DIM, base, 0.45))
 
         text(s, "REWARD  " + reward_label(lv), 14,
-             (rect.right - 18, rect.top + 22), DIM if locked else GOLD, right=True)
+             (rect.right - 18, rect.top + 18), DIM if locked else GOLD, right=True)
         if i < self.cleared:
-            text(s, "CLEARED", 15, (rect.right - 18, rect.top + 50), GREEN,
+            text(s, "CLEARED", 15, (rect.right - 18, rect.top + 44), GREEN,
                  right=True)
         elif locked:
-            text(s, "LOCKED", 15, (rect.right - 18, rect.top + 50), DIM,
+            text(s, "LOCKED", 15, (rect.right - 18, rect.top + 44), DIM,
                  right=True)
         else:
-            text(s, "NEXT UP", 15, (rect.right - 18, rect.top + 50), GOLD,
+            text(s, "NEXT UP", 15, (rect.right - 18, rect.top + 44), GOLD,
                  right=True)
 
     def draw_ball(self, s, rect, i):
@@ -2157,16 +2337,22 @@ class Game:
         base = (70, 76, 94) if locked else RED
         pygame.draw.rect(s, mix(PANEL, base, 0.22 if sel else 0.05), rect)
         pygame.draw.rect(s, base if sel else (52, 57, 72), rect, 3 if sel else 1)
-        self.draw_icon(s, (rect.centerx - 12, rect.top + 23), wcls, base)
+        self.draw_icon(s, (rect.centerx - 12, rect.top + 19), wcls, base)
         label = "LVL %d" % unlock_level(wcls.NAME) if locked else wcls.NAME
-        text(s, label, 12, (rect.centerx, rect.bottom - 12),
+        text(s, label, 11, (rect.centerx, rect.bottom - 8),
              INK if sel else DIM, center=True)
 
     def draw_icon(self, s, c, wcls, colour):
         cx, cy = c
         pygame.draw.circle(s, mix(PANEL, colour, 0.8), (cx, cy), 15)
         pygame.draw.circle(s, mix(colour, (0, 0, 0), 0.4), (cx, cy), 15, 2)
-        if wcls is Fists:
+        if wcls is Summoner:
+            for n in range(3):
+                a = n * TAU / 3 + 0.5
+                q = (int(cx + math.cos(a) * 24), int(cy + math.sin(a) * 24))
+                pygame.draw.circle(s, INK, q, 5)
+                pygame.draw.circle(s, mix(colour, (0, 0, 0), 0.4), q, 5, 1)
+        elif wcls is Fists:
             for n in (-1, 1):
                 q = (cx + 17, cy + n * 11)
                 pygame.draw.line(s, mix(colour, (0, 0, 0), 0.3), (cx + 6, cy), q, 5)
