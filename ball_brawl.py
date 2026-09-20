@@ -213,6 +213,167 @@ def blit_glow(surf, pos, radius, colour, strength=100):
     surf.blit(g, (pos[0] - radius, pos[1] - radius), special_flags=pygame.BLEND_ADD)
 
 
+
+# ---------------------------------------------------------------------------
+# THE CITY
+#
+# The floor is a few blocks of city from above. It is built once into a
+# surface and blitted from then on, from a fixed seed on its own random
+# stream - so the streets never shimmer between frames, and generating them
+# cannot shift the sequence the fight itself draws from.
+#
+# Everything down here is dark on purpose. A fighter, a tracer and a damage
+# number all have to stay readable over it, so no roof, road or park is
+# allowed to get brighter than the dimmest thing in the fight.
+# ---------------------------------------------------------------------------
+ASPHALT   = (25, 26, 34)
+ROADTOP   = (33, 35, 45)
+ROADLINE  = (60, 63, 76)
+CROSSWALK = (88, 92, 108)
+PARKLAND  = (25, 40, 31)
+ROOFS = ((38, 40, 50), (44, 42, 52), (34, 37, 47),
+         (47, 45, 55), (39, 43, 53), (31, 34, 43))
+
+ROAD_W = 30
+_city_floor = None
+
+
+def _roof(s, r, rng):
+    """One building from above: a lip on two sides reads as height."""
+    base = ROOFS[rng.randrange(len(ROOFS))]
+    pygame.draw.rect(s, base, r)
+    lip = mix(base, (120, 126, 148), 0.40)
+    pygame.draw.line(s, lip, r.topleft, (r.right - 1, r.top), 2)
+    pygame.draw.line(s, lip, r.topleft, (r.left, r.bottom - 1), 2)
+    pygame.draw.rect(s, mix(base, (0, 0, 0), 0.45), r, 1)
+    for _ in range(rng.randint(0, 3)):          # vents, stairwells, tanks
+        w = rng.randint(4, max(5, r.w // 3))
+        h = rng.randint(4, max(5, r.h // 3))
+        if w + 8 >= r.w or h + 8 >= r.h:
+            continue
+        d = pygame.Rect(r.x + rng.randint(4, r.w - w - 4),
+                        r.y + rng.randint(4, r.h - h - 4), w, h)
+        pygame.draw.rect(s, mix(base, (0, 0, 0), 0.30), d)
+        pygame.draw.rect(s, mix(base, (130, 136, 158), 0.22), d, 1)
+
+
+def _park(s, block, rng):
+    pygame.draw.rect(s, PARKLAND, block)
+    pygame.draw.rect(s, mix(PARKLAND, (0, 0, 0), 0.35), block, 1)
+    for _ in range(max(2, block.w * block.h // 1100)):
+        x = rng.randint(block.left + 7, block.right - 7)
+        y = rng.randint(block.top + 7, block.bottom - 7)
+        rad = rng.randint(4, 7)
+        pygame.draw.circle(s, (27, 44, 33), (x, y), rad)
+        pygame.draw.circle(s, (33, 55, 40), (x - 1, y - 1), max(2, rad - 2))
+
+
+def _lot(s, block, rng):
+    pygame.draw.rect(s, (29, 30, 38), block)
+    pygame.draw.rect(s, mix((29, 30, 38), (0, 0, 0), 0.35), block, 1)
+    y = block.top + 9
+    while y < block.bottom - 14:
+        for x in range(block.left + 7, block.right - 9, 13):
+            pygame.draw.line(s, (50, 52, 62), (x, y), (x, y + 16), 1)
+        y += 28
+
+
+def _blocks(s, block, rng):
+    cols = max(1, block.w // rng.randint(62, 112))
+    rows = max(1, block.h // rng.randint(56, 96))
+    cw, ch = block.w / cols, block.h / rows
+    for i in range(cols):
+        for j in range(rows):
+            r = pygame.Rect(int(block.x + i * cw) + 2, int(block.y + j * ch) + 2,
+                            int(cw) - 4, int(ch) - 4)
+            if r.w < 14 or r.h < 14 or rng.random() < 0.07:
+                continue
+            _roof(s, r, rng)
+
+
+def _spans(total, centres):
+    """The gaps left between the road bands, as (start, end) pairs."""
+    edges = [0]
+    for c in centres:
+        edges += [c - ROAD_W // 2, c + ROAD_W // 2]
+    edges.append(total)
+    return [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]
+
+
+def city_floor(w, h):
+    """The arena floor. Built on first use, then reused every frame."""
+    global _city_floor
+    if _city_floor is not None and _city_floor.get_size() == (w, h):
+        return _city_floor
+    rng = random.Random(20260920)
+    s = pygame.Surface((w, h))
+    s.fill(ASPHALT)
+    vx = [int(w * 0.14), w // 2, int(w * 0.86)]
+    hy = [int(h * 0.24), h // 2, int(h * 0.76)]
+
+    for x0, x1 in _spans(w, vx):
+        for y0, y1 in _spans(h, hy):
+            block = pygame.Rect(x0 + 5, y0 + 5, x1 - x0 - 10, y1 - y0 - 10)
+            if block.w < 24 or block.h < 24:
+                continue
+            roll = rng.random()
+            if roll < 0.12:
+                _park(s, block, rng)
+            elif roll < 0.22:
+                _lot(s, block, rng)
+            else:
+                _blocks(s, block, rng)
+
+    for x in vx:
+        pygame.draw.rect(s, ROADTOP, (x - ROAD_W // 2, 0, ROAD_W, h))
+    for y in hy:
+        pygame.draw.rect(s, ROADTOP, (0, y - ROAD_W // 2, w, ROAD_W))
+    for x in vx:                                 # centre lines, not through
+        for y in range(8, h, 26):                # the junctions
+            if any(abs(y - j) < ROAD_W for j in hy):
+                continue
+            pygame.draw.line(s, ROADLINE, (x, y), (x, y + 12), 2)
+    for y in hy:
+        for x in range(8, w, 26):
+            if any(abs(x - j) < ROAD_W for j in vx):
+                continue
+            pygame.draw.line(s, ROADLINE, (x, y), (x + 12, y), 2)
+
+    mid = (vx[1], hy[1])
+    for x in vx:
+        for y in hy:
+            if (x, y) == mid:                    # the roundabout owns this one
+                continue
+            for sy in (-1, 1):
+                yy = y + sy * (ROAD_W // 2 + 5)
+                for k in range(-2, 3):
+                    pygame.draw.line(s, CROSSWALK, (x + k * 6, yy - 3),
+                                     (x + k * 6, yy + 3), 2)
+            for sx in (-1, 1):
+                xx = x + sx * (ROAD_W // 2 + 5)
+                for k in range(-2, 3):
+                    pygame.draw.line(s, CROSSWALK, (xx - 3, y + k * 6),
+                                     (xx + 3, y + k * 6), 2)
+
+    cx, cy = mid                                 # a roundabout dead centre
+    pygame.draw.circle(s, ROADTOP, (cx, cy), 66)
+    pygame.draw.circle(s, ASPHALT, (cx, cy), 34)
+    pygame.draw.circle(s, PARKLAND, (cx, cy), 31)
+    pygame.draw.circle(s, mix(PARKLAND, (0, 0, 0), 0.4), (cx, cy), 31, 2)
+    for k in range(6):
+        a = k * TAU / 6 + 0.3
+        pygame.draw.circle(s, (33, 56, 40),
+                           (int(cx + math.cos(a) * 18), int(cy + math.sin(a) * 18)), 5)
+    for k in range(24):
+        a = k * TAU / 24
+        pygame.draw.line(s, ROADLINE,
+                         (cx + math.cos(a) * 46, cy + math.sin(a) * 46),
+                         (cx + math.cos(a) * 52, cy + math.sin(a) * 52), 2)
+
+    _city_floor = s
+    return s
+
+
 # ---------------------------------------------------------------------------
 # NOISE
 #
@@ -953,11 +1114,16 @@ class Fighter:
         ov = Vector2(off)
         p = self.pos + ov
         # trail
+        last = None
         for i, t in enumerate(self.trail):
+            # skip points the ball barely moved between, or a slow ball
+            # stacks fifteen glows on one spot and blows out white
+            if last and abs(t[0] - last[0]) + abs(t[1] - last[1]) < 7:
+                continue
+            last = t
             f = (i + 1) / len(self.trail)
-            rad = max(1, int(self.r * 0.7 * f))
-            col = mix(BG, self.colour, 0.30 * f)
-            pygame.draw.circle(s, col, (int(t[0] + ov.x), int(t[1] + ov.y)), rad)
+            blit_glow(s, (t[0] + ov.x, t[1] + ov.y), self.r * 0.52 * f,
+                      self.colour, int(30 * f * f))
 
         if self.hp <= 0:
             husk = mix(self.dark, (44, 46, 56), 0.65)
@@ -1568,14 +1734,7 @@ class Game:
 
     def draw_arena(self, s, off):
         inner = ARENA.move(off)
-        pygame.draw.rect(s, (17, 18, 26), inner)
-        step = 52
-        for x in range(inner.left + step, inner.right, step):
-            pygame.draw.line(s, GRID, (x, inner.top + 1), (x, inner.bottom - 1))
-        for y in range(inner.top + step, inner.bottom, step):
-            pygame.draw.line(s, GRID, (inner.left + 1, y), (inner.right - 1, y))
-        pygame.draw.circle(s, GRID, inner.center, 90, 1)
-        pygame.draw.circle(s, GRID, inner.center, 4)
+        s.blit(city_floor(ARENA.w, ARENA.h), inner.topleft)
 
         clip = s.get_clip()
         s.set_clip(ARENA)
