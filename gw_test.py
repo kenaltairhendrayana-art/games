@@ -315,6 +315,21 @@ PRIORITY = [
 ]
 
 
+# RYEZ wants a different ORDER, not different things. Every culture is a
+# fixed wait, so the expensive long ones have to be in a tank early or they
+# land after the landfall that needed them - measured, the house was losing
+# the third fight outright because the heart was eight days behind.
+RYEZ_PRIORITY = [
+    ("legs", 1), ("l_wpn", "fist"), ("reactor", 1), ("r_arm", 1),
+    ("r_wpn", "auto"), ("reactor", 2), ("torso", 2), ("armour", 1),
+    ("head", 1), (MOD, "stride"), ("legs", 2), (YARD, 1), (MOD, "link"),
+    ("l_wpn", "pile"), ("armour", 2), ("l_arm", 2), ("torso", 3),
+    ("reactor", 3), ("head", 2), ("r_arm", 2), (YARD, 2), (MOD, "shutters"),
+    ("r_wpn", "revolver"), ("legs", 3), (YARD, 3), ("l_arm", 3),
+    ("armour", 3), ("r_arm", 3), ("head", 3),
+]
+
+
 def _next_part(run, socket, target):
     if run.job_on(socket):
         return None
@@ -337,18 +352,49 @@ def _next_part(run, socket, target):
 
 
 def shop(run):
-    """Spend the day down the list, and mend before you upgrade."""
-    for s in G.SOCKETS:
+    """Spend the day down the list, and mend before you upgrade.
+
+    The two houses want opposite things from the same people. KEAL piles
+    crew onto whatever is nearest finishing, because hands are speed. RYEZ
+    spreads handlers over the pods that are drifting worst, because hands
+    are only stability there and a pod nobody watches expresses wrong."""
+    for s in G.SOCKETS:                  # mending never blocks a pod
         if run.free_crew < 1:
-            return
-        if run.mech.damage_frac(s) > 0.30 and not run.job_on(s):
+            break
+        if run.mech.damage_frac(s) > 0.45 and not run.job_on(s):
             run.start_repair(s)
     for socket, target in PRIORITY:
-        if run.free_crew < 1:
-            return
+        if run.no_room() or (not run.bio and run.free_crew < 1):
+            break
         p = _next_part(run, socket, target)
-        if p is not None and run.can_afford(p.scrap, p.alloy):
+        if p is not None and run.can_afford(*run.price(p)):
             run.start_build(socket, p)
+    # when the rare stuff is the thing blocking the list, buy it the slow way
+    nxt = None
+    for socket, target in (PRIORITY):
+        p = _next_part(run, socket, target)
+        if p is not None:
+            nxt = p
+            break
+    # Smelt only when the rare stuff is ACTUALLY the wall and there is
+    # money going spare - an earlier pass smelted eagerly and starved the
+    # build, which cost KEAL thirty points of win rate on three fights.
+    if (nxt is not None and nxt.alloy > run.alloy and run.alloy == 0
+            and run.scrap >= G.REFINE.scrap + 700
+            and not run.job_on(G.REFINE_SLOT)):
+        run.start_refine()
+    if run.bio:
+        pods = run.growing()
+        for j in pods:
+            run.set_crew(j, 0)
+        # two handlers hold a pod steady; the rest go where it is worst
+        for want in (2, 3):
+            for j in sorted(pods, key=lambda j: (-j.unstable, j.left)):
+                if run.free_crew <= 0:
+                    break
+                if j.crew < want:
+                    run.set_crew(j, want)
+        return
     for j in sorted(run.jobs, key=lambda j: -j.prog):
         while run.free_crew > 0 and j.crew < run.crew_per_job:
             run.set_crew(j, j.crew + 1)

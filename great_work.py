@@ -41,6 +41,15 @@ THE SHAPE OF IT
   itself, which is the only thing in the game that buys you days rather
   than spending them.
 
+  THE TWO HOUSES WORK DIFFERENTLY. KEAL welds: put more crew on a job and
+  it lands sooner, because steel does what it is told. RYEZ splices and
+  waits - a culture in a pod takes half as long again and NO number of
+  handlers makes it faster. What handlers buy there is stability: an
+  unwatched pod drifts, and past the line it expresses wrong and the organ
+  grafts on at 62% of what it should have been. FORCING a pod open early
+  is flawed by definition. So KEAL runs few things quickly and RYEZ runs
+  five, six, seven at once and can never watch them all.
+
   Six landfalls on a fixed calendar. Kill the thing and you harvest it:
   scrap for the yard, ALLOY for the parts money cannot buy, and one more
   pair of hands. Let it past and the city pays, in a number that never
@@ -448,7 +457,7 @@ RYEZ_WORDS = {
     "yard": "THE HATCHERY", "rack": "GENE RACK", "machine": "THE ANIMAL",
     "sockets": "ORGANS", "deploy": "RELEASE", "fitted": "GROWN",
     "the_yard_place": "the hatchery", "gantry": "THE TANK",
-    "bays": "GENE SITES", "repair": "MEND", "rushed": "FORCED",
+    "bays": "GENE SITES", "repair": "MEND", "rushed": "FORCED OPEN",
     "spent": "BIOMASS SPENT", "scrapped": "REABSORBED - HALF BACK",
     "wrecked": "DEAD", "empty": "BARE",
 }
@@ -536,6 +545,8 @@ def pname(socket, part):
         return RYEZ_PARTS.get(("wpn", part.key), part.name)
     if isinstance(part, Module):
         return RYEZ_MODULES.get(part.key, part.name)
+    if isinstance(part, Refine):
+        return REFINE_RYEZ_NAME
     if isinstance(part, YardUp):
         return RYEZ_YARD.get(part.tier, part.name)
     return RYEZ_PARTS.get((part.socket, part.tier), part.name)
@@ -619,6 +630,8 @@ def pblurb(socket, part):
         return RYEZ_BLURB.get(("wpn", part.key), part.blurb)
     if isinstance(part, Module):
         return RYEZ_MOD_BLURB.get(part.key, part.blurb)
+    if isinstance(part, Refine):
+        return REFINE_RYEZ_BLURB
     if isinstance(part, YardUp):
         return RYEZ_YARD_BLURB.get(part.tier, part.blurb)
     return RYEZ_BLURB.get((part.socket, part.tier), part.blurb)
@@ -626,24 +639,27 @@ def pblurb(socket, part):
 
 def peffect(part):
     """The line of numbers under a module, in this house's units."""
-    if CURRENT["house"] == "ryez" and isinstance(part, Module):
-        return RYEZ_MOD_EFFECT.get(part.key, part.effect)
+    if CURRENT["house"] == "ryez":
+        if isinstance(part, Module):
+            return RYEZ_MOD_EFFECT.get(part.key, part.effect)
+        if isinstance(part, Refine):
+            return REFINE_RYEZ_EFFECT
     return part.effect
 
 HOUSES = {
     "keal": House(
         "keal", "KEAL CO",
         "we build it out of steel",
-        "A shipyard with a grudge: a gantry, a crew who can only be in so "
-        "many places, and a half-finished machine. RYEZ grows things in "
-        "tanks and lets them walk up the road at us.",
+        "A gantry, a crew, and a half-finished machine. Put more hands on "
+        "a job and it lands sooner - steel does what it is told. RYEZ grows "
+        "things in tanks and lets them walk up the road at us.",
         KEAL_GOLD, draw_keal_logo, "mech", "FITTED", "bio", {}),
     "ryez": House(
         "ryez", "RYEZ CO",
         "we grow it",
-        "A hatchery with a grudge: a tank, handlers who can only be in so "
-        "many places, and a half-grown animal. KEAL drives things made of "
-        "ship plate up the road at us.",
+        "Pods, handlers, and a half-grown animal. A culture takes the days "
+        "it takes and no crowd makes it faster - handlers only stop it "
+        "expressing wrong. KEAL drives ship plate up the road at us.",
         RYEZ_FLESH, draw_ryez_logo, "bio", "GROWN", "mech", RYEZ_WORDS),
 }
 
@@ -1212,6 +1228,8 @@ def part_of(socket, fit):
         return None
     if socket == MOD_SLOT:
         return MODULES.get(fit)
+    if socket == REFINE_SLOT:
+        return REFINE
     if socket == YARD_SLOT:
         return YARD[fit - 1] if isinstance(fit, int) and 1 <= fit <= len(YARD)             else None
     if socket in ("l_wpn", "r_wpn"):
@@ -1360,6 +1378,40 @@ YARD = [
            "We stopped selling the hide and started cooking it."),
 ]
 YARD_SLOT = "yard"
+
+
+# ---------------------------------------------------------------------------
+# THE LONG WAY ROUND
+#
+# ALLOY only ever came off a corpse, which meant a run that lost a fight
+# lost the thing it needed to win the next one, and a run that won them all
+# still finished sitting on money it could not spend. This is the other
+# way: put a great deal of scrap and several days into a crucible - or a
+# culture - and get one piece out. It is deliberately a bad rate. It is
+# meant to be the thing you do when the alternative is nothing.
+# ---------------------------------------------------------------------------
+class Refine:
+    __slots__ = ("tier", "name", "scrap", "alloy", "days", "effect", "blurb",
+                 "hp")
+
+    def __init__(self):
+        self.tier = 0
+        self.name = "SMELT A BILLET"
+        self.scrap = 300
+        self.alloy = 0
+        self.days = 4
+        self.hp = 0
+        self.effect = "one ALLOY out, two once the FOUNDRY is lit"
+        self.blurb = ("A bad rate and everybody knows it. It is still "
+                      "better than going out short.")
+
+
+REFINE = Refine()
+REFINE_SLOT = "refine"
+REFINE_RYEZ_NAME = "CULTURE A STRAND"
+REFINE_RYEZ_EFFECT = "one GENOME out, two once the GENE VATS are running"
+REFINE_RYEZ_BLURB = ("Slow, wasteful, and it works. It is still better than "
+                     "going out short.")
 
 # ---------------------------------------------------------------------------
 # THE MACHINE
@@ -1892,8 +1944,10 @@ def part_shape(socket, fit, arm_tier=1):
         return (bio_weapon if bio else shape_weapon)(fit, side, arm_tier)
     if socket == "reactor":
         r = (11, 15, 19)[fit - 1]
-        if bio:                              # a heart is not a cube
-            return [([(-r * 1.15 * math.cos(a), -284 + r * 1.3 * math.sin(a)
+        if bio:                              # a heart, deep in the trunk
+            hx, hy = HEART_AT
+            return [([(hx - r * 1.15 * math.cos(a),
+                       hy + r * 1.3 * math.sin(a)
                        - r * 0.3 * abs(math.cos(a * 2)))
                       for a in (i * TAU / 14 for i in range(14))], "trim")]
         return [([(-r, -284 - r), (r, -284 - r), (r, -284 + r), (-r, -284 + r)],
@@ -1962,11 +2016,17 @@ def draw_socket_front(rig, socket, fit, dmg=0.0, arm_tier=1, mode="on",
             rig.poly(pts, _tone("main", dmg, wrecked, tones), 3)
             mid = sum(p[1] for p in pts) / len(pts)
             if tones is BIO_TONES:
-                for i in range(4):             # ribs rather than cross braces
-                    y = mid - 34 + i * 22
-                    w = 50 - abs(i - 1.5) * 8
-                    rig.line((-w, y), (w, y + 4),
-                             _tone("dark", dmg, wrecked, tones), 3)
+                xs = [q[0] for q in pts]
+                ys = [q[1] for q in pts]
+                x0, x1 = min(xs), max(xs)
+                y0, y1 = min(ys), max(ys)
+                c = _tone("dark", dmg, wrecked, tones)
+                for i in range(6):             # ribs, not cross braces
+                    f = 0.12 + i * 0.152
+                    x = lerp(x0, x1, f)
+                    h = (y1 - y0) * (0.30 + 0.16 * math.sin(f * math.pi))
+                    mid_y = (y0 + y1) * 0.5
+                    rig.line((x, mid_y - h), (x - 6, mid_y + h), c, 3)
             else:
                 rig.line((pts[0][0] + 6, mid - 26), (pts[1][0] - 6, mid + 26),
                          _tone("dark", dmg, wrecked, tones), 3)
@@ -2032,17 +2092,19 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
         beat = abs(math.sin(t * 2.6)) ** 3.0
         pulse = (0.80 + 0.45 * beat) if bio else (0.86 + 0.14 * math.sin(t * 2.2))
         CORE_C = HEART if bio else CORE
-        rig.circle((0, -284), r * 0.95, (28, 14, 20) if bio else (18, 28, 34))
-        rig.circle((0, -284), r * 0.95, shade(CORE_C, 0.55), 1)
-        rig.circle((0, -284), r * 0.45 * pulse, CORE_C)
-        rig.light((0, -284), r * 1.1 * pulse, CORE_C, 34)
+        CX, CY = HEART_AT if bio else (0, -284)
+        rig.circle((CX, CY), r * 0.95, (28, 14, 20) if bio else (18, 28, 34))
+        rig.circle((CX, CY), r * 0.95, shade(CORE_C, 0.55), 1)
+        rig.circle((CX, CY), r * 0.45 * pulse, CORE_C)
+        rig.light((CX, CY), r * 1.1 * pulse, CORE_C, 34)
     if mech.alive("head") and lit:
         tier = mech.fit["head"]
         eye = (-356, -366, -370)[tier - 1]
-        if CURRENT["house"] == "ryez":     # a cluster, not a visor
-            for k in (-1, 0, 1):
-                rig.circle((k * 7, eye + abs(k) * 3), 2.6, (250, 232, 140))
-                rig.light((k * 7, eye + abs(k) * 3), 5, RYEZ_ACID, 55)
+        if CURRENT["house"] == "ryez":     # an eye on the side of a skull
+            e, hs = head_eye(tier)
+            rig.circle((e.x, e.y), hs * 0.20, (250, 232, 140))
+            rig.circle((e.x, e.y), hs * 0.09, (24, 16, 18))
+            rig.light((e.x, e.y), hs * 0.55, RYEZ_ACID, 55)
         else:
             rig.light((0, eye), 5, (255, 176, 96), 60)
             rig.circle((0, eye), 2.4, (255, 214, 150))
@@ -2052,16 +2114,22 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
 # ---------------------------------------------------------------------------
 # DRAWING THE ANIMAL
 #
-# RYEZ's half of the game. The SKELETON is identical to KEAL's - same nine
-# sockets, same joint heights, same hand positions - because the whole
-# design rests on the two campaigns being one campaign. What changes is the
-# flesh on it: nothing here has two parallel edges, every joint is a ball,
-# and the reactor is a heart that beats.
+# RYEZ's half of the game, and it is NOT the machine in a different colour.
+# The nine sockets are the same nine sockets - a socket is a contract about
+# what a part does, not about where it sits - but the thing they hang off
+# is a low four-legged animal in profile: a trunk carried on two or three
+# pairs of splayed legs, a neck and a head out in front, a tail behind, and
+# a pair of forelimbs up near the throat where the organs grow.
 #
-# Sharing the skeleton is not laziness. It means an empty socket still
-# ghosts the exact thing that goes there, the welding-up-from-the-feet wipe
-# still works on a growing limb, and a KEAL player who switches sides can
-# read the silhouette on the first day.
+# That means the pod view is a PROFILE and the gantry view is a front
+# elevation, which is the right way round for each: a mech reads head-on
+# and an animal reads side-on. All the machinery underneath survives it -
+# an empty socket still ghosts the exact shape that goes there, a growing
+# part still fills from the bottom, damage still tints per part - because
+# none of that ever cared what the coordinates meant.
+#
+#   x = 0 is the middle of the trunk, +x is the way it is facing,
+#   y = 0 is the ground, and up is negative. Same as everything else.
 # ---------------------------------------------------------------------------
 FLESH = (156, 104, 148)
 FLESH_D = (96, 58, 96)
@@ -2069,205 +2137,474 @@ FLESH_L = (206, 156, 196)
 CHITIN = (128, 150, 92)
 HEART = (236, 108, 132)
 
+TRUNK_BACK, TRUNK_FRONT = -74.0, 96.0
+TRUNK_TOP, TRUNK_BELLY = -264.0, -150.0
+LEG_ROOT_Y = -162.0
+NECK_ROOT = (90.0, -242.0)
+HEART_AT = (-8.0, -206.0)
 
-def _taper(cx, top, bot, wtop, wbot, bulge=0.0):
-    """A limb segment: wide at the joint, narrow at the far end, and bowed
-    out in the middle if you ask. Eight points, no straight sides."""
+
+def _t(v):
+    return (v.x, v.y)
+
+
+def _blob(cx, cy, rx, ry, n=16, lump=0.0, seed=0.0):
+    """A closed organic outline. Nothing in here has a straight edge."""
     pts = []
-    n = 5
-    for i in range(n + 1):
-        f = i / n
-        y = lerp(top, bot, f)
-        w = lerp(wtop, wbot, f) + bulge * math.sin(f * math.pi)
-        pts.append((cx - w, y))
-    for i in range(n, -1, -1):
-        f = i / n
-        y = lerp(top, bot, f)
-        w = lerp(wtop, wbot, f) + bulge * math.sin(f * math.pi)
-        pts.append((cx + w, y))
+    for i in range(n):
+        a = i * TAU / n
+        w = 1.0 + lump * math.sin(a * 3.0 + seed)
+        pts.append((cx + rx * w * math.cos(a), cy + ry * w * math.sin(a)))
     return pts
 
 
-def bio_legs(tier):
-    hip_x = (30, 35, 41)[tier - 1]
-    tw = (12, 16, 19)[tier - 1]
-    knee = (-118, -124, -132)[tier - 1]
+def _taper(ax, ay, bx, by, wa, wb, bow=0.0):
+    """A limb segment, fat at the joint and thin at the end, bowed out."""
+    a, b = Vector2(ax, ay), Vector2(bx, by)
+    d = unit(b - a)
+    nrm = Vector2(-d.y, d.x)
     out = []
-    for sgn in (-1, 1):
-        cx = hip_x * sgn
-        out.append((_taper(cx, -198, knee, tw, tw * 0.72, tw * 0.34), "main"))
-        out.append((_taper(cx + sgn * 2, knee + 4, -44,
-                           tw * 0.78, tw * 0.52, tw * 0.22), "main"))
-        kr = (10, 12, 14)[tier - 1]
-        out.append(([(cx + math.cos(a) * kr, knee + 2 + math.sin(a) * kr)
-                     for a in (i * TAU / 10 for i in range(10))], "dark"))
-        # a splayed foot with three toes, which is the outline change
-        for k in (-1, 0, 1):
-            tx = cx + k * (tw * 0.95)
-            out.append(([(tx - tw * 0.42, -46), (tx + tw * 0.42, -46),
-                         (tx + tw * 0.30 + k * 5, -6), (tx - tw * 0.32 + k * 5,
-                                                        -6)], "dark"))
-        if tier >= 2:                         # a tendon up the back
-            out.append((_taper(cx - sgn * (tw + 3), -190, knee + 8,
-                               3.0, 2.0), "light"))
-    if tier == 3:                             # haunches
-        for sgn in (-1, 1):
-            out.append(([(sgn * (hip_x - 16), -214), (sgn * (hip_x + 24), -196),
-                         (sgn * (hip_x + 18), -150), (sgn * (hip_x - 10), -164)],
-                        "dark"))
-    return out
-
-
-def bio_torso(tier):
-    if tier == 1:                             # ribs, and you can see through
-        out = [([(-56, -328), (56, -328), (44, -238), (34, -202),
-                 (-34, -202), (-44, -238)], "hollow")]
-        return out
-    sh = 70 if tier == 2 else 84
-    body = []
-    n = 16
-    for i in range(n + 1):                    # a trunk, widest at the chest
+    n = 4
+    for i in range(n + 1):
         f = i / n
-        y = lerp(-334, -202, f)
-        w = sh * (1.0 - 0.52 * f ** 1.5) * (0.72 + 0.34 * math.sin(f * 2.2))
-        body.append((-abs(w), y))
+        q = a + (b - a) * f
+        w = lerp(wa, wb, f) + bow * math.sin(f * math.pi)
+        out.append(((q + nrm * w).x, (q + nrm * w).y))
     for i in range(n, -1, -1):
         f = i / n
-        y = lerp(-334, -202, f)
-        w = sh * (1.0 - 0.52 * f ** 1.5) * (0.72 + 0.34 * math.sin(f * 2.2))
-        body.append((abs(w), y))
-    out = [(body, "main")]
-    for i in range(4):                        # ribs across the front
-        y = -312 + i * 26
-        w = sh * (0.56 - i * 0.055)
-        out.append(([(-w, y), (w, y), (w * 0.94, y + 11), (-w * 0.94, y + 11)],
-                    "dark"))
-    if tier == 3:                             # shoulder mounds
-        for sgn in (-1, 1):
-            out.append(([(sgn * (sh - 6), -336), (sgn * (sh + 18), -320),
-                         (sgn * (sh + 12), -278), (sgn * (sh - 8), -286)],
-                        "dark"))
+        q = a + (b - a) * f
+        w = lerp(wa, wb, f) + bow * math.sin(f * math.pi)
+        out.append(((q - nrm * w).x, (q - nrm * w).y))
     return out
 
 
-def bio_head(tier):
-    if tier == 1:
-        return [([(-15, -372), (0, -378), (15, -372), (17, -344),
-                  (0, -336), (-17, -344)], "main")]
-    if tier == 2:
-        return [([(-20, -384), (0, -392), (20, -384), (22, -350),
-                  (10, -334), (-10, -334), (-22, -350)], "main"),
-                ([(-24, -392), (-10, -400), (-8, -384)], "dark"),
-                ([(24, -392), (10, -400), (8, -384)], "dark")]
-    return [([(-22, -390), (0, -400), (22, -390), (24, -352),
-              (12, -332), (-12, -332), (-24, -352)], "main"),
-            ([(-26, -404), (-6, -396), (-12, -380)], "dark"),
-            ([(26, -404), (6, -396), (12, -380)], "dark"),
-            ([(-13, -410), (0, -398), (13, -410), (0, -392)], "light")]
+def leg_xs(tier):
+    """Where the pairs of legs come out of the belly. Two pairs or three -
+    the count is the loudest thing about the silhouette, so it is the thing
+    the tier changes."""
+    return (66.0, -34.0) if tier == 1 else (72.0, 8.0, -58.0)
+
+
+def leg_geom(tier):
+    """(upper, lower, width, splay) for one leg of this tier."""
+    return ((72.0, 96.0, 9.0, 0.40),
+            (84.0, 108.0, 12.0, 0.46),
+            (98.0, 122.0, 14.0, 0.54))[tier - 1]
+
+
+def _one_leg(rx, tier, phase=0.0, moving=0.0, dx=0.0):
+    """Two segments from the belly to the ground. Shared by the pod view
+    and the fight, so a leg cannot look like two different legs."""
+    up, low, w, splay = leg_geom(tier)
+    splay *= 0.30 + rx / 84.0          # fore legs plant forward, hind back
+    swing = math.sin(phase) * 0.38 * moving
+    bend = 0.52 + max(0.0, -math.cos(phase)) * 0.42 * moving
+    if rx < 0:
+        bend *= 1.35                   # and the hind pair crouches
+    root = Vector2(rx + dx, LEG_ROOT_Y)
+    a1 = math.pi / 2 - splay + swing
+    knee = root + Vector2(math.cos(a1), math.sin(a1)) * up
+    a2 = a1 + bend
+    foot = knee + Vector2(math.cos(a2), math.sin(a2)) * low
+    if foot.y > -6:
+        foot.y = -6
+    return root, knee, foot, w
+
+
+def bio_legs(tier, phase=0.0, moving=0.0, half=None):
+    """`half` picks the far pair or the near pair, so the fight can put the
+    trunk between them. The pod view asks for both and draws them flat."""
+    out = []
+    pairs = ((-16.0, "dark", 0.0), (14.0, "main", math.pi))
+    if half == "far":
+        pairs = pairs[:1]
+    elif half == "near":
+        pairs = pairs[1:]
+    for dx, sh, off in pairs:
+        for i, rx in enumerate(leg_xs(tier)):
+            root, knee, foot, w = _one_leg(rx, tier, phase + off + i * 1.7,
+                                           moving, dx=dx)
+            out.append((_taper(root.x, root.y, knee.x, knee.y, w, w * 0.78,
+                               w * 0.3), sh))
+            out.append((_taper(knee.x, knee.y, foot.x, foot.y, w * 0.74,
+                               w * 0.42, w * 0.2), sh))
+            out.append((_blob(knee.x, knee.y, w + 2, w + 2, 9), "dark"))
+            for k in (-1, 0, 1):               # a foot that grips the road
+                out.append(([(foot.x, foot.y - 3),
+                             (foot.x + (16 + k * 5) * (1 if k >= 0 else -0.7),
+                              foot.y + 3 + abs(k)),
+                             (foot.x, foot.y + 5)], "dark"))
+    return out
+
+
+def bio_torso(tier, wag=0.0):
+    """Trunk and tail together, for the pod view."""
+    return bio_tail(tier, wag) + bio_trunk(tier)
+
+
+def bio_tail(tier, wag=0.0):
+    """The tail belongs to the trunk, so a bare skeleton still has
+    vertebrae hanging off the back of it."""
+    cy = (TRUNK_TOP + TRUNK_BELLY) * 0.5
+    ry = (TRUNK_BELLY - TRUNK_TOP) * 0.5
+    grow = (0.86, 1.0, 1.12)[tier - 1]
+    out = []
+    seg = 6
+    prev = Vector2(TRUNK_BACK + 8, cy + 6)
+    for i in range(seg):
+        f = (i + 1) / seg
+        nxt = Vector2(TRUNK_BACK - 150.0 * f,
+                      cy + 10 + 118.0 * f * f + wag * 26.0 * f * f)
+        w = (ry * grow * 0.72) * (1.0 - f * 0.88)
+        out.append((_taper(prev.x, prev.y, nxt.x, nxt.y,
+                           max(2.0, w), max(1.5, w * 0.6)), "dark"))
+        prev = nxt
+    return out
+
+
+def bio_trunk(tier):
+    cx = (TRUNK_BACK + TRUNK_FRONT) * 0.5
+    cy = (TRUNK_TOP + TRUNK_BELLY) * 0.5
+    rx = (TRUNK_FRONT - TRUNK_BACK) * 0.5
+    ry = (TRUNK_BELLY - TRUNK_TOP) * 0.5
+    grow = (0.86, 1.0, 1.12)[tier - 1]
+    body = _blob(cx, cy, rx * grow, ry * grow, 18, 0.10, 1.4)
+    if tier == 1:                              # ribs, and you can see through
+        return [(body, "hollow")]
+    out = [(body, "main")]
+    for i in range(5):                         # flank plates over the ribs
+        f = 0.14 + i * 0.18
+        x = lerp(TRUNK_BACK, TRUNK_FRONT, f)
+        h = ry * grow * (0.62 - abs(f - 0.5) * 0.4)
+        out.append((_blob(x, cy + 8, 13, h, 10, 0.12, x), "dark"))
+    if tier == 3:                              # a heavier shoulder mass
+        out.append((_blob(TRUNK_FRONT - 30, cy - 6, 28, ry * 0.62, 12, 0.12,
+                          3.0), "dark"))
+    return out
+
+
+def _up_of(d):
+    """The perpendicular of `d` that points UP the screen. Screen y grows
+    downward, so the naive (-d.y, d.x) is the one pointing at the road, and
+    building a skull off it puts the jaw on top."""
+    n = Vector2(-d.y, d.x)
+    return n if n.y < 0 else -n
+
+
+def neck_head(tier, rear=0.0):
+    """The neck as a chain and the skull on the end. `rear` lifts it, which
+    is what a wind-up looks like on an animal."""
+    reach = (50.0, 60.0, 70.0)[tier - 1]
+    rise = (-0.42, -0.50, -0.56)[tier - 1] - rear * 0.5
+    root = Vector2(*NECK_ROOT)
+    tip = root + Vector2(math.cos(rise), math.sin(rise)) * reach
+    return root, tip, (27.0, 33.0, 39.0)[tier - 1]
+
+
+def bio_head(tier, rear=0.0):
+    root, tip, hs = neck_head(tier, rear)
+    d = unit(tip - root)
+    nrm = _up_of(d)
+    out = []
+    seg = 4
+    prev = root
+    for i in range(seg):
+        f = (i + 1) / seg
+        q = root + (tip - root) * f
+        out.append((_taper(prev.x, prev.y, q.x, q.y, hs * (0.86 - 0.16 * f),
+                           hs * (0.86 - 0.16 * (f + 1 / seg))), "main"))
+        prev = q
+    hc = tip + d * hs * 0.5
+    top = [hc + nrm * hs * 0.78 - d * hs * 0.55,
+           hc - nrm * hs * 0.20 - d * hs * 0.62,
+           hc - nrm * hs * 0.16 + d * hs * 1.35,
+           hc + nrm * hs * 0.56 + d * hs * 0.95]
+    jaw = [hc - nrm * hs * 0.18 - d * hs * 0.55,
+           hc - nrm * hs * 0.78 - d * hs * 0.40,
+           hc - nrm * hs * 0.62 + d * hs * 1.15,
+           hc - nrm * hs * 0.16 + d * hs * 1.25]
+    out.append(([_t(p) for p in top], "main"))
+    out.append(([_t(p) for p in jaw], "dark"))
+    for i in range(4):                         # teeth
+        f = 0.15 + i * 0.28
+        q = hc + d * hs * f * 1.4 - nrm * hs * 0.17
+        out.append(([_t(q), _t(q - nrm * hs * 0.26 + d * 3),
+                     _t(q + d * hs * 0.22)], "light"))
+    if tier >= 2:                              # horns
+        for k in (1, 0.45):
+            b = hc + nrm * hs * 0.6 * k - d * hs * 0.25
+            out.append(([_t(b), _t(b + nrm * hs * 1.5 * k - d * hs * 0.7),
+                         _t(b + nrm * hs * 0.5 * k + d * hs * 0.2)], "dark"))
+    if tier == 3:                              # a crest down the skull
+        b = hc - d * hs * 0.5
+        out.append(([_t(b + nrm * hs * 0.8),
+                     _t(b + nrm * hs * 2.0 - d * hs * 0.1),
+                     _t(b + nrm * hs * 0.9 + d * hs * 0.9)], "dark"))
+    return out
+
+
+def head_eye(tier, rear=0.0):
+    root, tip, hs = neck_head(tier, rear)
+    d = unit(tip - root)
+    nrm = _up_of(d)
+    return (tip + d * hs * 0.72 + nrm * hs * 0.34), hs
+
+
+def bio_hand(tier, side, reach=0.0):
+    """The tip of a forelimb, where an organ grows. `reach` throws it
+    forward, which is what a strike looks like on something with claws."""
+    up, low = ((52.0, 46.0), (62.0, 54.0), (74.0, 64.0))[tier - 1]
+    dx = -12.0 if side == "l" else 10.0
+    root = Vector2(TRUNK_FRONT - 18 + dx, TRUNK_BELLY - 34)
+    a = math.sin(clamp(reach, 0.0, 1.0) * math.pi)
+    a1 = 0.30 - a * 0.70
+    elb = root + Vector2(math.cos(a1), math.sin(a1)) * up
+    fore = a1 + 0.95 - a * 0.85
+    hand = elb + Vector2(math.cos(fore), math.sin(fore)) * low
+    return root, elb, hand
+
+
+def bio_arm_posed(tier, side, reach=0.0):
+    """The forelimb, optionally thrown forward into a strike."""
+    root, elb, hand = bio_hand(tier, side, reach)
+    w = (8.0, 11.0, 14.0)[tier - 1]
+    sh = "dark" if side == "l" else "main"
+    out = [(_taper(root.x, root.y, elb.x, elb.y, w, w * 0.82, w * 0.3), sh),
+           (_taper(elb.x, elb.y, hand.x, hand.y, w * 0.8, w * 0.5,
+                   w * 0.25), sh),
+           (_blob(elb.x, elb.y, w + 2, w + 2, 9), "dark")]
+    if tier >= 2:
+        out.insert(0, (_blob(root.x, root.y - 4, w * 2.2, w * 1.6, 11, 0.12,
+                             2.0), "dark"))
+    if tier == 3:
+        out.append((_blob((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5,
+                          w * 1.5, w * 1.1, 10, 0.1, 5.0), "light"))
+    return out
 
 
 def bio_arm(tier, side):
-    sgn = -1 if side == "l" else 1
-    w = (10, 13, 16)[tier - 1]
-    sx = (64, 74, 86)[tier - 1] * sgn
-    ex = (72, 84, 96)[tier - 1] * sgn
-    out = [(_taper(sx, -326, -260, w, w * 0.8, w * 0.35), "main"),
-           (_taper(ex, -256, -192, w * 0.86, w * 0.62, w * 0.3), "main"),
-           ([(ex + math.cos(a) * (w + 1), -258 + math.sin(a) * (w + 1))
-             for a in (i * TAU / 10 for i in range(10))], "dark")]
-    if tier >= 2:                             # a shoulder knuckle
-        out.insert(0, ([(sx + math.cos(a) * (w + 9) * 1.5,
-                         -324 + math.sin(a) * (w + 7))
-                        for a in (i * TAU / 12 for i in range(12))], "dark"))
+    root, elb, hand = bio_hand(tier, side)
+    w = (8.0, 11.0, 14.0)[tier - 1]
+    sh = "dark" if side == "l" else "main"
+    out = [(_taper(root.x, root.y, elb.x, elb.y, w, w * 0.82, w * 0.3), sh),
+           (_taper(elb.x, elb.y, hand.x, hand.y, w * 0.8, w * 0.5,
+                   w * 0.25), sh),
+           (_blob(elb.x, elb.y, w + 2, w + 2, 9), "dark")]
+    if tier >= 2:
+        out.insert(0, (_blob(root.x, root.y - 4, w * 2.2, w * 1.6, 11, 0.12,
+                             2.0), "dark"))
     if tier == 3:
-        out.append((_taper(ex, -244, -196, w + 6, w + 2, 4.0), "light"))
+        out.append((_blob((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5,
+                          w * 1.5, w * 1.1, 10, 0.1, 5.0), "light"))
     return out
 
 
 def bio_armour(tier):
-    """Overlapping scales rather than bolted plate."""
+    """Plate grown ALONG THE SPINE, which is where an animal keeps it."""
     out = []
-    for i, (y, w) in enumerate(((-306, 42), (-274, 46), (-242, 42))):
-        out.append(([(-w, y), (0, y - 7), (w, y), (w * 0.9, y + 22),
-                     (0, y + 29), (-w * 0.9, y + 22)], "plate"))
-    if tier >= 2:
-        for sgn in (-1, 1):
-            out.append(([(sgn * 25, -208), (sgn * 48, -200), (sgn * 43, -152),
-                         (sgn * 26, -158)], "plate"))
-    if tier == 3:
-        for sgn in (-1, 1):
-            out.append(([(sgn * 54, -338), (sgn * 92, -320), (sgn * 86, -284),
-                         (sgn * 52, -294)], "plate"))
-            out.append(([(sgn * 60, -332), (sgn * 86, -318), (sgn * 84, -308),
-                         (sgn * 58, -320)], "trim"))
+    n = 6
+    for i in range(n):
+        f = i / (n - 1.0)
+        x = lerp(TRUNK_BACK + 4, TRUNK_FRONT - 10, f)
+        h = 16 + 20 * math.sin(f * math.pi)
+        y = TRUNK_TOP + 10 - h * 0.15
+        out.append(([(x - 15, y + 8), (x, y - h), (x + 15, y + 8),
+                     (x + 9, y + 18), (x - 9, y + 18)], "plate"))
+    if tier >= 2:                              # skirts down the flank
+        for f in (0.26, 0.52, 0.78):
+            x = lerp(TRUNK_BACK + 6, TRUNK_FRONT - 18, f)
+            out.append(([(x - 19, -178), (x + 5, -184), (x + 20, -168),
+                         (x + 13, -138), (x - 8, -134), (x - 20, -152)],
+                        "plate"))
+    if tier == 3:                              # a sail, and a tail club
+        for i in range(5):                     # a ridge of spines, not a dome
+            f = i / 4.0
+            x = lerp(TRUNK_BACK + 16, TRUNK_FRONT - 36, f)
+            h = 22 + 26 * math.sin(f * math.pi)
+            out.append(([(x - 11, TRUNK_TOP + 2), (x + 2, TRUNK_TOP - h),
+                         (x + 12, TRUNK_TOP + 2)], "plate"))
+        out.append((_blob(-206, -92, 26, 22, 10, 0.18, 2.0), "plate"))
     return out
 
 
 def bio_weapon(key, side, tier_arm):
-    """The organs. Same hardpoint, same hand position, nothing bolted on."""
-    hx, hy = arm_hand(tier_arm, side)
-    hx = (72, 84, 96)[tier_arm - 1] * (-1 if side == "l" else 1)
-    sgn = -1 if side == "l" else 1
+    """The organs. Claws and rasps grow on the forelimb; anything that is
+    thrown or sprayed grows on the BACK, because that is where a sac goes."""
     w = WEAPONS.get(key)
     if w is None:
         return []
+    _, _, hand = bio_hand(tier_arm, side)
+    hx, hy = hand.x, hand.y
+    back_x = 18 + (18 if side == "r" else -34)
+    back_y = TRUNK_TOP + 40
     if w.kind == "melee" and key in ("fist", "pile"):
         big = key == "pile"
-        s = 19 if big else 15
-        out = [(_taper(hx, hy - 4, hy + s * 1.5, s * 0.8, s * 0.55, s * 0.3),
-                "dark")]
-        for k in (-1, 0, 1):                  # claws
-            cx = hx + k * s * 0.62
-            out.append(([(cx - 3, hy + s * 1.2), (cx + 3, hy + s * 1.2),
-                         (cx + k * 4, hy + s * (2.6 if big else 2.1))],
-                        "light"))
+        s = 17 if big else 13
+        out = [(_blob(hx + 4, hy + 8, s, s * 0.9, 11, 0.14, 1.0), "dark")]
+        for k in (-1, 0, 1):
+            a = 0.55 + k * 0.42
+            tipv = Vector2(hx + 4, hy + 8) + Vector2(math.cos(a),
+                                                     math.sin(a)) * s * 2.4
+            out.append((_taper(hx + 4, hy + 8, tipv.x, tipv.y, s * 0.30,
+                               1.5), "light"))
         return out
-    if w.kind == "melee":                     # a rasping tongue
-        long = 62 if key == "ripper" else 52
-        out = [(_taper(hx, hy - 4, hy + long, 8, 5, 3), "main")]
+    if w.kind == "melee":                      # a rasping tongue
+        long = 58 if key == "ripper" else 48
+        tipv = Vector2(hx + long * 0.86, hy + long * 0.5)
+        out = [(_taper(hx, hy, tipv.x, tipv.y, 9, 5, 3), "main")]
         for i in range(6):
-            y = hy + 6 + i * (long - 8) / 6.0
-            out.append(([(hx + 6, y), (hx + 13, y + 3), (hx + 6, y + 7)],
+            f = 0.1 + i * 0.15
+            q = Vector2(hx, hy) + (tipv - Vector2(hx, hy)) * f
+            nrm = unit(tipv - Vector2(hx, hy))
+            nrm = Vector2(-nrm.y, nrm.x)
+            out.append(([_t(q + nrm * 7), _t(q + nrm * 15),
+                         _t(q + nrm * 7 + unit(tipv - Vector2(hx, hy)) * 7)],
                         "light"))
             if key == "ripper":
-                out.append(([(hx - 6, y + 3), (hx - 13, y + 6), (hx - 6, y + 10)],
-                            "light"))
+                out.append(([_t(q - nrm * 7), _t(q - nrm * 15),
+                             _t(q - nrm * 7 + unit(tipv - Vector2(hx, hy)) * 7)], "light"))
         return out
-    if w.kind == "gun":                       # a spine battery
-        long = 56 if key == "revolver" else 46
-        out = [(_taper(hx, hy - 8, hy + 18, 11, 9, 4), "dark")]
-        n = 5 if key == "revolver" else 3
+    if w.kind == "gun":                        # a quill battery on the back
+        n = 7 if key == "revolver" else 4
+        out = [(_blob(back_x, back_y - 14, 26, 17, 12, 0.15, 4.0), "dark")]
         for i in range(n):
-            q = hx + (i - (n - 1) / 2.0) * 7
-            out.append(([(q - 2.4, hy + 14), (q + 2.4, hy + 14),
-                         (q, hy + long)], "light"))
+            f = (i - (n - 1) / 2.0) / max(1.0, n - 1.0)
+            a = -math.pi / 2 + f * 0.85
+            base = Vector2(back_x, back_y - 20)
+            tipv = base + Vector2(math.cos(a), math.sin(a)) * 40
+            out.append((_taper(base.x, base.y, tipv.x, tipv.y, 3.4, 1.2),
+                        "light"))
         return out
-    if w.kind == "salvo":                     # sacs of spores
-        rows = 3 if key == "swarm" else 2
-        out = [(_taper(hx - 4 * sgn, hy - 12, hy + 10 * rows, 17, 14, 6),
-                "dark")]
-        for r in range(rows):
-            for c in range(2):
-                x = hx + (-11 + c * 22) * sgn
-                y = hy - 4 + r * 11
-                out.append(([(x + math.cos(a) * 5.5, y + math.sin(a) * 5.0)
-                             for a in (i * TAU / 8 for i in range(8))],
-                            "light"))
+    if w.kind == "salvo":                      # sacs, clustered on the spine
+        n = 6 if key == "swarm" else 4
+        out = [(_blob(back_x, back_y - 12, 26, 17, 13, 0.16, 6.0), "dark")]
+        for i in range(n):
+            a = math.pi + i * math.pi / max(1, n - 1)
+            q = Vector2(back_x, back_y - 12) + Vector2(math.cos(a) * 17,
+                                                       math.sin(a) * 11)
+            out.append((_blob(q.x, q.y, 7, 6.4, 10, 0.18, i), "light"))
         return out
-    long = 66 if key == "sun" else 56         # a bile jet
-    out = [(_taper(hx, hy - 10, hy + 20, 12, 8, 5), "dark"),
-           (_taper(hx, hy + 18, hy + long, 6, 4, 2), "main")]
+    long = 44 if key == "sun" else 36          # a bile gland and a spout
+    out = [(_blob(back_x, back_y - 18, 28, 20, 12, 0.18, 8.0), "dark")]
+    base = Vector2(back_x + 16, back_y - 22)
+    tipv = base + Vector2(0.94, -0.34) * long
+    out.append((_taper(base.x, base.y, tipv.x, tipv.y, 8, 4, 2), "main"))
     for i in range(3):
-        y = hy + 26 + i * 13
-        out.append(([(hx + math.cos(a) * 8, y + math.sin(a) * 4)
-                     for a in (i2 * TAU / 8 for i2 in range(8))], "light"))
+        q = base + (tipv - base) * (0.3 + i * 0.26)
+        out.append((_blob(q.x, q.y, 7, 5, 8, 0.2, i * 2.0), "light"))
     return out
+
+
+def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
+    """The animal in the street. Same shape functions as the pod view -
+    they were authored in profile, so the fight gets them for nothing and
+    only the moving parts are computed here."""
+    tones = tones or BIO_TONES
+    rig = Side(surf, sx, gy, scale, pose.face)
+
+    def col(socket, base):
+        if mech.fit[socket] is None:
+            return None
+        return _tone(base, mech.damage_frac(socket), mech.hp[socket] <= 0,
+                     tones)
+
+    def blit(shapes, socket):
+        c = {}
+        for pts, tn in shapes:
+            if tn not in c:
+                c[tn] = col(socket, "main" if tn == "hollow" else tn)
+            if c[tn] is None:
+                continue
+            if tn == "hollow":
+                rig.poly(pts, c[tn], 3)
+            else:
+                rig.poly(pts, c[tn])
+                rig.poly(pts, shade(c[tn], 0.6), 1)
+
+    tt = mech.fit["torso"]
+    lt = mech.fit["legs"]
+    rear = 0.0
+    swing = max(pose.swing["l"], pose.swing["r"])
+    if pose.brace:
+        rear = -0.35
+    elif swing > 0:
+        rear = math.sin(swing * math.pi) * 0.9
+    wag = math.sin(t * 2.2 + pose.walk * 0.5) * 0.9 * (0.4 + pose.moving)
+
+    if tt:
+        blit(bio_tail(tt, wag), "torso")
+    if lt:
+        blit(bio_legs(lt, pose.walk, pose.moving, "far"), "legs")
+    if tt:
+        blit(bio_trunk(tt), "torso")
+    if mech.fit["armour"] is not None:
+        blit(bio_armour(mech.fit["armour"]), "armour")
+    if lt:
+        blit(bio_legs(lt, pose.walk, pose.moving, "near"), "legs")
+    else:
+        # nothing to stand on: the trunk is down in the road
+        rig.poly(_blob(10, -70, 120, 40, 14, 0.1, 2.0), (44, 34, 44))
+    if mech.fit["head"] is not None:
+        blit(bio_head(mech.fit["head"], rear), "head")
+        if mech.alive("head"):
+            e, hs = head_eye(mech.fit["head"], rear)
+            rig.circle((e.x, e.y), hs * 0.20, (250, 232, 140))
+            rig.circle((e.x, e.y), hs * 0.09, (24, 16, 18))
+            rig.light((e.x, e.y), hs * 0.6, RYEZ_ACID, 60)
+    for side in ("l", "r"):
+        asock = "l_arm" if side == "l" else "r_arm"
+        at = mech.fit[asock]
+        if at is None:
+            continue
+        reach = pose.swing[side]
+        blit(bio_arm_posed(at, side, reach), asock)
+        wsock = "l_wpn" if side == "l" else "r_wpn"
+        if mech.weapon(side) is not None:
+            blit(bio_weapon(mech.fit[wsock], side, at), wsock)
+    if mech.fit["reactor"] is not None:
+        rt = mech.fit["reactor"]
+        rr = (11, 15, 19)[rt - 1]
+        alive = mech.alive("reactor")
+        heat = mech.heat_frac
+        c = HEART if alive else (70, 62, 66)
+        c = mix(c, (255, 150, 90), heat * 0.8) if alive else c
+        if alive:
+            rr *= 1.0 + 0.24 * abs(math.sin(t * 2.6)) ** 3.0
+        hx, hy = HEART_AT
+        rig.circle((hx, hy), rr * 0.95, (30, 14, 20))
+        rig.circle((hx, hy), rr * 0.95, shade(c, 0.55), 1)
+        rig.circle((hx, hy), rr * 0.5, c)
+        if alive:
+            rig.light((hx, hy), rr * (1.2 + heat), c, 40 + heat * 60)
+    if pose.brace and (mech.alive("l_arm") or mech.alive("r_arm")):
+        rig.bar((TRUNK_FRONT + 26, TRUNK_TOP + 20),
+                (TRUNK_FRONT + 34, TRUNK_BELLY - 6), 7, (210, 200, 230))
+    if pose.flash > 0.01:
+        blit_glow(surf, (sx, gy - 200 * scale), 150 * scale,
+                  (255, 236, 220), int(150 * clamp(pose.flash, 0, 1)))
+
+
+def beast_muzzle(mech, pose, side, sx, gy, scale):
+    """Where a spine or a jet of bile leaves the animal."""
+    wsock = "l_wpn" if side == "l" else "r_wpn"
+    key = mech.fit[wsock]
+    w = WEAPONS.get(key) if key else None
+    if w is None:
+        return None, Vector2(pose.face, 0)
+    back_x = 18 + (18 if side == "r" else -34)
+    back_y = TRUNK_TOP + 40
+    local = Vector2(back_x + 30, back_y - 26)
+    ang = pose.aim[side]
+    rig = Side(None, sx, gy, scale, pose.face)
+    return (Vector2(rig.p(local.x, local.y)),
+            Vector2(math.cos(ang) * pose.face, math.sin(ang)))
 
 
 BIO_SHAPE = {"legs": bio_legs, "torso": bio_torso, "head": bio_head,
              "armour": bio_armour}
 BIO_TONES = {"main": FLESH, "dark": FLESH_D, "light": FLESH_L,
              "trim": RYEZ_ACID, "plate": CHITIN, "hollow": FLESH_L}
+
 
 # ---------------------------------------------------------------------------
 # DRAWING THE MACHINE - SIDE
@@ -2364,12 +2701,14 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                    tones=None, bio=None):
     """`tones` repaints the whole machine - that is how a KEAL model is
     drawn by the same routine that draws yours, in its own livery."""
-    rig = Side(surf, sx, gy, scale, pose.face)
-    lean = pose.lean
     if bio is None:
         bio = tones is None and CURRENT["house"] == "ryez"
-    if bio and tones is None:
-        tones = BIO_TONES
+    if bio:
+        draw_beast_side(surf, mech, sx, gy, scale, t, pose,
+                        tones if tones is not BIO_TONES else None)
+        return
+    rig = Side(surf, sx, gy, scale, pose.face)
+    lean = pose.lean
 
     def tone(socket, base):
         if mech.fit[socket] is None:
@@ -2566,6 +2905,8 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
 def weapon_muzzle(mech, pose, side, sx, gy, scale):
     """Where a shot comes out, in screen coordinates. The fight needs this
     and the drawing needs this, so neither one owns it."""
+    if CURRENT["house"] == "ryez":
+        return beast_muzzle(mech, pose, side, sx, gy, scale)
     asock = "l_arm" if side == "l" else "r_arm"
     at = mech.fit[asock]
     wpn = mech.weapon(side)
@@ -2714,7 +3055,7 @@ BESTIARY = [
     Kind("crawler", "CRAWLER", "the first one", (96, 130, 84), 0.78,
          820, 76, 0,
          [atk("swipe", 236, 0.55, 45, 1.6)],
-         330, 2, 2.2, 12,
+         330, 2, 2.0, 10,
          (78, 30, -96, 3, 96, 26, -0.25, 22, 1, 0, 70, 0, 0),
          "Low, quick, and no bigger than a warehouse. They said it was a "
          "one-off."),
@@ -2722,41 +3063,41 @@ BESTIARY = [
          0.86, 2400, 64, 2,
          [atk("swipe", 244, 0.60, 42, 1.8, lunge=1),
           atk("spit", 1100, 0.95, 64, 3.0, speed=560, arc=1)],
-         470, 3, 2.6, 16,
+         470, 3, 2.4, 14,
          (86, 36, -120, 2, 128, 74, -0.60, 26, 3, 1, 110, 0, 0),
          "Throws a bolt of something that eats plate. Keep moving and it "
          "lands where you were."),
     Kind("bulwark", "BULWARK", "hit it until it stops", (104, 104, 124),
-         0.96, 5400, 42, 6,
-         [atk("swipe", 262, 0.50, 66, 2.0),
-          atk("slam", 314, 0.95, 136, 2.8, shake=1, lunge=1)],
-         650, 4, 3.0, 20,
+         0.96, 4700, 42, 6,
+         [atk("swipe", 262, 0.50, 60, 2.0),
+          atk("slam", 314, 0.95, 122, 2.8, shake=1, lunge=1)],
+         650, 4, 2.8, 17,
          (98, 54, -96, 2, 92, 16, -0.10, 34, 0, 2, 50, 0, 0),
          "Armoured like a hill. Small guns bounce; bring something that "
          "arrives all at once."),
     Kind("strider", "STRIDER", "it is not interested in you", (186, 96, 64),
-         1.04, 7400, 100, 3,
-         [atk("kick", 292, 0.50, 88, 1.7, lunge=1),
-          atk("leap", 900, 0.90, 132, 5.2, over=1)],
-         820, 5, 3.6, 24,
+         1.04, 6400, 100, 3,
+         [atk("kick", 292, 0.50, 80, 1.7, lunge=1),
+          atk("leap", 900, 0.90, 118, 5.2, over=1)],
+         820, 5, 3.0, 20,
          (62, 34, -212, 1, 220, 92, -0.75, 26, 2, 0, 150, 1, 0),
          "Long legs and somewhere to be. It will go over you to get there."),
     Kind("brood", "BROODMOTHER", "she does not come alone", (146, 78, 142),
-         1.04, 9800, 54, 4,
-         [atk("swipe", 284, 0.65, 84, 2.0, lunge=1),
+         1.04, 8500, 54, 4,
+         [atk("swipe", 284, 0.65, 76, 2.0, lunge=1),
           atk("spit", 1000, 0.95, 62, 3.4, speed=520, arc=1),
           atk("spawn", 0, 1.40, 0, 13.0, brood=2)],
-        1020, 6, 4.2, 28,
+        1020, 6, 3.6, 24,
          (104, 54, -128, 3, 132, 56, -0.45, 30, 3, 2, 130, 1, 1),
          "The sac on her back is full. Splash damage is not a luxury "
          "tonight."),
     Kind("leviathan", "LEVIATHAN", "the last one", (58, 96, 150), 1.22,
-        15200, 48, 8,
-         [atk("swipe", 336, 0.70, 138, 2.2, lunge=1),
-          atk("slam", 364, 1.20, 198, 4.6, shake=1, lunge=1),
-          atk("beam", 1700, 1.45, 58, 6.0, hold=1.9),
+        13000, 48, 8,
+         [atk("swipe", 336, 0.70, 124, 2.2, lunge=1),
+          atk("slam", 364, 1.20, 178, 4.6, shake=1, lunge=1),
+          atk("beam", 1700, 1.45, 50, 6.0, hold=1.9),
           atk("roar", 0, 0.90, 0, 11.0, stun=1)],
-         0, 0, 6.0, 40,
+         0, 0, 4.8, 34,
          (118, 62, -246, 2, 250, 86, -0.62, 40, 2, 2, 190, 1, 0),
          "Everything the others were, at once, and it has been waiting for "
          "the rest to soften us up."),
@@ -4180,11 +4521,39 @@ MAX_CREW = 6
 CREW_PER_JOB = 3
 RUSH_PER_DAY = 62
 
+# RYEZ's half of the calendar. A culture gestates for half as long again as
+# the equivalent weld takes, and no number of handlers makes it faster -
+# what they do is hold it together. Left alone a pod drifts; at FAULT_AT it
+# expresses wrong and the organ grafts on at a fraction of what it should
+# be, which is the same cost FORCING one carries by definition.
+GESTATE = 1.5
+DRIFT_PER_DAY = 16.0
+HANDLER_CALM = 12.0
+FAULT_AT = 50.0
+FLAWED_HP = 0.62
+POD_BASE = 5
+BIO_COST = 0.76
+
+# Those four numbers are the whole of RYEZ's decision, so they are chosen
+# to make it a real one rather than a tax. Nobody on a pod is +16 a day and
+# it faults on the fourth; one handler is +4 and it faults on the
+# thirteenth; two is -8 and it never faults at all. So a short culture
+# tolerates a single pair of hands and a long one does not, and with four
+# pods and three handlers you are always choosing which tank goes unwatched
+# tonight. An earlier pass had nobody able to hold more than two, every
+# spare pod faulting, and the yard paying for everything twice.
+
 
 class Job:
-    __slots__ = ("socket", "target", "kind", "need", "done", "crew", "rushed")
+    """A thing being worked on. For KEAL that is a job on a gantry and the
+    crew ARE the speed. For RYEZ it is a culture in a pod, which takes the
+    time it takes however many handlers you stand around it - what they buy
+    there is stability, and an unstable pod grafts a flawed organ."""
 
-    def __init__(self, socket, target, kind, need, crew=1):
+    __slots__ = ("socket", "target", "kind", "need", "done", "crew", "rushed",
+                 "bio", "unstable")
+
+    def __init__(self, socket, target, kind, need, crew=1, bio=False):
         self.socket = socket
         self.target = target
         self.kind = kind            # "build" or "repair"
@@ -4192,6 +4561,8 @@ class Job:
         self.done = 0.0
         self.crew = crew
         self.rushed = False
+        self.bio = bio              # a pod, not a gantry
+        self.unstable = 0.0         # 0..100; over FAULT_AT it comes out wrong
 
     @property
     def left(self):
@@ -4202,8 +4573,14 @@ class Job:
         return clamp(self.done / max(0.001, self.need), 0.0, 1.0)
 
     def days_left(self, crew=None):
+        if self.bio:
+            return int(math.ceil(self.left))     # biology ignores overtime
         c = max(1, crew if crew is not None else self.crew)
         return int(math.ceil(self.left / c))
+
+    @property
+    def faulted(self):
+        return self.rushed or self.unstable >= FAULT_AT
 
     def label(self):
         if self.kind == "repair":
@@ -4213,14 +4590,17 @@ class Job:
     def to_json(self):
         return {"socket": self.socket, "target": self.target,
                 "kind": self.kind, "need": self.need, "done": self.done,
-                "crew": self.crew, "rushed": self.rushed}
+                "crew": self.crew, "rushed": self.rushed, "bio": self.bio,
+                "unstable": round(self.unstable, 1)}
 
     @classmethod
     def from_json(cls, d):
         j = cls(d["socket"], d["target"], d.get("kind", "build"),
-                d.get("need", 1), int(d.get("crew", 1)))
+                d.get("need", 1), int(d.get("crew", 1)),
+                bool(d.get("bio", False)))
         j.done = float(d.get("done", 0))
         j.rushed = bool(d.get("rushed", False))
+        j.unstable = clamp(float(d.get("unstable", 0)), 0.0, 100.0)
         return j
 
 
@@ -4273,12 +4653,60 @@ class Run:
         return int(got * (1.25 if self.yard >= 3 else 1.0))
 
     @property
+    def bio(self):
+        return self.house == "ryez"
+
+    @property
+    def pods(self):
+        """How many cultures can be going at once. RYEZ's parallelism is
+        tanks, not hands, which is why its whole rhythm is different."""
+        return POD_BASE + self.yard
+
+    def growing(self):
+        return [j for j in self.jobs if j.bio]
+
+    def no_room(self):
+        """A pod holds a culture. Mending is not a culture - it is handlers
+        working on the animal itself, and it never blocks a tank."""
+        if self.bio:
+            return len(self.growing()) >= self.pods
+        return len(self.jobs) >= len(SOCKETS) + 2
+
+    @property
     def crew_per_job(self):
         return 4 if self.yard >= 1 else CREW_PER_JOB
 
     @property
     def max_crew(self):
         return MAX_CREW + (1 if self.yard >= 2 else 0)
+
+    def refine_yield(self):
+        return 2 if self.yard >= 3 else 1
+
+    def start_refine(self):
+        if self.job_on(REFINE_SLOT) or self.no_room():
+            return False
+        if not self.bio and self.free_crew < 1:
+            return False
+        cost = REFINE.scrap
+        if self.scrap < cost:
+            return False
+        self.scrap -= cost
+        self.spent += cost
+        need = REFINE.days
+        if self.bio:
+            need = int(math.ceil(need * GESTATE))
+        self.jobs.append(Job(REFINE_SLOT, 0, "build", need,
+                             crew=0 if self.bio else 1, bio=self.bio))
+        return True
+
+    def price(self, part):
+        """What this house pays for a part. Steel is bought and biology is
+        grown, so RYEZ pays less biomass for the same thing - which is how
+        it makes up the throughput it loses to gestation. The GENOME cost
+        is the same either way, because that is the part nobody can grow."""
+        s = part.scrap * (BIO_COST if self.bio else 1.0)
+        return int(round(s)), part.alloy
 
     @property
     def rush_rate(self):
@@ -4299,17 +4727,22 @@ class Run:
         return self.scrap >= scrap and self.alloy >= alloy
 
     def start_build(self, socket, part):
-        if self.job_on(socket) or self.free_crew < 1:
+        if self.job_on(socket) or self.no_room():
             return False
-        scrap = part.scrap
-        alloy = part.alloy
+        if not self.bio and self.free_crew < 1:
+            return False
+        scrap, alloy = self.price(part)
         if not self.can_afford(scrap, alloy):
             return False
         self.scrap -= scrap
         self.alloy -= alloy
         self.spent += scrap
         key = part.key if isinstance(part, (Weapon, Module)) else part.tier
-        self.jobs.append(Job(socket, key, "build", max(1, part.days)))
+        need = max(1, part.days)
+        if self.bio:
+            need = int(math.ceil(need * GESTATE))
+        self.jobs.append(Job(socket, key, "build", need,
+                             crew=0 if self.bio else 1, bio=self.bio))
         return True
 
     def start_repair(self, socket):
@@ -4333,11 +4766,13 @@ class Run:
         if job.kind == "build":
             p = part_of(job.socket, job.target)
             if p:
-                self.scrap += int(p.scrap * 0.5)
+                self.scrap += int(self.price(p)[0] * 0.5)
                 self.alloy += p.alloy
         self.jobs.remove(job)
 
     def rush(self, job):
+        """KEAL pays overtime. RYEZ cannot - forcing a pod open early just
+        means the thing inside is not finished, and it grafts on flawed."""
         cost = int(math.ceil(job.left) * self.rush_rate)
         if job.rushed or self.scrap < cost or job.left <= 0:
             return False
@@ -4349,19 +4784,28 @@ class Run:
         return True
 
     def set_crew(self, job, n):
-        n = int(clamp(n, 1, self.crew_per_job))
+        low = 0 if job.bio else 1        # a pod can be left to itself
+        n = int(clamp(n, low, self.crew_per_job))
         delta = n - job.crew
         if delta > 0 and self.free_crew < delta:
             n = job.crew + self.free_crew
-        job.crew = int(clamp(n, 1, self.crew_per_job))
+        job.crew = int(clamp(n, low, self.crew_per_job))
 
     # -- the night --------------------------------------------------------
     def end_day(self):
         """Returns "landfall", "done" or None."""
         self.news = []
         for job in list(self.jobs):
-            job.done += job.crew
+            if job.bio:
+                # a pod advances one day, whoever is standing over it; what
+                # the handlers do is keep the culture from drifting
+                job.done += 1
+                job.unstable = clamp(job.unstable + DRIFT_PER_DAY
+                                     - HANDLER_CALM * job.crew, 0.0, 100.0)
+            else:
+                job.done += job.crew
             if job.done >= job.need - 1e-6:
+                flawed = job.bio and job.faulted
                 if job.kind == "repair":
                     self.mech.hp[job.socket] = self.mech.max_hp(job.socket)
                     self.news.append(sock_label(job.socket) + " MENDED")
@@ -4369,6 +4813,15 @@ class Run:
                     self.mech.fit_module(job.target)
                     self.news.append(pname(MOD_SLOT, MODULES[job.target])
                                      + " IN THE " + word("rack", "RACK"))
+                elif job.socket == REFINE_SLOT:
+                    got = self.refine_yield()
+                    if flawed:
+                        got = max(1, got - 1)
+                    self.alloy += got
+                    self.news.append("+%d %s OUT OF THE %s"
+                                     % (got, word("alloy", "ALLOY"),
+                                        "VATS" if self.bio else "CRUCIBLE"))
+                    flawed = False
                 elif job.socket == YARD_SLOT:
                     self.yard = max(self.yard, job.target)
                     self.crew = min(self.crew, self.max_crew)
@@ -4379,6 +4832,13 @@ class Run:
                     self.news.append(
                         pname(job.socket, part_of(job.socket, job.target))
                         + " " + house().verb)
+                if flawed and job.socket in SOCKETS:
+                    # it expressed, but not properly
+                    self.mech.hp[job.socket] = (self.mech.max_hp(job.socket)
+                                                * FLAWED_HP)
+                    self.news.append("IT CAME OUT WRONG - "
+                                     + sock_label(job.socket)
+                                     + " IS AT %d%%" % round(FLAWED_HP * 100))
                 self.jobs.remove(job)
         self.day += 1
         got = self.income
@@ -4452,7 +4912,8 @@ class Run:
             r.killed = max(0, int(d.get("killed", 0)))
             r.mech = Mech.from_json(d.get("mech"))
             r.jobs = [Job.from_json(j) for j in d.get("jobs", [])
-                      if j.get("socket") in SOCKETS + (MOD_SLOT, YARD_SLOT)]
+                      if j.get("socket") in SOCKETS + (MOD_SLOT, YARD_SLOT,
+                                                       REFINE_SLOT)]
             r.spent = int(d.get("spent", 0))
             r.rushes = int(d.get("rushes", 0))
             r.news = ["RUN RESUMED - DAY %d" % r.day]
@@ -4577,7 +5038,9 @@ def stat_line(p):
         if p.pierce:
             bits.append("pierces")
         return "  ".join(bits)
-    s = p.stats
+    s = getattr(p, "stats", None)
+    if s is None:
+        return getattr(p, "effect", "")
     bits = []
     if "speed" in s:
         bits.append("%d speed" % s["speed"])
@@ -4648,7 +5111,7 @@ def draw_gantry(surf, rect, run, t, sel=None):
         pygame.draw.line(surf, (34, 36, 46), (x, gy + 4), (x, rect.bottom - 6), 1)
     if CURRENT["house"] == "ryez":
         draw_tank(surf, rect, gy, inner, t)
-        draw_mech_front(surf, run.mech, rect.centerx, gy, 1.12,
+        draw_mech_front(surf, run.mech, rect.centerx + 26, gy - 26, 0.84,
                         {j.socket: (j.target, j.prog) for j in run.jobs}, t)
         levels = [gy - 128]
         slot = 0
@@ -4734,11 +5197,11 @@ def draw_worker(surf, x, y, t, highlight=False, idle=False):
 class Hangar:
     """The build screen. Owns its own buttons and its own selection."""
 
-    LIST = pygame.Rect(14, 68, 278, 540)
-    GANTRY = pygame.Rect(302, 68, 486, 540)
-    SHOP = pygame.Rect(798, 68, 368, 540)
-    JOBS = pygame.Rect(14, 618, 916, 128)
-    ENDDAY = pygame.Rect(942, 618, 224, 128)
+    LIST = pygame.Rect(14, 68, 278, 528)
+    GANTRY = pygame.Rect(302, 68, 486, 528)
+    SHOP = pygame.Rect(798, 68, 368, 528)
+    JOBS = pygame.Rect(14, 604, 916, 142)
+    ENDDAY = pygame.Rect(942, 604, 224, 142)
 
     def __init__(self, run):
         self.run = run
@@ -4791,7 +5254,8 @@ class Hangar:
             elif k == pygame.K_r:
                 cost = int(math.ceil(job.left) * run.rush_rate)
                 if run.rush(job):
-                    self.say("RUSHED - %d SCRAP" % cost)
+                    self.say(word("rushed", "RUSHED") + " - %d %s"
+                             % (cost, word("scrap", "SCRAP")))
                     SFX.play("rivet", 0.6)
                 else:
                     self.say("CANNOT RUSH THAT", True)
@@ -4846,6 +5310,13 @@ class Hangar:
                 else:
                     self.say("NOT ENOUGH IN THE BANK", True)
                     SFX.play("deny", 0.5)
+            elif kind == "refine":
+                if run.start_refine():
+                    self.say("INTO THE " + ("VATS" if run.bio else "CRUCIBLE"))
+                    SFX.play("weld", 0.5)
+                else:
+                    self.say("CANNOT START THAT", True)
+                    SFX.play("deny", 0.5)
             elif kind == "repair":
                 if run.start_repair(self.sel):
                     self.say("REPAIR QUEUED")
@@ -4859,7 +5330,8 @@ class Hangar:
             elif kind == "rush":
                 cost = int(math.ceil(data.left) * run.rush_rate)
                 if run.rush(data):
-                    self.say("RUSHED - %d SCRAP" % cost)
+                    self.say(word("rushed", "RUSHED") + " - %d %s"
+                             % (cost, word("scrap", "SCRAP")))
                     SFX.play("rivet", 0.6)
                 else:
                     self.say("NOT ENOUGH IN THE BANK", True)
@@ -5050,7 +5522,7 @@ class Hangar:
             text(surf, word("fitted", "FITTED") + ": " + pname(s, held), 15,
                  (r.x + 14, y), INK)
             y += 20
-            line = (peffect(held) if isinstance(held, YardUp)
+            line = (peffect(held) if isinstance(held, (YardUp, Refine))
                     else stat_line(held))
             for ln in wrap(line, 13, r.w - 28)[:2]:
                 text(surf, ln, 13, (r.x + 14, y), DIM)
@@ -5096,44 +5568,57 @@ class Hangar:
                  (r.x + 14, y), FAINT)
             return
         opts = options_for(s, self.slot_fit(s))
+        if s == YARD_SLOT:
+            opts = list(opts) + [REFINE]
         if not opts:
             text(surf, "This is as good as it gets.", 14, (r.x + 14, y), FAINT)
             return
         for p in opts[:5]:
             card = pygame.Rect(r.x + 10, y, r.w - 20, 84)
-            ok = run.can_afford(p.scrap, p.alloy) and run.free_crew > 0
+            ok = (run.can_afford(*run.price(p)) and not run.no_room()
+                  and (run.bio or run.free_crew > 0))
             panel(surf, card, (20, 22, 30) if ok else (17, 18, 24), LINE, 5)
             nm = pname(s, p)
             text(surf, nm, fit(nm, 17, card.w - 130),
                  (card.x + 10, card.y + 7), INK if ok else FAINT)
             self.price(surf, card, p, run)
-            line = peffect(p) if isinstance(p, YardUp) else stat_line(p)
+            line = (peffect(p) if isinstance(p, (YardUp, Refine))
+                    else stat_line(p))
             text(surf, line, fit(line, 12, card.w - 20),
                  (card.x + 10, card.y + 28), CORE)
             for i, ln in enumerate(wrap(pblurb(s, p), 12, card.w - 20)[:2]):
                 text(surf, ln, 12, (card.x + 10, card.y + 44 + i * 14), DIM,
                      bold=False)
-            self.buttons.append(Button(card, "", ("build", p), enabled=ok))
+            act = ("refine", None) if isinstance(p, Refine) else ("build", p)
+            if isinstance(p, Refine):
+                ok = ok and run.job_on(REFINE_SLOT) is None
+            self.buttons.append(Button(card, "", act, enabled=ok))
             if ok:
-                pygame.draw.rect(surf, PAINT, card, 1, border_radius=5)
+                pygame.draw.rect(surf, ALLOY_C if isinstance(p, Refine)
+                                 else PAINT, card, 1, border_radius=5)
             y += 90
             if y > r.bottom - 40:
                 break
 
     def price(self, surf, card, p, run):
-        """Scrap, alloy and days along the top right of a card."""
+        """Cost and time along the top right of a card, in this house's
+        money and this house's calendar."""
+        cost, alloy = run.price(p)
+        days = p.days
+        if run.bio and not isinstance(p, (YardUp, Refine)):
+            days = int(math.ceil(days * GESTATE))
         cx = card.right - 10
-        text(surf, "%dd" % p.days, 15, (cx, card.y + 8), DIM, right=True)
-        cx -= font(15).size("%dd" % p.days)[0] + 12
+        text(surf, "%dd" % days, 15, (cx, card.y + 8), DIM, right=True)
+        cx -= font(15).size("%dd" % days)[0] + 12
         if p.alloy:
-            lab = "%d" % p.alloy
+            lab = "%d" % alloy
             text(surf, lab, 15, (cx, card.y + 8),
-                 ALLOY_C if run.alloy >= p.alloy else BAD, right=True)
+                 ALLOY_C if run.alloy >= alloy else BAD, right=True)
             text(surf, "AL", 11, (cx - font(15).size(lab)[0] - 3, card.y + 12),
                  FAINT, right=True)
             cx -= font(15).size(lab)[0] + font(11).size("AL")[0] + 12
-        text(surf, "%d" % p.scrap, 15, (cx, card.y + 8),
-             PAINT if run.scrap >= p.scrap else BAD, right=True)
+        text(surf, "%d" % cost, 15, (cx, card.y + 8),
+             PAINT if run.scrap >= cost else BAD, right=True)
 
     def rack_panel(self, surf, r):
         """What is in the rack now, and the way into the full list."""
@@ -5209,9 +5694,10 @@ class Hangar:
             inside = m.has(mod.key)
             building = job is not None and job.target == mod.key
             room = len(m.mods) < m.bays
-            afford = run.can_afford(mod.scrap, mod.alloy)
+            afford = run.can_afford(*run.price(mod))
             can = (not inside and not building and job is None and room
-                   and afford and run.free_crew > 0)
+                   and afford and not run.no_room()
+                   and (run.bio or run.free_crew > 0))
             edge = (GOOD if inside else CORE if building
                     else PAINT if can else LINE)
             panel(surf, card, (22, 28, 26) if inside else
@@ -5255,50 +5741,86 @@ class Hangar:
     def job_strip(self, surf):
         run = self.run
         r = self.JOBS
+        bio = run.bio
         panel(surf, r, (15, 16, 22), LINE, 6)
-        text(surf, "TONIGHT", 15, (r.x + 12, r.y + 8), DIM)
-        text(surf, "%d OF %d %s ASSIGNED" %
-             (run.crew - run.free_crew, run.crew, word("crew", "CREW")), 13,
-             (r.right - 12, r.y + 10), FAINT, right=True)
+        text(surf, "IN THE PODS" if bio else "TONIGHT", 15,
+             (r.x + 12, r.y + 8), DIM)
+        if bio:
+            text(surf, "%d OF %d PODS RUNNING    %d OF %d %s ON THEM"
+                 % (len(run.jobs), run.pods, run.crew - run.free_crew,
+                    run.crew, word("crew", "CREW")), 13,
+                 (r.right - 12, r.y + 10), FAINT, right=True)
+        else:
+            text(surf, "%d OF %d %s ASSIGNED"
+                 % (run.crew - run.free_crew, run.crew, word("crew", "CREW")),
+                 13, (r.right - 12, r.y + 10), FAINT, right=True)
         if not run.jobs:
-            text(surf, "Nobody is working on anything. That is a whole day.",
+            text(surf, "Every pod is empty. Nothing is growing." if bio else
+                 "Nobody is working on anything. That is a whole day.",
                  17, (r.centerx, r.centery), FAINT, center=True)
-        cw = (r.w - 24) / max(1, min(4, len(run.jobs) or 1))
+        slots = max(1, min(4, run.pods if bio else 4))
+        cw = (r.w - 24) / slots
         for i, j in enumerate(run.jobs[:4]):
-            box = pygame.Rect(r.x + 12 + i * cw, r.y + 28, cw - 8, 90)
-            panel(surf, box, (21, 23, 31), CORE if j.socket == self.sel
-                  else LINE, 5)
-            text(surf, (word("rack", "RACK") if j.socket == MOD_SLOT else
-                        word("yard", "YARD") if j.socket == YARD_SLOT
-                        else sock_label(j.socket)), 12,
-                 (box.x + 8, box.y + 6), FAINT)
+            box = pygame.Rect(r.x + 12 + i * cw, r.y + 28, cw - 8, 102)
+            hot = j.socket == self.sel
+            panel(surf, box, (21, 23, 31), CORE if hot else LINE, 5)
+            head = ("POD %d - " % (i + 1) if bio else "") + (
+                word("rack", "RACK") if j.socket == MOD_SLOT else
+                word("yard", "YARD") if j.socket == YARD_SLOT else
+                word("alloy", "ALLOY") if j.socket == REFINE_SLOT
+                else sock_label(j.socket))
+            text(surf, head, fit(head, 12, box.w - 16), (box.x + 8, box.y + 5),
+                 FAINT)
             text(surf, j.label(), fit(j.label(), 16, box.w - 16),
-                 (box.x + 8, box.y + 20), INK)
-            bar(surf, pygame.Rect(box.x + 8, box.y + 42, box.w - 16, 8),
+                 (box.x + 8, box.y + 18), INK)
+            bar(surf, pygame.Rect(box.x + 8, box.y + 40, box.w - 16, 8),
                 j.prog, CORE)
-            text(surf, "%d DAY%s" % (j.days_left(),
-                                     "" if j.days_left() == 1 else "S"),
-                 14, (box.x + 8, box.y + 54), WARN)
-            bw = 26
+            dl = j.days_left()
+            text(surf, "%d DAY%s" % (dl, "" if dl == 1 else "S"), 14,
+                 (box.x + 8, box.y + 52), WARN)
+            bw = 24
+            if bio:
+                # the second bar is the one that decides whether it works
+                f = clamp(j.unstable / 100.0, 0, 1)
+                col = GOOD if f < 0.28 else (WARN if f < FAULT_AT / 100.0
+                                             else BAD)
+                bw2 = box.w - 106
+                bar(surf, pygame.Rect(box.x + 8, box.y + 68, bw2, 7), f, col)
+                mark = box.x + 8 + bw2 * (FAULT_AT / 100.0)
+                pygame.draw.line(surf, INK, (mark, box.y + 66),
+                                 (mark, box.y + 77), 1)
+                lab = "DRIFT" if not j.faulted else "WILL BE WRONG"
+                text(surf, lab, fit(lab, 11, 92),
+                     (box.right - 8, box.y + 68), FAINT if not j.faulted
+                     else BAD, right=True)
+                text(surf, "%d ON IT" % j.crew, 13,
+                     (box.right - bw * 2 - 18, box.y + 50), INK, right=True)
+            else:
+                text(surf, "%d %s" % (j.crew, word("crew", "CREW")), 13,
+                     (box.right - bw * 2 - 20, box.y + 54), DIM, right=True)
             self.buttons.append(Button(
-                pygame.Rect(box.right - bw * 2 - 14, box.y + 52, bw, 22),
-                "-", ("crew", (j, -1)), enabled=j.crew > 1))
+                pygame.Rect(box.right - bw * 2 - 12, box.y + 46, bw, 22),
+                "-", ("crew", (j, -1)),
+                enabled=j.crew > (0 if bio else 1)))
             self.buttons.append(Button(
-                pygame.Rect(box.right - bw - 10, box.y + 52, bw, 22),
+                pygame.Rect(box.right - bw - 8, box.y + 46, bw, 22),
                 "+", ("crew", (j, 1)),
                 enabled=j.crew < run.crew_per_job and run.free_crew > 0))
-            text(surf, "%d %s" % (j.crew, word("crew", "CREW")), 13,
-                 (box.right - bw * 2 - 20, box.y + 56), DIM, right=True)
             cost = int(math.ceil(j.left) * run.rush_rate)
             self.buttons.append(Button(
-                pygame.Rect(box.x + 8, box.y + 68, box.w * 0.52, 20),
-                "RUSH %d" % cost, ("rush", j),
+                pygame.Rect(box.x + 8, box.y + (80 if bio else 68),
+                            box.w * 0.52, 20),
+                ("FORCE %d" if bio else "RUSH %d") % cost, ("rush", j),
                 enabled=not j.rushed and run.scrap >= cost and j.left > 0,
                 tone=RUST))
             self.buttons.append(Button(
-                pygame.Rect(box.x + 12 + box.w * 0.52, box.y + 68,
-                            box.w * 0.34, 20),
+                pygame.Rect(box.x + 12 + box.w * 0.52,
+                            box.y + (80 if bio else 68), box.w * 0.34, 20),
                 "DROP", ("cancel", j), tone=BAD))
+        if len(run.jobs) > 4:
+            text(surf, "+%d MORE %s" % (len(run.jobs) - 4,
+                                        "GROWING" if bio else "RUNNING"), 13,
+                 (r.right - 12, r.bottom - 20), WARN, right=True)
         e = self.ENDDAY
         self.buttons.append(Button(e, "END DAY", ("endday", None), tone=PAINT,
                                    primary=True))
@@ -5637,6 +6159,9 @@ class Choose:
         set_house("keal")
         text(surf, "YOU BUILD" if key == "keal" else "YOU GROW", 12,
              (r.centerx - 108, r.bottom - 26), FAINT, center=True)
+        how = ("HANDS BUY SPEED" if key == "keal"
+               else "HANDS BUY STABILITY")
+        text(surf, how, 12, (r.centerx, r.y + 352), FAINT, center=True)
         text(surf, "YOU FIGHT", 12, (r.centerx + 132, r.bottom - 26), FAINT,
              center=True)
         names = roster_for(key)[0].name + "   then five more, ending   "             + foe.name
