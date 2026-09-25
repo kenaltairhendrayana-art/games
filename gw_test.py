@@ -2,6 +2,8 @@
 measured.
 
     python gw_test.py smoke          draw every screen offscreen, save PNGs
+    python gw_test.py yard           the option list, the ladder, the city
+    python gw_test.py slots          prove the three save slots stay apart
     python gw_test.py flow           drive the real App through a whole run
     python gw_test.py balance [n]    auto-play n campaigns and print the table
     python gw_test.py all            smoke, then flow, then balance 6
@@ -21,13 +23,28 @@ n=12 after the rack and the yard upgrades went in:
     STRIDER  91% 59s | BROOD    75% 71s | LEVIATHAN 75% 72s
     9 victories, 2 unfinished, 1 city lost
 
+RELIEF is measured here and does not appear in the table, which is the
+finding rather than an omission. A bot that always has a better use for a
+crew never rebuilds the city: at a 74% trigger it fired, cost four points
+of completion, and left the city at landfall six SEVEN POINTS LOWER than
+doing nothing - the weaker mech let more blocks go than the gang put back.
+At any honest trigger (55% with a spare crew, 40% with any crew) it never
+fires at all, and the table above is byte-identical to the table without
+the feature. That is the correct result: relief is not a build-optimiser's
+tool. It is for a person who has just lost a fight, is looking at a third
+of a city, and wants the run to continue - which is why the yield is
+weighted toward the bottom end (see `Run.relief_gain`).
+
 Watch `taken` as much as `win%`. A fight the pilot wins without being hurt
 is a fight with no texture in it, and three separate bugs hid behind a
 healthy-looking win rate: the shell collision window was empty, the
 LEVIATHAN's beam was cancelled in the wind-up eleven casts out of twelve,
 and the broodlings spawned on the city side of the line.
 """
+import io
+import json
 import os
+import random
 import statistics
 import sys
 import tempfile
@@ -331,8 +348,8 @@ PRIORITY = [
     ("torso", 2), ("legs", 2), (YARD, 1), ("reactor", 2), (MOD, "link"),
     ("l_wpn", "pile"), ("armour", 2), ("l_arm", 2), ("head", 2),
     ("r_arm", 2), ("torso", 3), (YARD, 2), (MOD, "shutters"),
-    ("r_wpn", "revolver"), ("reactor", 3), ("legs", 3), (YARD, 3),
-    ("l_arm", 3), ("armour", 3), ("r_arm", 3), ("head", 3),
+    ("r_wpn", "storm"), ("reactor", 3), ("r_wpn", "tempest"), ("legs", 3),
+    (YARD, 3), ("l_arm", 3), ("armour", 3), ("r_arm", 3), ("head", 3),
 ]
 
 
@@ -346,8 +363,8 @@ RYEZ_PRIORITY = [
     ("head", 1), (MOD, "stride"), ("legs", 2), (YARD, 1), (MOD, "link"),
     ("l_wpn", "pile"), ("armour", 2), ("l_arm", 2), ("torso", 3),
     ("reactor", 3), ("head", 2), ("r_arm", 2), (YARD, 2), (MOD, "shutters"),
-    ("r_wpn", "revolver"), ("legs", 3), (YARD, 3), ("l_arm", 3),
-    ("armour", 3), ("r_arm", 3), ("head", 3),
+    ("r_wpn", "storm"), ("legs", 3), (YARD, 3), ("r_wpn", "tempest"),
+    ("l_arm", 3), ("armour", 3), ("r_arm", 3), ("head", 3),
 ]
 
 
@@ -384,11 +401,21 @@ def shop(run):
             break
         if run.mech.damage_frac(s) > 0.45 and not run.job_on(s):
             run.start_repair(s)
+    # The city is a loss condition, so below a certain point it outranks
+    # the next tier - a mech one rung better does not help if the run ends
+    # before it is fitted. This has to be decided BEFORE the build loop:
+    # that loop spends crew until there is none left, so anything asking
+    # for slack afterwards never fires at all, and the first version of
+    # this gate sat there and quietly did nothing for eight campaigns.
+    if (run.integrity <= RELIEF_AT and not run.job_on(G.CITY_SLOT)
+            and run.free_crew >= 2
+            and run.scrap >= G.RELIEF.scrap + RELIEF_SPARE):
+        run.start_relief()
     for socket, target in PRIORITY:
         if run.no_room() or (not run.bio and run.free_crew < 1):
             break
         p = _next_part(run, socket, target)
-        if p is not None and run.can_afford(*run.price(p)):
+        if p is not None and run.can_afford(*run.price(p, socket)):
             run.start_build(socket, p)
     # when the rare stuff is the thing blocking the list, buy it the slow way
     nxt = None
@@ -400,8 +427,12 @@ def shop(run):
     # Smelt only when the rare stuff is ACTUALLY the wall and there is
     # money going spare - an earlier pass smelted eagerly and starved the
     # build, which cost KEAL thirty points of win rate on three fights.
+    # The old gate wanted 1000 scrap before it would smelt, so the only
+    # player who needed the crucible - the one who lost a fight and has no
+    # alloy - could never reach it. It buys when the rare stuff is the wall
+    # and it can afford the billet with a little left over.
     if (nxt is not None and nxt.alloy > run.alloy and run.alloy == 0
-            and run.scrap >= G.REFINE.scrap + 700
+            and run.scrap >= G.REFINE.scrap + 140
             and not run.job_on(G.REFINE_SLOT)):
         run.start_refine()
     if run.bio:
@@ -469,11 +500,42 @@ def pilot(f):
     return inp
 
 
-def run_fight(run, kind):
+class Sloppy:
+    """A pilot who is not a machine.
+
+    The scripted pilot re-reads the fight every tick and steps out of every
+    wind-up, which no person does - so its win rate cannot answer the only
+    question that matters, which is whether a PERSON can hold the line.
+    This one decides on a cadence instead of continuously, and misses some
+    fraction of the dodges it ought to make."""
+
+    def __init__(self, react=0.26, dodge=0.55):
+        self.react = react
+        self.dodge = dodge
+        self.until = 0.0
+        self.held = {}
+
+    def __call__(self, f):
+        if f.t >= self.until:
+            self.until = f.t + self.react
+            inp = pilot(f)
+            if random.random() > self.dodge:      # saw it late, or not at all
+                inp.pop("brace", None)
+                e = f.nearest(f.mx)
+                if e is not None and e.state == "windup":
+                    inp.pop("left", None)
+                    inp.pop("right", None)
+            self.held = inp
+        return self.held
+
+
+def run_fight(run, kind, pilot_fn=None):
     f = G.Fight(run, kind)
-    d = {"n": 0, "locked": 0, "asked": 0, "stun": 0, "armed": 0, "legs": 0}
+    drive = pilot_fn or pilot
+    d = {"n": 0, "locked": 0, "asked": 0, "stun": 0, "armed": 0, "legs": 0,
+         "wall": 0}
     while f.over is None and f.t < CAP:
-        inp = pilot(f)
+        inp = drive(f)
         m = f.mech
         d["n"] += 1
         d["armed"] += sum(1 for s in ("l", "r") if m.weapon(s))
@@ -481,6 +543,8 @@ def run_fight(run, kind):
         d["asked"] += 1 if (inp.get("fire_l") or inp.get("fire_r")) else 0
         d["stun"] += 1 if f.stun > 0 else 0
         d["legs"] += 1 if m.alive("legs") else 0
+        b = f.boss()
+        d["wall"] += 1 if (b and b.alive and b.x <= G.WALL_X + 30) else 0
         f.update(DT, inp)
     f.timeout = f.over is None
     if f.timeout:
@@ -489,10 +553,10 @@ def run_fight(run, kind):
     return f
 
 
-def campaign(seed, house_key="keal"):
-    import random
+def campaign(seed, house_key="keal", sloppy=False):
     random.seed(seed)
     run = G.Run(house_key)
+    drive = Sloppy() if sloppy else None
     report = []
     while run.next_landfall is not None:
         nl = run.next_landfall
@@ -501,7 +565,7 @@ def campaign(seed, house_key="keal"):
             run.end_day()
         kind = run.next_kind()
         before = dict(run.mech.fit)
-        f = run_fight(run, kind)
+        f = run_fight(run, kind, drive)
         ending, _ = run.resolve(f)
         report.append({"kind": kind.name, "day": nl, "won": f.over == "won",
                        "secs": f.t, "timeout": f.timeout,
@@ -530,6 +594,18 @@ def wipe_meta():
     G.meta_forget()
 
 
+SLOPPY = [False]
+# Measured, not guessed. At 74 the bot cleared rubble it did not need to
+# and paid for it with the build: KEAL's completion fell four points, the
+# LEVIATHAN win rate fell twelve, and the city at landfall six came out
+# SEVEN POINTS LOWER than doing nothing - the weaker mech let more blocks
+# go than relief put back. Relief is not a way to keep a healthy city
+# topped up. It is a way to stop a run ending, so the bot reaches for it
+# only when the run is two bad fights from over.
+RELIEF_AT = 55.0        # the bot starts clearing rubble below this
+RELIEF_SPARE = 200      # ...and only with this much left over afterwards
+
+
 def balance(n=10, house_key="keal"):
     wipe_meta()
     G.set_house(house_key)
@@ -538,7 +614,7 @@ def balance(n=10, house_key="keal"):
     endings = {}
     last = None
     for s in range(n):
-        run, rep = campaign(1000 + s, house_key)
+        run, rep = campaign(1000 + s, house_key, SLOPPY[0])
         last = (run, rep)
         for row in rep:
             if "ending" in row:
@@ -551,7 +627,8 @@ def balance(n=10, house_key="keal"):
     print("\n%-16s %5s %6s %7s %7s %6s %6s %6s"
           % (G.HOUSES[house_key].name + " v " + G.HOUSES[house_key].roster,
              "day", "win%", "secs", "built%", "city", "dealt", "taken"))
-    print("-" * 66)
+    print("-" * 66 + "  pilot: "
+          + ("a person, more or less" if SLOPPY[0] else "the scripted one"))
     mean = statistics.mean
     for k in roster:
         rows = per[k.name]
@@ -567,13 +644,13 @@ def balance(n=10, house_key="keal"):
         d = [r["diag"] for r in rows]
         tot = sum(x["n"] for x in d) or 1
         print("%-16s   dps %4.0f | guns %3.1f | asked %2.0f%% heatlock %2.0f%%"
-              " stun %2.0f%% legs %2.0f%%%s"
+              " stun %2.0f%% ATWALL %2.0f%%%s"
               % ("", mean(r["dealt"] / max(1, r["secs"]) for r in rows),
                  sum(x["armed"] for x in d) / tot,
                  100.0 * sum(x["asked"] for x in d) / tot,
                  100.0 * sum(x["locked"] for x in d) / tot,
                  100.0 * sum(x["stun"] for x in d) / tot,
-                 100.0 * sum(x["legs"] for x in d) / tot,
+                 100.0 * sum(x["wall"] for x in d) / tot,
                  "  (%d TIMED OUT)" % sum(1 for r in rows if r["timeout"])
                  if any(r["timeout"] for r in rows) else ""))
     print("\nendings over %d runs: %s" % (n, endings))
@@ -594,12 +671,242 @@ def balance(n=10, house_key="keal"):
                  G.YARD[row["yard"] - 1].name if row["yard"] else "nothing"))
 
 
+# ---------------------------------------------------------------------------
+# SLOTS - three drawers that must not reach into each other
+# ---------------------------------------------------------------------------
+def slots():
+    """The one thing a save slot has to do is stay out of the other two.
+
+    Everything a campaign owns lives in one file per slot - the run, the
+    record AND the Hendras' ledger - so the test that matters is not "does
+    it save" but "does slot two spend slot one's marks". The ledger is the
+    dangerous half: it is cached in a module global for the draw loops, so
+    a switch that forgets to drop the cache passes every disk check and
+    still hands you somebody else's blueprints."""
+    for n in range(1, G.SLOTS + 1):
+        G.erase_slot(n)
+    G.set_slot(1)
+
+    # three different campaigns, one per drawer
+    made = {}
+    for n, (house, day, city) in ((1, ("keal", 31, 68.0)),
+                                  (2, ("ryez", 9, 92.0)),
+                                  (3, ("keal", 4, 100.0))):
+        G.set_slot(n)
+        r = G.Run(house)
+        r.day, r.integrity, r.killed = day, city, n
+        r.scrap = 100 * n
+        G.save_run(r)
+        G.add_marks(40 * n)
+        made[n] = (house, day, city)
+    print("  wrote %d slots" % len(made))
+
+    for n, (house, day, city) in made.items():
+        c = G.slot_card(n)
+        assert not c["empty"], n
+        assert c["run"]["house"] == house, (n, c["run"]["house"])
+        assert c["run"]["day"] == day, (n, c["run"]["day"])
+        assert c["marks"] == 40 * n, (n, c["marks"])
+        print("  slot %d  %-4s day %-3d city %3d%%  %d marks"
+              % (n, house, day, c["run"]["city"], c["marks"]))
+
+    # the ledger is per-slot, cache and all
+    G.set_slot(1)
+    assert G.buy_ware("spec_shriek"), "slot 1 could not afford a jar"
+    assert G.stock_of("spec_shriek") == 1
+    G.set_slot(2)
+    assert G.stock_of("spec_shriek") == 0, "slot 2 opened slot 1's jar"
+    assert G.marks() == 80, G.marks()
+    G.set_slot(1)
+    assert G.stock_of("spec_shriek") == 1, "slot 1 lost its jar on the way back"
+    print("  ledger stays home: jar in 1, none in 2, marks 40/80/120 kept")
+
+    # the front door: clicking a card swaps everything behind it
+    surf = pygame.Surface((G.W, G.H))
+    t = G.Title()
+    t.t = 2.0
+    t.draw(surf, (0, 0))
+    assert t.save["run"]["day"] == 31, t.save["run"]["day"]
+    t.click(t.slot_rect(2).center)
+    assert G.SLOT[0] == 2, G.SLOT[0]
+    assert t.save["run"]["day"] == 9, t.save["run"]["day"]
+    t.draw(surf, (0, 0))
+    assert G.CURRENT["house"] == "keal", "the title left the house switched"
+
+    # erase takes two presses, and only touches the slot you are on
+    era = next(b for b in t.buttons if b.key[0] == "erase")
+    t.click(era.rect.center)
+    assert not G.slot_card(2)["empty"], "one press wiped a campaign"
+    t.click(era.rect.center)
+    assert G.slot_card(2)["empty"], "two presses did not"
+    assert not G.slot_card(1)["empty"], "erasing 2 took 1 with it"
+    assert G.slot_card(3)["run"]["day"] == 4, "erasing 2 took 3 with it"
+    assert G.slot_card(2)["marks"] == 0, "an erased slot kept its marks"
+    print("  erase is two presses, and lands on one drawer only")
+
+    # closing the game on one drawer reopens on that drawer
+    G.set_slot(3)
+    G.SLOT[0] = 1                     # pretend it was launched cold
+    G.meta_forget()
+    assert G.restore_slot() == 3, "it forgot which slot was being played"
+    assert G.marks() == 120, G.marks()
+    G.set_slot(1)
+    print("  it reopens on the drawer that was open")
+
+    # a save written before there were slots becomes slot one
+    G.erase_slot(1)
+    old = G.Run("ryez")
+    old.day = 77
+    with io.open(os.path.join(_TMP, G.SAVE_NAME), "w",
+                 encoding="utf-8") as fh:
+        json.dump({"run": old.to_json(), "meta": {"marks": 7}}, fh)
+    G._migrated[0] = False
+    G.meta_forget()
+    G.set_slot(1)
+    assert G.load_save()["run"]["day"] == 77, "the old campaign was dropped"
+    assert G.marks() == 7
+    assert os.path.exists(os.path.join(_TMP, G.SAVE_NAME)), "it deleted theirs"
+    print("  a pre-slot save opens as slot 1, and is left where it was")
+
+    for n in range(1, G.SLOTS + 1):
+        G.erase_slot(n)
+    os.remove(os.path.join(_TMP, G.SAVE_NAME))
+    G.set_slot(1)
+    print("\n3 slots, isolated")
+
+
+# ---------------------------------------------------------------------------
+# YARD - the option list, the ladder, and putting the city back
+# ---------------------------------------------------------------------------
+def yard():
+    """Three things that all fail silently if they fail at all.
+
+    A weapon you cannot reach, a price that is cheaper for skipping, and a
+    relief job that quietly does nothing all look exactly like a working
+    game from the outside."""
+    surf = pygame.Surface((G.W, G.H))
+    G.set_house("keal")
+    run = G.Run("keal")
+    run.scrap, run.alloy, run.crew = 4000, 9, 5
+    run.integrity = 62.0
+
+    # -- every refit is reachable without owning its base ------------------
+    bare = G.options_for("l_wpn", None)
+    fam = {u for _, u in G.WEAPON_FAMILIES}
+    keys = {w.key for w in bare}
+    missing = fam - keys
+    assert not missing, "locked behind their base: %s" % sorted(missing)
+    print("  a bare hardpoint offers %d weapons, refits included" % len(bare))
+
+    # -- and costs the whole ladder for the privilege ----------------------
+    for base, up in G.WEAPON_FAMILIES:
+        ladder = G.WEAPONS[base].scrap + G.WEAPONS[up].scrap
+        straight = run.price(G.WEAPONS[up], "l_wpn")[0]
+        assert straight == ladder, (up, straight, ladder)
+        al = run.price(G.WEAPONS[up], "l_wpn")[1]
+        assert al == G.WEAPONS[base].alloy + G.WEAPONS[up].alloy, up
+        run.mech.install("l_wpn", base)
+        refit = run.price(G.WEAPONS[up], "l_wpn")[0]
+        assert refit == G.WEAPONS[up].scrap, (up, refit)
+        assert refit < straight, up
+        run.mech.fit["l_wpn"] = None
+    print("  skipping the ladder costs the ladder, climbing it does not")
+
+    # -- and every one of them can actually be clicked ---------------------
+    h = G.Hangar(run)
+    h.sel = "l_wpn"
+    h.t = 1.0
+    reached = set()
+    h.draw(surf, (0, 0))
+    first = len([b for b in h.buttons if b.key[0] == "build"])
+    for step in range(40):
+        h.draw(surf, (0, 0))
+        for b in h.buttons:
+            if b.key[0] == "build":
+                reached.add(b.key[1].key)
+        if h.scroll >= h.scroll_max:
+            break
+        h.wheel(-1)
+    assert h.scroll_max > 0, "a sixteen-item list that does not scroll"
+    assert reached == keys, "unreachable by scrolling: %s" % sorted(
+        keys - reached)
+    print("  %d fit on screen, all %d reachable by wheel in %d notches"
+          % (first, len(reached), step))
+    h.wheel(99)
+    assert h.scroll == 0.0, "scrolled up past the top"
+    h.sel = "legs"
+    h.draw(surf, (0, 0))
+    assert h.scroll_for == "legs" and h.scroll == 0.0, "scroll followed"
+    print("  it starts at the top again on a different socket")
+
+    # -- putting the city back --------------------------------------------
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        r = G.Run(house)
+        r.scrap, r.crew, r.integrity = 2000, 4, 61.0
+        cost = r.price(G.RELIEF)[0]
+        assert cost == G.RELIEF.scrap, "%s got a discount on rubble" % house
+        want = r.relief_gain()
+        assert r.start_relief()
+        assert r.scrap == 2000 - cost, "relief was free"
+        j = r.job_on(G.CITY_SLOT)
+        assert j.crew == 1 and not j.bio, house
+        assert not r.growing(), "relief took up a pod"
+        assert not r.start_relief(), "two gangs on one city"
+        for _ in range(G.RELIEF.days):
+            r.end_day()
+        assert abs(r.integrity - (61.0 + want)) < 1e-6, r.integrity
+        # the worse it is, the more one gang gets done - otherwise this is
+        # a polish for a healthy city and no use at all to a dying run
+        last = None
+        for c in (95.0, 70.0, 45.0, 20.0):
+            r.integrity = c
+            g = r.relief_gain()
+            assert last is None or g > last, (c, g, last)
+            last = g
+        assert r.relief_gain() > G.RELIEF.days * 4, "a rescue that rescues"
+        r.integrity = 97.0
+        assert r.start_relief()
+        for _ in range(G.RELIEF.days):
+            r.end_day()
+        assert r.integrity == 100.0, r.integrity
+        assert not r.start_relief(), "rebuilt a city that was whole"
+        back = G.Run.from_json(r.to_json())
+        assert back.integrity == 100.0
+        r.integrity = 61.0
+        print("  %-4s %d scrap and %dd puts %.1f%% back at 61%%, %.1f%% at "
+              "20%%, and stops at 100"
+              % (house, cost, G.RELIEF.days, r.relief_gain(), last))
+
+    # a relief job has to survive being saved mid-work
+    G.set_house("keal")
+    r = G.Run("keal")
+    r.scrap, r.crew, r.integrity = 2000, 4, 50.0
+    r.start_relief()
+    r.end_day()
+    back = G.Run.from_json(r.to_json())
+    assert back.job_on(G.CITY_SLOT) is not None, "the gang went home"
+    for _ in range(G.RELIEF.days):
+        back.end_day()
+    assert back.integrity > 50.0, back.integrity
+    print("  a half-finished relief job survives a save")
+    print("\nyard ok")
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
-    n = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+    SLOPPY[0] = "sloppy" in sys.argv
+    args = [a for a in sys.argv[2:] if a != "sloppy"]
+    n = int(args[0]) if args else 10
     if what in ("smoke", "all"):
         print("== SMOKE ==")
         smoke()
+    if what in ("yard", "all"):
+        print("== YARD ==")
+        yard()
+    if what in ("slots", "all"):
+        print("\n== SLOTS ==")
+        slots()
     if what in ("flow", "all"):
         print("\n== FLOW ==")
         for hk in ("keal", "ryez"):
@@ -608,7 +915,7 @@ def main():
         print("\n== BALANCE ==")
         for hk in ("keal", "ryez"):
             balance(6 if what == "all" else n, hk)
-    if what not in ("smoke", "flow", "balance", "all"):
+    if what not in ("smoke", "yard", "slots", "flow", "balance", "all"):
         print(__doc__)
         return 2
     return 0

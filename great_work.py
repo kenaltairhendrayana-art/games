@@ -31,9 +31,18 @@ Run:                                     python great_work.py
 THE SHAPE OF IT
   Nine sockets - legs, torso, head, two arms, two hardpoints, a reactor
   and a suit of plate, or limbs, core mass, sense cluster, forelimbs,
-  organs, a heart and a carapace, depending who signed you. Each one empty, or holding
-  one of three tiers, or holding one of ten weapons. A job is worked by
-  the crew you put on it and finishes when it finishes.
+  organs, a heart and a carapace, depending who signed you. Each one
+  empty, or holding one of three tiers, or one of EIGHTEEN weapons. A job
+  is worked by the crew you put on it and finishes when it finishes.
+
+  The useful question about a weapon is never its damage, it is its
+  DAMAGE PER HEAT, because the reactor decides how much heat a second you
+  are allowed to spend. Three of the families exist because the animals
+  were reaching the wall faster than anything could take them down: a
+  STORM CANNON that raises the ceiling, a SIEGE MORTAR that can shell the
+  wall from the far end of the street, and a TETHER GUN that hardly hurts
+  anything and is the most useful of the three, because what it takes off
+  is speed.
 
   Then two things that are not on the ladder. The RACK holds modules:
   thirteen of them, small, cheap and mostly a trade, and the torso
@@ -217,16 +226,31 @@ def fit(label, size, width, bold=True):
 _glows = {}
 
 
+GLOW_CAP = 320          # surfaces; past this the cache is thrown away
+
+
 def glow(radius, colour, strength=100):
     """A soft additive disc, cached - every light in the game is one.
+
+    The key is QUANTISED, and that is not a micro-optimisation. The heart
+    and the reactor both glow in a colour mixed from the current heat and
+    at a strength derived from it, so an unrounded key means a brand new
+    surface on almost every frame: measured, one 55-second fight left 2796
+    of them behind, 29.5 MB, and nothing ever cleared them between fights.
+    A campaign of six did that six times over, which is what "after a while
+    I cannot do anything" looks like from the inside.
 
     The falloff is baked into the COLOUR, not the alpha. BLEND_ADD ignores
     the source alpha completely, so a surface that fades out by alpha adds
     at full strength everywhere and every light in the game comes out as a
     hard saturated disc. Premultiplying is the whole fix."""
-    key = (radius, colour, strength)
+    radius = int(radius)
+    key = (radius, (colour[0] >> 4, colour[1] >> 4, colour[2] >> 4),
+           int(strength) >> 3)
     s = _glows.get(key)
     if s is None:
+        if len(_glows) >= GLOW_CAP:
+            _glows.clear()
         s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
         steps = max(8, radius // 2)
         for i in range(steps, 0, -1):
@@ -241,6 +265,7 @@ def glow(radius, colour, strength=100):
 
 def blit_glow(surf, pos, radius, colour, strength=100):
     radius = max(2, int(radius))
+    strength = max(0, min(255, int(strength)))
     g = glow(radius, colour, strength)
     surf.blit(g, (pos[0] - radius, pos[1] - radius), special_flags=pygame.BLEND_ADD)
 
@@ -508,6 +533,9 @@ RYEZ_PARTS = {
     ("wpn", "auto"): "SPINE VOLLEY", ("wpn", "revolver"): "QUILL BATTERY",
     ("wpn", "missile"): "SPORE PODS", ("wpn", "swarm"): "SPORE BLOOM",
     ("wpn", "lance"): "BILE JET", ("wpn", "sun"): "SOLVENT JET",
+    ("wpn", "storm"): "QUILL STORM", ("wpn", "tempest"): "QUILL TEMPEST",
+    ("wpn", "mortar"): "BILE MORTAR", ("wpn", "bombard"): "BILE BOMBARD",
+    ("wpn", "tether"): "SNARE LINE", ("wpn", "harpoon"): "DRAG TONGUE",
 }
 
 RYEZ_MODULES = {
@@ -558,6 +586,8 @@ def pname(socket, part):
         return RYEZ_MODULES.get(part.key, part.name)
     if isinstance(part, Refine):
         return REFINE_RYEZ_NAME
+    if isinstance(part, Relief):
+        return RELIEF_RYEZ_NAME
     if isinstance(part, YardUp):
         return RYEZ_YARD.get(part.tier, part.name)
     return RYEZ_PARTS.get((part.socket, part.tier), part.name)
@@ -597,6 +627,12 @@ RYEZ_BLURB = {
     ("wpn", "swarm"): "Six sacs and a faster refill. Clears a street.",
     ("wpn", "lance"): "Billed by the second. Bring a heart or do not bring this.",
     ("wpn", "sun"): "Goes through the first one and into what is behind it.",
+    ("wpn", "storm"): "Sheds them faster than it can grow them back.",
+    ("wpn", "tempest"): "The same thicket, fed twice. Nothing walks through.",
+    ("wpn", "mortar"): "Throws a sac the length of the street. It reaches.",
+    ("wpn", "bombard"): "Two glands and a longer throw. Nowhere is safe.",
+    ("wpn", "tether"): "Hardly hurts it. It does stop it being elsewhere.",
+    ("wpn", "harpoon"): "A barb, a cord, and it does not let go.",
 }
 
 RYEZ_MOD_BLURB = {
@@ -643,6 +679,8 @@ def pblurb(socket, part):
         return RYEZ_MOD_BLURB.get(part.key, part.blurb)
     if isinstance(part, Refine):
         return REFINE_RYEZ_BLURB
+    if isinstance(part, Relief):
+        return RELIEF_RYEZ_BLURB
     if isinstance(part, YardUp):
         return RYEZ_YARD_BLURB.get(part.tier, part.blurb)
     return RYEZ_BLURB.get((part.socket, part.tier), part.blurb)
@@ -655,6 +693,8 @@ def peffect(part):
             return RYEZ_MOD_EFFECT.get(part.key, part.effect)
         if isinstance(part, Refine):
             return REFINE_RYEZ_EFFECT
+        if isinstance(part, Relief):
+            return RELIEF_RYEZ_EFFECT
     return part.effect
 
 HOUSES = {
@@ -679,8 +719,12 @@ HOUSES = {
 # WHERE PROGRESS GOES
 #
 # Never beside the game, which may be read-only and is certainly somewhere
-# a player does not look. One file, two things in it: the run in progress
-# and what has been finished before.
+# a player does not look. Three files, one per slot, and a slot owns
+# EVERYTHING a campaign touches: the run in progress, the record of runs
+# finished, and the Hendras' ledger. The marks are the only thing in the
+# game that outlives a campaign, so if they were shared a fresh start
+# would open with a stocked cupboard - which is the opposite of a fresh
+# start. A fourth tiny file remembers which drawer was last open.
 # ---------------------------------------------------------------------------
 def _save_dir():
     if sys.platform == "win32":
@@ -699,24 +743,110 @@ def _save_dir():
         return os.path.dirname(os.path.abspath(__file__))
 
 
-SAVE_NAME = "progress.json"
+SAVE_NAME = "progress.json"          # what a single-slot build wrote
+LAST_NAME = "slot.txt"               # which drawer was open last
+SLOTS = 3
+SLOT = [1]                           # the one being played
 
 
-def load_save():
+def slot_path(n):
+    return os.path.join(_save_dir(), "progress%d.json" % int(n))
+
+
+def set_slot(n, remember=True):
+    """Switch slots. The ledger cache is per-slot, so it goes with it -
+    forget that and slot two spends slot one's marks."""
+    n = int(clamp(int(n), 1, SLOTS))
+    if n != SLOT[0]:
+        SLOT[0] = n
+        meta_forget()
+        if remember:
+            try:
+                with open(os.path.join(_save_dir(), LAST_NAME), "w",
+                          encoding="utf-8") as fh:
+                    fh.write(str(n))
+            except OSError:
+                pass
+    return n
+
+
+def restore_slot():
+    """Open on the drawer that was open when the game was closed. Without
+    this, quitting from slot two and pressing CONTINUE next time carries
+    on somebody else's campaign."""
     try:
-        with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
+        with open(os.path.join(_save_dir(), LAST_NAME), encoding="utf-8") as f:
+            return set_slot(int(f.read().strip()), remember=False)
+    except (OSError, ValueError):
+        return SLOT[0]
+
+
+_migrated = [False]
+
+
+def _migrate_legacy():
+    """A save written before there were slots becomes slot one, once. The
+    old file is left where it is - it is somebody's campaign, not ours to
+    delete."""
+    if _migrated[0]:
+        return
+    _migrated[0] = True
+    old = os.path.join(_save_dir(), SAVE_NAME)
+    if os.path.isfile(old) and not os.path.isfile(slot_path(1)):
+        try:
+            with open(old, encoding="utf-8") as fh:
+                data = json.load(fh) or {}
+            with open(slot_path(1), "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=1)
+        except (OSError, ValueError, TypeError):
+            pass
+
+
+def load_save(slot=None):
+    _migrate_legacy()
+    try:
+        with open(slot_path(SLOT[0] if slot is None else slot),
+                  encoding="utf-8") as fh:
             return json.load(fh) or {}
     except (OSError, ValueError, TypeError):
         return {}
 
 
-def write_save(data):
+def write_save(data, slot=None):
+    _migrate_legacy()
     try:
-        with open(os.path.join(_save_dir(), SAVE_NAME), "w",
+        with open(slot_path(SLOT[0] if slot is None else slot), "w",
                   encoding="utf-8") as fh:
             json.dump(data, fh, indent=1)
     except OSError:
         pass
+
+
+def erase_slot(n):
+    try:
+        os.remove(slot_path(n))
+    except OSError:
+        pass
+    if int(n) == SLOT[0]:
+        meta_forget()
+
+
+def slot_card(n):
+    """What to print on a slot without switching to it."""
+    d = load_save(n)
+    run = d.get("run") or None
+    meta = d.get("meta") or {}
+    best = d.get("best") or {}
+    out = {"slot": n, "empty": not run and not meta and not best,
+           "marks": int(meta.get("marks", 0) or 0),
+           "wins": int(best.get("wins", 0) or 0),
+           "losses": int(best.get("losses", 0) or 0), "run": None}
+    if run:
+        house = run.get("house") if run.get("house") in HOUSES else "keal"
+        out["run"] = {"house": house, "day": int(run.get("day", 1) or 1),
+                      "killed": int(run.get("killed", 0) or 0),
+                      "city": int(float(run.get("integrity", 100) or 0))}
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1365,11 +1495,13 @@ CATALOGUE["r_arm"] = [
 class Weapon:
     __slots__ = ("key", "name", "kind", "scrap", "alloy", "days", "hp",
                  "dmg", "cd", "heat", "reach", "blurb", "base", "shots",
-                 "splash", "stagger", "speed", "pierce")
+                 "splash", "stagger", "speed", "pierce", "slow", "slow_t")
 
     def __init__(self, key, name, kind, scrap, alloy, days, hp, dmg, cd,
                  heat, reach, blurb, base=None, shots=1, splash=0,
-                 stagger=0.0, speed=0.0, pierce=0):
+                 stagger=0.0, speed=0.0, pierce=0, slow=0.0, slow_t=0.0):
+        self.slow = slow            # fraction taken off its walk
+        self.slow_t = slow_t        # for how long
         self.key = key
         self.name = name
         self.kind = kind
@@ -1434,6 +1566,36 @@ WEAPON_LIST = [
            "Six tubes and a faster reload. Clears a street.",
            base="missile", shots=6, splash=132, speed=780, stagger=0.09),
 
+    # Three families added because the animals were arriving at the wall
+    # faster than anything could take them down. Two of them raise the
+    # ceiling; the third does not, and is the most useful of the three.
+    Weapon("storm", "STORM CANNON", "gun", 320, 1, 5, 190,
+           22, 0.13, 3.6, 950,
+           "Six barrels on a drum. It does not stop to think about it.",
+           speed=1500, stagger=0.03),
+    Weapon("tempest", "TEMPEST", "gun", 540, 2, 6, 250,
+           30, 0.12, 4.6, 1000,
+           "The same drum, fed twice as fast. Nothing walks through it.",
+           base="storm", speed=1600, stagger=0.035),
+
+    Weapon("mortar", "SIEGE MORTAR", "salvo", 300, 1, 5, 150,
+           140, 3.20, 34.0, 2600,
+           "Lobs one over the whole street. It can hit the wall from here.",
+           shots=1, splash=210, speed=600, stagger=0.20),
+    Weapon("bombard", "BOMBARD", "salvo", 520, 3, 6, 250,
+           180, 3.00, 56.0, 2900,
+           "Two tubes and a longer throw. Nowhere on the road is safe.",
+           base="mortar", shots=2, splash=240, speed=640, stagger=0.22),
+
+    Weapon("tether", "TETHER GUN", "gun", 220, 1, 4, 150,
+           14, 0.50, 3.0, 1100,
+           "Hardly hurts it. It does stop it being somewhere else.",
+           speed=1300, stagger=0.04, slow=0.35, slow_t=3.0),
+    Weapon("harpoon", "HARPOON DRUM", "gun", 420, 2, 5, 250,
+           24, 0.42, 4.4, 1200,
+           "A barb, a drum and four hundred metres of cable. It stays put.",
+           base="tether", speed=1400, stagger=0.06, slow=0.55, slow_t=3.5),
+
     Weapon("lance", "PLASMA LANCE", "beam", 320, 2, 6, 150,
            110, 0.0, 34.0, 1000,
            "Billed by the second. Bring a reactor or do not bring this.",
@@ -1456,7 +1618,9 @@ WEAPON_LIST = [
 WEAPONS = {w.key: w for w in WEAPON_LIST}
 # families laid out for the shop: the base, then its refit
 WEAPON_FAMILIES = (("fist", "pile"), ("saw", "ripper"), ("auto", "revolver"),
-                   ("missile", "swarm"), ("lance", "sun"))
+                   ("missile", "swarm"), ("lance", "sun"),
+                   ("storm", "tempest"), ("mortar", "bombard"),
+                   ("tether", "harpoon"))
 # families that are not in the book until a Hendra sells you the book
 BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook"}
 
@@ -1469,6 +1633,8 @@ def part_of(socket, fit):
         return MODULES.get(fit)
     if socket == REFINE_SLOT:
         return REFINE
+    if socket == CITY_SLOT:
+        return RELIEF
     if socket == YARD_SLOT:
         return YARD[fit - 1] if isinstance(fit, int) and 1 <= fit <= len(YARD)             else None
     if socket in ("l_wpn", "r_wpn"):
@@ -1482,10 +1648,15 @@ def part_of(socket, fit):
 def options_for(socket, fit):
     """What the yard could put in this socket next, given what is in it.
 
-    A body socket offers only the tier above what it holds; a hardpoint
-    offers every weapon it does not hold, plus the refit of the one it
-    does. Nothing here checks whether you can afford it - the shop does
-    that, so the player can see what they are saving for."""
+    A body socket offers only the tier above what it holds. A hardpoint
+    offers EVERY weapon it does not hold, base and refit alike - the refit
+    used to be reachable only by mounting its base first and upgrading,
+    which meant carrying a gun you did not want for a week to get to one
+    you did. It costs the whole ladder either way (see `Run.price`), so
+    nothing is saved by skipping except the week.
+
+    Nothing here checks whether you can afford it - the shop does that, so
+    the player can see what they are saving for."""
     if socket == YARD_SLOT:
         nxt = (fit or 0) + 1
         return [YARD[nxt - 1]] if nxt <= len(YARD) else []
@@ -1496,6 +1667,7 @@ def options_for(socket, fit):
                 out.append(WEAPONS[up])        # the refit of what is mounted
             elif fit != up:
                 out.append(WEAPONS[base])      # swap to a different family
+                out.append(WEAPONS[up])        # or go straight to the good one
         for key, ware in BLUEPRINT_WEAPONS.items():
             if fit != key and has_ware(ware):
                 out.append(WEAPONS[key])
@@ -1620,6 +1792,7 @@ YARD = [
            "We stopped selling the hide and started cooking it."),
 ]
 YARD_SLOT = "yard"
+RELIEF_GAIN = 8.0                    # city points one relief job puts back
 
 
 # ---------------------------------------------------------------------------
@@ -1650,6 +1823,46 @@ class Refine:
 
 REFINE = Refine()
 REFINE_SLOT = "refine"
+
+
+# ---------------------------------------------------------------------------
+# PUTTING IT BACK
+#
+# The city was the only number in the game that could not go up. Every
+# block a kaiju stepped on was gone for the rest of the campaign, so a bad
+# landfall on day 24 was still costing you at landfall six, and a run that
+# had one wobble early was quietly over long before it said so.
+#
+# This is the way back, and it is deliberately a poor one. It costs scrap
+# the mech wants, it costs a pair of hands for three days out of a gap
+# that is never longer than eleven, and it buys back less than a bad fight
+# takes off. Losing the city is still much worse than not losing it. It is
+# just no longer permanent.
+# ---------------------------------------------------------------------------
+class Relief:
+    __slots__ = ("tier", "name", "scrap", "alloy", "days", "effect", "blurb",
+                 "hp")
+
+    def __init__(self):
+        self.tier = 0
+        self.name = "RELIEF WORKS"
+        self.scrap = 240
+        self.alloy = 0
+        self.days = 3
+        self.hp = 0
+        self.effect = "+%d%% of the city back" % int(RELIEF_GAIN)
+        self.blurb = ("Rubble out, water on, roofs up. Slow, and those "
+                      "hands are not on the mech.")
+        # the card overwrites `effect` with the live figure - see
+        # Run.relief_gain, which is not a constant
+
+
+RELIEF = Relief()
+CITY_SLOT = "relief"
+RELIEF_RYEZ_NAME = "SEED THE RUBBLE"
+RELIEF_RYEZ_EFFECT = "+%d%% of the city back" % int(RELIEF_GAIN)
+RELIEF_RYEZ_BLURB = ("It grows over the broken blocks and holds them "
+                     "up. Nobody asks what it is.")
 REFINE_RYEZ_NAME = "CULTURE A STRAND"
 REFINE_RYEZ_EFFECT = "one GENOME out, two once the GENE VATS are running"
 REFINE_RYEZ_BLURB = ("Slow, wasteful, and it works. It is still better than "
@@ -1883,7 +2096,7 @@ class Mech:
             return (0, 0)
         base = max(p.scrap, 120)
         days = max(1, int(round(f * max(p.days, 3) * 0.6)))
-        cost = int(round(f * base * 0.45)) + 8
+        cost = int(round(f * base * 0.32)) + 8
         if has_ware("sharptools"):
             cost = int(round(cost * 0.70))
         return (cost, days)
@@ -2113,6 +2326,56 @@ def shape_weapon(key, side, tier_arm):
     w = WEAPONS.get(key)
     if w is None:
         return []
+    if key in ("storm", "tempest"):            # barrels on a drum
+        n = 6 if key == "tempest" else 4
+        long = 56 if key == "tempest" else 48
+        out = [([(hx - 10, hy - 6), (hx + 10, hy - 6), (hx + 10, hy + 14),
+                 (hx - 10, hy + 14)], "dark")]
+        out.append(([(hx + math.cos(a) * 13, hy + 20 + math.sin(a) * 13)
+                     for a in (i * TAU / 8 for i in range(8))], "light"))
+        for i in range(n):
+            bx = hx + (i - (n - 1) / 2.0) * (20.0 / n)
+            out.append(([(bx - 2.6, hy + 20), (bx + 2.6, hy + 20),
+                         (bx + 2.2, hy + long), (bx - 2.2, hy + long)],
+                        "main"))
+        return out
+    if key in ("mortar", "bombard"):           # stubby, wide, and it lobs
+        tubes = 2 if key == "bombard" else 1
+        out = [([(hx - 17, hy + 2), (hx + 17, hy + 2), (hx + 14, hy + 20),
+                 (hx - 14, hy + 20)], "dark")]
+        for i in range(tubes):
+            bx = hx + (i - (tubes - 1) / 2.0) * 17
+            out.append(([(bx - 8, hy - 26), (bx + 8, hy - 26), (bx + 9, hy + 4),
+                         (bx - 9, hy + 4)], "main"))
+            out.append(([(bx - 10, hy - 30), (bx + 10, hy - 30),
+                         (bx + 9, hy - 22), (bx - 9, hy - 22)], "light"))
+        return out
+    if key in ("tether", "harpoon"):           # a barb, and a drum of cable
+        big = key == "harpoon"
+        dr = 15 if big else 11
+        out = [([(hx - 8, hy - 5), (hx + 8, hy - 5), (hx + 8, hy + 13),
+                 (hx - 8, hy + 13)], "dark"),
+               ([(hx + math.cos(a) * dr - 2, hy + 6 + math.sin(a) * dr)
+                 for a in (i * TAU / 10 for i in range(10))], "light"),
+               ([(hx - 3, hy + 12), (hx + 3, hy + 12), (hx + 3, hy + 40),
+                 (hx - 3, hy + 40)], "main")]
+        tip = 58 if big else 50
+        out.append(([(hx - 6, hy + 38), (hx + 6, hy + 38), (hx, hy + tip)],
+                    "light"))
+        for k in (-1, 1):                      # the barbs that make it stay
+            out.append(([(hx + k * 5, hy + 40), (hx + k * 11, hy + 34),
+                         (hx + k * 5, hy + 47)], "light"))
+        return out
+    if key == "rail":                          # two rails and a long throat
+        out = [([(hx - 9, hy - 6), (hx + 9, hy - 6), (hx + 9, hy + 12),
+                 (hx - 9, hy + 12)], "dark")]
+        for k in (-1, 1):
+            out.append(([(hx + k * 6 - 2, hy + 10), (hx + k * 6 + 2, hy + 10),
+                         (hx + k * 6 + 2, hy + 70), (hx + k * 6 - 2, hy + 70)],
+                        "light"))
+        out.append(([(hx - 2, hy + 14), (hx + 2, hy + 14), (hx + 2, hy + 64),
+                     (hx - 2, hy + 64)], "main"))
+        return out
     if w.kind == "melee" and key in ("fist", "pile"):
         big = key == "pile"
         s = 20 if big else 16
@@ -2686,6 +2949,47 @@ def bio_weapon(key, side, tier_arm):
     hx, hy = hand.x, hand.y
     back_x = 18 + (18 if side == "r" else -34)
     back_y = TRUNK_TOP + 40
+    if key in ("storm", "tempest"):            # a thicket of quills
+        n = 11 if key == "tempest" else 8
+        out = [(_blob(back_x, back_y - 14, 30, 19, 13, 0.16, 3.0), "dark")]
+        for i in range(n):
+            f = (i - (n - 1) / 2.0) / max(1.0, n - 1.0)
+            a = -math.pi / 2 + f * 1.05
+            base = Vector2(back_x + f * 12, back_y - 20)
+            tipv = base + Vector2(math.cos(a), math.sin(a)) * (38 + abs(f) * 8)
+            out.append((_taper(base.x, base.y, tipv.x, tipv.y, 3.2, 1.1),
+                        "light"))
+        return out
+    if key in ("mortar", "bombard"):           # a gland that throws
+        tubes = 2 if key == "bombard" else 1
+        out = [(_blob(back_x, back_y - 10, 34, 22, 13, 0.20, 5.0), "dark")]
+        for i in range(tubes):
+            q = Vector2(back_x + (i - (tubes - 1) / 2.0) * 22, back_y - 26)
+            out.append((_blob(q.x, q.y, 13, 15, 11, 0.14, i * 3.0), "main"))
+            out.append((_blob(q.x, q.y - 12, 9, 6, 9, 0.2, i), "light"))
+        return out
+    if key in ("tether", "harpoon"):           # a barbed tongue on a cord
+        big = key == "harpoon"
+        out = [(_blob(hx, hy + 6, 13 if big else 10, 11, 11, 0.16, 2.0),
+                "dark")]
+        tipv = Vector2(hx + (46 if big else 38), hy + (30 if big else 25))
+        out.append((_taper(hx, hy + 6, tipv.x, tipv.y, 5.5, 2.2, 2.0), "main"))
+        out.append(([(tipv.x - 5, tipv.y - 5), (tipv.x + 9, tipv.y + 4),
+                     (tipv.x - 3, tipv.y + 7)], "light"))
+        for k in (-1, 1):
+            out.append(([(tipv.x - 6, tipv.y + k * 2),
+                         (tipv.x - 15, tipv.y + k * 9),
+                         (tipv.x - 3, tipv.y + k * 4)], "light"))
+        return out
+    if key == "rail":                          # one very long spine
+        out = [(_blob(back_x, back_y - 14, 24, 16, 12, 0.14, 7.0), "dark")]
+        base = Vector2(back_x + 6, back_y - 20)
+        tipv = base + Vector2(0.28, -1.0) * 62
+        out.append((_taper(base.x, base.y, tipv.x, tipv.y, 5.0, 1.4), "light"))
+        for i in range(3):
+            q = base + (tipv - base) * (0.25 + i * 0.25)
+            out.append((_blob(q.x, q.y, 5, 4, 8, 0.2, i * 2.0), "main"))
+        return out
     if w.kind == "melee" and key in ("fist", "pile"):
         big = key == "pile"
         s = 17 if big else 13
@@ -3180,7 +3484,9 @@ def weapon_muzzle(mech, pose, side, sx, gy, scale):
 
 WEAPON_LEN = {"fist": 24, "pile": 34, "saw": 44, "ripper": 50,
               "auto": 58, "revolver": 66, "missile": 30, "swarm": 34,
-              "lance": 62, "sun": 72}
+              "lance": 62, "sun": 72, "rail": 78, "hook": 40,
+              "storm": 62, "tempest": 70, "mortar": 44, "bombard": 50,
+              "tether": 60, "harpoon": 66}
 
 
 def draw_weapon_side(rig, w, hand, d, colour, pose, side):
@@ -3303,48 +3609,48 @@ def atk(kind, reach, windup, dmg, cool, **kw):
 BESTIARY = [
     Kind("crawler", "CRAWLER", "the first one", (96, 130, 84), 0.78,
          820, 76, 0,
-         [atk("swipe", 236, 0.55, 45, 1.6)],
+         [atk("swipe", 236, 0.55, 38, 1.6)],
          330, 2, 2.0, 10,
          (78, 30, -96, 3, 96, 26, -0.25, 22, 1, 0, 70, 0, 0),
          "Low, quick, and no bigger than a warehouse. They said it was a "
          "one-off."),
     Kind("spitter", "SPITTER", "it does not have to reach you", (176, 152, 48),
          0.86, 2400, 64, 2,
-         [atk("swipe", 244, 0.60, 42, 1.8, lunge=1),
-          atk("spit", 1100, 0.95, 64, 3.0, speed=560, arc=1)],
+         [atk("swipe", 244, 0.60, 36, 1.8, lunge=1),
+          atk("spit", 1100, 0.95, 54, 3.0, speed=560, arc=1)],
          470, 3, 2.4, 14,
          (86, 36, -120, 2, 128, 74, -0.60, 26, 3, 1, 110, 0, 0),
          "Throws a bolt of something that eats plate. Keep moving and it "
          "lands where you were."),
     Kind("bulwark", "BULWARK", "hit it until it stops", (104, 104, 124),
-         0.96, 4700, 42, 6,
-         [atk("swipe", 262, 0.50, 60, 2.0),
-          atk("slam", 314, 0.95, 122, 2.8, shake=1, lunge=1)],
+         0.96, 4000, 42, 6,
+         [atk("swipe", 262, 0.50, 52, 2.0),
+          atk("slam", 314, 0.95, 104, 2.8, shake=1, lunge=1)],
          650, 4, 2.8, 17,
          (98, 54, -96, 2, 92, 16, -0.10, 34, 0, 2, 50, 0, 0),
          "Armoured like a hill. Small guns bounce; bring something that "
          "arrives all at once."),
     Kind("strider", "STRIDER", "it is not interested in you", (186, 96, 64),
-         1.04, 6400, 100, 3,
-         [atk("kick", 292, 0.50, 80, 1.7, lunge=1),
-          atk("leap", 900, 0.90, 118, 5.2, over=1)],
+         1.04, 4200, 100, 3,
+         [atk("kick", 292, 0.50, 68, 1.7, lunge=1),
+          atk("leap", 900, 0.90, 100, 5.2, over=1)],
          820, 5, 3.0, 20,
          (62, 34, -212, 1, 220, 92, -0.75, 26, 2, 0, 150, 1, 0),
          "Long legs and somewhere to be. It will go over you to get there."),
     Kind("brood", "BROODMOTHER", "she does not come alone", (146, 78, 142),
-         1.04, 8500, 54, 4,
-         [atk("swipe", 284, 0.65, 76, 2.0, lunge=1),
-          atk("spit", 1000, 0.95, 62, 3.4, speed=520, arc=1),
+         1.04, 5800, 54, 4,
+         [atk("swipe", 284, 0.65, 65, 2.0, lunge=1),
+          atk("spit", 1000, 0.95, 53, 3.4, speed=520, arc=1),
           atk("spawn", 0, 1.40, 0, 13.0, brood=2)],
         1020, 6, 3.6, 24,
          (104, 54, -128, 3, 132, 56, -0.45, 30, 3, 2, 130, 1, 1),
          "The sac on her back is full. Splash damage is not a luxury "
          "tonight."),
     Kind("leviathan", "LEVIATHAN", "the last one", (58, 96, 150), 1.22,
-        13000, 48, 8,
-         [atk("swipe", 336, 0.70, 124, 2.2, lunge=1),
-          atk("slam", 364, 1.20, 178, 4.6, shake=1, lunge=1),
-          atk("beam", 1700, 1.45, 50, 6.0, hold=1.9),
+         8500, 48, 8,
+         [atk("swipe", 336, 0.70, 106, 2.2, lunge=1),
+          atk("slam", 364, 1.20, 152, 4.6, shake=1, lunge=1),
+          atk("beam", 1700, 1.45, 42, 6.0, hold=1.9),
           atk("roar", 0, 0.90, 0, 11.0, stun=1)],
          0, 0, 4.8, 34,
          (118, 62, -246, 2, 250, 86, -0.62, 40, 2, 2, 190, 1, 0),
@@ -3856,11 +4162,13 @@ def draw_city(surf, city, cam, t, shake=(0, 0)):
 # ---------------------------------------------------------------------------
 class Shot:
     __slots__ = ("pos", "vel", "dmg", "splash", "owner", "life", "colour",
-                 "size", "arc", "trail", "pierce")
+                 "size", "arc", "trail", "pierce", "slow", "slow_t")
 
     def __init__(self, pos, vel, dmg, owner, colour, splash=0, life=3.0,
-                 size=5, arc=0.0, pierce=0):
+                 size=5, arc=0.0, pierce=0, slow=0.0, slow_t=0.0):
         self.pierce = pierce
+        self.slow = slow
+        self.slow_t = slow_t
         self.pos = Vector2(pos)
         self.vel = Vector2(vel)
         self.dmg = dmg
@@ -3921,6 +4229,21 @@ class Enemy:
         self.vy = 0.0
         self.beam_t = 0.0
         self.stun = 0.0
+        self.slow = 0.0             # seconds left on a tether
+        self.slow_f = 0.0           # and how much of its walk it costs
+
+    @property
+    def walk_speed(self):
+        if self.slow > 0:
+            return self.kind.speed * (1.0 - clamp(self.slow_f, 0.0, 0.8))
+        return self.kind.speed
+
+    def tether(self, frac, secs):
+        """A line in it. The longest and hardest-pulling one wins."""
+        if secs <= 0:
+            return
+        self.slow = max(self.slow, secs)
+        self.slow_f = max(self.slow_f, frac)
 
     @property
     def span(self):
@@ -4088,6 +4411,8 @@ class Fight:
                                      pierce=self.pierce_now(wpn))
                     self.dealt += dealt
                     e.stagger += wpn.stagger / e.kind.poise
+                    if wpn.slow > 0:
+                        e.tether(wpn.slow, wpn.slow_t)
                     if wpn.key == "hook" and e.y >= 0:
                         # it does not ask whether the thing wanted to come
                         pull = min(110.0, max(0.0, abs(e.x - self.mx) - 150.0))
@@ -4136,7 +4461,8 @@ class Fight:
                                    splash=wpn.splash,
                                    size=5 if wpn.kind == "gun" else 7,
                                    arc=520.0 if wpn.kind == "salvo" else 0.0,
-                                   pierce=1 if self.pierce_now(wpn) else 0))
+                                   pierce=1 if self.pierce_now(wpn) else 0,
+                                   slow=wpn.slow, slow_t=wpn.slow_t))
 
     def pierce_now(self, wpn):
         """Whether this hit ignores hide: the rail always does, and a venom
@@ -4198,6 +4524,9 @@ class Fight:
             return
         for k in list(e.cool):
             e.cool[k] = max(0.0, e.cool[k] - dt)
+        e.slow = max(0.0, e.slow - dt)
+        if e.slow <= 0:
+            e.slow_f = 0.0
         e.hurt = max(0.0, e.hurt - dt * 3.4)
         e.maw = approach(e.maw, 0.0, dt * 2.2)
         if e.stagger >= 1.0 and e.state != "strike":
@@ -4209,7 +4538,7 @@ class Fight:
         if e.y < 0 or e.vy < 0:                 # airborne, from a leap
             e.vy += 1500 * dt
             e.y = min(0.0, e.y + e.vy * dt)
-            e.x -= e.kind.speed * 2.3 * dt
+            e.x -= e.walk_speed * 2.3 * dt
             if e.y >= 0:
                 e.y, e.vy = 0.0, 0.0
                 self.shake = max(self.shake, 9)
@@ -4233,7 +4562,7 @@ class Fight:
         if e.state == "windup":
             e.timer -= dt
             if e.attack.get("lunge") and not self.mech.down:
-                step = e.kind.speed * 1.5 * dt
+                step = e.walk_speed * 1.5 * dt
                 to = self.mx - e.x
                 e.x += math.copysign(min(step, abs(to)), to) if to else 0.0
                 e.moving = approach(e.moving, 0.85, dt * 4)
@@ -4307,8 +4636,8 @@ class Fight:
             return
         e.moving = approach(e.moving, 1.0, dt * 2)
         if e.x > WALL_X:
-            e.x -= e.kind.speed * dt
-            e.walk += dt * (2.4 + e.kind.speed / 60.0)
+            e.x -= e.walk_speed * dt
+            e.walk += dt * (2.4 + e.walk_speed / 60.0)
         else:
             # it is inside the wall now, and it is not fighting any more
             e.x = WALL_X
@@ -4523,6 +4852,11 @@ class Fight:
                             e.top < s.pos.y < -8:
                         dealt = e.hurtby(s.dmg, pierce=bool(s.pierce))
                         self.dealt += dealt
+                        if s.slow > 0:
+                            fresh = e.slow <= 0
+                            e.tether(s.slow, s.slow_t)
+                            if fresh:
+                                self.say(e.kind.name + " IS SNAGGED")
                         self.number(e.x, s.pos.y, int(dealt))
                         e.stagger += 0.05 / e.kind.poise
                         self.burst(s, e)
@@ -4774,6 +5108,36 @@ class Fight:
             text(surf, "%d" % int(boss.hp) if know else "NO SENSORS",
                  14, (r.right - 8, r.y + 3), DIM if know else FAINT,
                  right=True)
+            if boss.slow > 0:
+                text(surf, "SNAGGED -%d%%" % round(boss.slow_f * 100), 13,
+                     (r.x + 8, r.y + 3), CORE)
+
+        # where it is, when it is not on the screen. The commonest way to
+        # lose the city is not being out-fought, it is losing track of the
+        # thing while it walks round you.
+        if boss is not None and boss.alive:
+            bx = self.sx(boss.x)
+            gap = int(abs(boss.x - self.mx))
+            if bx < 40 or bx > W - 40:
+                ex = 62 if bx < 40 else W - 62
+                d = -1 if bx < 40 else 1
+                cy = GROUND_Y - 150
+                pulse = 0.6 + 0.4 * math.sin(self.t * 5.0)
+                col = BAD if boss.x < self.mx else WARN
+                pygame.draw.polygon(surf, col, [
+                    (ex + d * 16, cy), (ex - d * 10, cy - 15),
+                    (ex - d * 10, cy + 15)])
+                blit_glow(surf, (ex, cy), 30, col, int(70 * pulse))
+                text(surf, "%dm" % gap, 15, (ex, cy + 26), col, center=True)
+                text(surf, boss.kind.name, 12, (ex, cy + 44), DIM,
+                     center=True)
+            if boss.x <= WALL_X + 30:
+                a = 0.55 + 0.45 * math.sin(self.t * 6.0)
+                text(surf, "IT IS AT THE WALL", 34, (W // 2, GROUND_Y - 236),
+                     BAD, center=True, alpha=int(255 * a))
+                text(surf, "-%.1f CITY EVERY SECOND" % boss.kind.wreck, 17,
+                     (W // 2, GROUND_Y - 202), WARN, center=True,
+                     alpha=int(255 * a))
 
         # the city
         r = pygame.Rect(W - 250, 12, 236, 52)
@@ -4967,8 +5331,12 @@ class Run:
     def income(self):
         """A wrecked city cannot feed a shipyard, which is the whole of the
         feedback loop: lose ground and you lose the means to take it back."""
-        base = 68 + 16 * self.killed
-        got = base * (0.45 + 0.55 * clamp(self.integrity / 100.0, 0, 1))
+        # "a wrecked city cannot feed a shipyard" is a good line and it was
+        # a NEGATIVE feedback loop: the player who had just lost a fight got
+        # less money to recover with, which is the spiral, not a texture. A
+        # half-ruined city still pays most of it now.
+        base = 80 + 16 * self.killed
+        got = base * (0.70 + 0.30 * clamp(self.integrity / 100.0, 0, 1))
         return int(got * (1.25 if self.yard >= 3 else 1.0))
 
     @property
@@ -5019,13 +5387,70 @@ class Run:
                              crew=0 if self.bio else 1, bio=self.bio))
         return True
 
-    def price(self, part):
+    def relief_gain(self):
+        """How much of the city one gang puts back, which depends on how
+        much of it is down.
+
+        A flat figure made this a trap at both ends. Measured against the
+        auto-player: topping up a city at 74% cost four points of build
+        and came out SEVEN POINTS WORSE than doing nothing, because the
+        weaker mech let more blocks go than the gang put back. Meanwhile a
+        run that was genuinely dying could not claw back fast enough for
+        it to matter. Weighting the yield toward the bottom makes it the
+        thing it is for - a rescue, not a polish. There is more obvious
+        work to do when it is bad, and more people offering to do it."""
+        return RELIEF_GAIN * (1.0 + (1.0 - self.integrity / 100.0))
+
+    def start_relief(self):
+        """Hands on the city instead of on the machine.
+
+        Unlike everything else RYEZ does, this is not grown and does not
+        gestate - people are clearing rubble either way, and a pod cannot
+        hold a roof up. So it costs a crew in both houses and takes the
+        same three days in both, which makes it the one job the bio house
+        cannot leave running unattended."""
+        if self.job_on(CITY_SLOT) or self.no_room():
+            return False
+        if self.free_crew < 1 or self.integrity >= 100.0:
+            return False
+        cost = self.price(RELIEF)[0]
+        if self.scrap < cost:
+            return False
+        self.scrap -= cost
+        self.spent += cost
+        self.jobs.append(Job(CITY_SLOT, 0, "build", RELIEF.days, crew=1))
+        return True
+
+    def price(self, part, socket=None):
         """What this house pays for a part. Steel is bought and biology is
         grown, so RYEZ pays less biomass for the same thing - which is how
         it makes up the throughput it loses to gestation. The GENOME cost
-        is the same either way, because that is the part nobody can grow."""
-        s = part.scrap * (BIO_COST if self.bio else 1.0)
-        return int(round(s)), part.alloy
+        is the same either way, because that is the part nobody can grow.
+
+        A refit mounted onto its own base is a refit and costs the refit.
+        A refit mounted onto a bare hardpoint is the whole family at once,
+        and costs the base as well - otherwise skipping the ladder would
+        be CHEAPER than climbing it, and nobody would ever buy the first
+        rung. `completion()` already values a mounted refit at base + refit,
+        so this is the price that was always implied."""
+        if isinstance(part, Relief):
+            # Rubble is rubble. This is the one job neither house grows,
+            # so the biomass discount - which exists to pay RYEZ back for
+            # gestation it does not suffer here - does not apply.
+            return int(part.scrap), 0
+        s, al = part.scrap, part.alloy
+        if self.skipping(part, socket):
+            s += WEAPONS[part.base].scrap
+            al += WEAPONS[part.base].alloy
+        return int(round(s * (BIO_COST if self.bio else 1.0))), al
+
+    def skipping(self, part, socket):
+        """Is this a refit going onto a hardpoint that is not holding the
+        thing it refits? Passing no socket assumes yes, which is the safe
+        way round: it over-quotes rather than under-charges."""
+        if not isinstance(part, Weapon) or not part.base:
+            return False
+        return socket is None or self.mech.fit.get(socket) != part.base
 
     @property
     def rush_rate(self):
@@ -5050,7 +5475,7 @@ class Run:
             return False
         if not self.bio and self.free_crew < 1:
             return False
-        scrap, alloy = self.price(part)
+        scrap, alloy = self.price(part, socket)
         if not self.can_afford(scrap, alloy):
             return False
         self.scrap -= scrap
@@ -5085,8 +5510,8 @@ class Run:
         if job.kind == "build":
             p = part_of(job.socket, job.target)
             if p:
-                self.scrap += int(self.price(p)[0] * 0.5)
-                self.alloy += p.alloy
+                self.scrap += int(self.price(p, job.socket)[0] * 0.5)
+                self.alloy += self.price(p, job.socket)[1]
         self.jobs.remove(job)
 
     def rush(self, job):
@@ -5141,6 +5566,13 @@ class Run:
                                      % (got, word("alloy", "ALLOY"),
                                         "VATS" if self.bio else "CRUCIBLE"))
                     flawed = False
+                elif job.socket == CITY_SLOT:
+                    was = self.integrity
+                    self.integrity = clamp(was + self.relief_gain(),
+                                           0.0, 100.0)
+                    self.news.append("+%d%% %s STANDING AGAIN"
+                                     % (int(round(self.integrity - was)),
+                                        word("city", "CITY")))
                 elif job.socket == YARD_SLOT:
                     self.yard = max(self.yard, job.target)
                     self.crew = min(self.crew, self.max_crew)
@@ -5196,6 +5628,24 @@ class Run:
             lines.append("%s WENT THROUGH THE CITY AND BACK TO THE SEA."
                          % kind.name)
             lines.append("-%d CITY" % kind.rampage)
+            salv = int(kind.scrap * 0.45)
+            salv_a = max(1, kind.alloy // 2) if kind.alloy else 0
+            salv_m = MARKS_FOR[min(self.kaiju_index,
+                                   len(MARKS_FOR) - 1)] // 2
+            self.scrap += salv
+            self.alloy += salv_a
+            add_marks(salv_m)
+            if self.crew < 4:
+                # KEAL's parallelism is HANDS and RYEZ's is TANKS, and only
+                # hands were tied to winning - so a player who lost a fight
+                # fell behind in a way the other house never could. There is
+                # a floor under it now. Winning still gets you to seven.
+                self.crew += 1
+                lines.append("THE CITY SENT MORE HANDS. THEY ARE FRIGHTENED.")
+            lines.append("THE CREW STRIPPED WHAT IT LEFT IN THE ROAD:")
+            lines.append("+%d %s, +%d %s, +%d MARKS"
+                         % (salv, word("scrap", "SCRAP"), salv_a,
+                            word("alloy", "ALLOY"), salv_m))
         if fight.wrecked:
             lines.append("%d BLOCKS LOST" % fight.wrecked)
         self.kaiju_index += 1
@@ -5235,7 +5685,7 @@ class Run:
             r.mech = Mech.from_json(d.get("mech"))
             r.jobs = [Job.from_json(j) for j in d.get("jobs", [])
                       if j.get("socket") in SOCKETS + (MOD_SLOT, YARD_SLOT,
-                                                       REFINE_SLOT)]
+                                                       REFINE_SLOT, CITY_SLOT)]
             r.spent = int(d.get("spent", 0))
             r.rushes = int(d.get("rushes", 0))
             r.news = ["RUN RESUMED - DAY %d" % r.day]
@@ -5491,6 +5941,9 @@ class Hangar:
         self.night = 0.0
         self.buttons = []
         self.rack_buttons = []
+        self.scroll = 0.0            # down the option list
+        self.scroll_for = None       # ...which belongs to this socket
+        self.scroll_max = 0.0
 
     def say(self, s, bad=False):
         self.toast.append([s, 2.4, bad])
@@ -5518,6 +5971,12 @@ class Hangar:
         if k == pygame.K_TAB:
             self.spec = not self.spec
             self.rack = False
+            return None
+        if k in (pygame.K_DOWN, pygame.K_PAGEDOWN):
+            self.wheel(-3 if k == pygame.K_PAGEDOWN else -1)
+            return None
+        if k in (pygame.K_UP, pygame.K_PAGEUP):
+            self.wheel(3 if k == pygame.K_PAGEUP else 1)
             return None
         if k in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER):
             return self.end_day()
@@ -5595,6 +6054,19 @@ class Hangar:
                 else:
                     self.say("CANNOT START THAT", True)
                     SFX.play("deny", 0.5)
+            elif kind == "relief":
+                if run.start_relief():
+                    self.say(pname(CITY_SLOT, RELIEF) + " STARTED")
+                    SFX.play("weld", 0.5)
+                elif run.integrity >= 100.0:
+                    self.say("THE CITY IS WHOLE", True)
+                    SFX.play("deny", 0.5)
+                elif run.free_crew < 1:
+                    self.say("NOBODY FREE TO CLEAR RUBBLE", True)
+                    SFX.play("deny", 0.5)
+                else:
+                    self.say("NOT ENOUGH IN THE BANK", True)
+                    SFX.play("deny", 0.5)
             elif kind == "repair":
                 if run.start_repair(self.sel):
                     self.say("REPAIR QUEUED")
@@ -5620,7 +6092,9 @@ class Hangar:
             elif kind == "endday":
                 return self.end_day()
             elif kind == "jobsel":
-                self.sel = data.socket
+                self.sel = (YARD_SLOT if data.socket in (REFINE_SLOT,
+                                                         CITY_SLOT)
+                            else data.socket)
             return None
         return None
 
@@ -5847,48 +6321,135 @@ class Hangar:
             return
         opts = options_for(s, self.slot_fit(s))
         if s == YARD_SLOT:
-            opts = list(opts) + [REFINE]
+            opts = list(opts) + [REFINE, RELIEF]
         if not opts:
             text(surf, "This is as good as it gets.", 14, (r.x + 14, y), FAINT)
             return
-        for p in opts[:5]:
-            card = pygame.Rect(r.x + 10, y, r.w - 20, 84)
-            ok = (run.can_afford(*run.price(p)) and not run.no_room()
-                  and (run.bio or run.free_crew > 0))
-            panel(surf, card, (20, 22, 30) if ok else (17, 18, 24), LINE, 5)
-            nm = pname(s, p)
-            text(surf, nm, fit(nm, 17, card.w - 130),
-                 (card.x + 10, card.y + 7), INK if ok else FAINT)
-            self.price(surf, card, p, run)
-            line = (peffect(p) if isinstance(p, (YardUp, Refine))
-                    else stat_line(p))
-            text(surf, line, fit(line, 12, card.w - 20),
-                 (card.x + 10, card.y + 28), CORE)
-            for i, ln in enumerate(wrap(pblurb(s, p), 12, card.w - 20)[:2]):
-                text(surf, ln, 12, (card.x + 10, card.y + 44 + i * 14), DIM,
-                     bold=False)
-            act = ("refine", None) if isinstance(p, Refine) else ("build", p)
-            if isinstance(p, Refine):
-                ok = ok and run.job_on(REFINE_SLOT) is None
-            self.buttons.append(Button(card, "", act, enabled=ok))
-            if ok:
-                pygame.draw.rect(surf, ALLOY_C if isinstance(p, Refine)
-                                 else PAINT, card, 1, border_radius=5)
-            y += 90
-            if y > r.bottom - 40:
-                break
+        self.options(surf, r, s, opts, y)
 
-    def price(self, surf, card, p, run):
+    CARD_H = 84
+    CARD_GAP = 6
+
+    def options(self, surf, r, s, opts, top):
+        """The buyable list, which is longer than the panel is tall.
+
+        A bare hardpoint now offers sixteen weapons and there is room for
+        five. The old code drew `opts[:5]` and broke out of the loop when
+        it ran off the bottom, so the sixth option did not exist as far as
+        the player was concerned - which read as "this game has five guns"
+        rather than "this list scrolls".
+
+        Everything is drawn into a clip rectangle and shifted up by
+        `self.scroll`. A card that is not WHOLLY inside that rectangle gets
+        no button: a click target hanging over the edge of a panel is how
+        you buy a SUN LANCE you cannot see."""
+        run = self.run
+        hint = 16                       # a strip kept clear at the bottom
+        view = pygame.Rect(r.x + 4, top, r.w - 8, r.bottom - 8 - hint - top)
+        step = self.CARD_H + self.CARD_GAP
+        span = step * len(opts) - self.CARD_GAP
+        if self.scroll_for != s:        # a different socket starts at the top
+            self.scroll_for = s
+            self.scroll = 0.0
+        self.scroll_max = max(0.0, float(span - view.h))
+        self.scroll = clamp(self.scroll, 0.0, self.scroll_max)
+        bar_w = 8 if self.scroll_max > 0 else 0
+        was = surf.get_clip()
+        surf.set_clip(view)
+        for i, p in enumerate(opts):
+            card = pygame.Rect(r.x + 10, view.y + i * step - int(self.scroll),
+                               r.w - 20 - bar_w, self.CARD_H)
+            if card.bottom < view.y - 2 or card.y > view.bottom + 2:
+                continue                # scrolled off one end or the other
+            whole = card.y >= view.y and card.bottom <= view.bottom
+            self.option_card(surf, card, s, p, whole)
+        surf.set_clip(was)
+        if self.scroll_max > 0:
+            self.scrollbar(surf, view, span)
+            text(surf, "%d MORE - SCROLL" % self.below(opts, view, step), 12,
+                 (r.right - 14, view.bottom + 3), FAINT, right=True)
+        elif len(opts) > 1:
+            text(surf, "%d TO CHOOSE FROM" % len(opts), 12,
+                 (r.right - 14, view.bottom + 3), FAINT, right=True)
+
+    def below(self, opts, view, step):
+        """How many cards are still under the fold, for the hint line."""
+        shown = int((view.h + self.CARD_GAP) // step)
+        return max(0, len(opts) - shown - int(self.scroll // step))
+
+    def option_card(self, surf, card, s, p, clickable):
+        """One thing you could buy, and whether you could buy it."""
+        run = self.run
+        relief = isinstance(p, Relief)
+        refine = isinstance(p, Refine)
+        ok = (run.can_afford(*run.price(p, s)) and not run.no_room()
+              and (run.bio or run.free_crew > 0))
+        if refine:
+            ok = ok and run.job_on(REFINE_SLOT) is None
+        if relief:
+            # rubble is cleared by people in both houses - a pod cannot
+            # hold a roof up - so this one wants hands even from RYEZ
+            ok = (run.can_afford(*run.price(p, s)) and not run.no_room()
+                  and run.free_crew > 0 and run.job_on(CITY_SLOT) is None
+                  and run.integrity < 100.0)
+        panel(surf, card, (20, 22, 30) if ok else (17, 18, 24), LINE, 5)
+        nm = pname(s, p)
+        text(surf, nm, fit(nm, 17, card.w - 130),
+             (card.x + 10, card.y + 7), INK if ok else FAINT)
+        self.price(surf, card, p, run, s)
+        line = (peffect(p) if isinstance(p, (YardUp, Refine, Relief))
+                else stat_line(p))
+        if relief:
+            line = "+%d%% of the city back, at today's %d%%" % (
+                int(round(min(run.relief_gain(), 100.0 - run.integrity))),
+                int(run.integrity))
+        text(surf, line, fit(line, 12, card.w - 20),
+             (card.x + 10, card.y + 28), CORE)
+        # a skipped ladder has to explain its own price, so the note takes
+        # the blurb's place rather than trying to sit under it
+        note = pblurb(s, p)
+        if run.skipping(p, s):
+            note = ("The whole family at once - the %s is in the price."
+                    % pname(s, WEAPONS[p.base]))
+        elif relief and run.integrity >= 100.0:
+            note = "Nothing to put back. The city is whole."
+        for i, ln in enumerate(wrap(note, 12, card.w - 20)[:2]):
+            text(surf, ln, 12, (card.x + 10, card.y + 44 + i * 14), DIM,
+                 bold=False)
+        act = ("refine", None) if refine else (
+            ("relief", None) if relief else ("build", p))
+        if clickable:
+            self.buttons.append(Button(card, "", act, enabled=ok))
+        if ok:
+            pygame.draw.rect(surf, GOOD if relief else
+                             (ALLOY_C if refine else PAINT), card, 1,
+                             border_radius=5)
+
+    def scrollbar(self, surf, view, span):
+        x = view.right - 6
+        track = pygame.Rect(x, view.y + 2, 4, view.h - 4)
+        pygame.draw.rect(surf, (28, 30, 40), track, border_radius=2)
+        h = max(26, int(track.h * (view.h / float(span))))
+        t = self.scroll / max(1.0, self.scroll_max)
+        pygame.draw.rect(surf, PAINT,
+                         pygame.Rect(x, track.y + int((track.h - h) * t), 4, h),
+                         border_radius=2)
+
+    def wheel(self, dy):
+        """The list under the pointer moves. There is only ever one."""
+        self.scroll = clamp(self.scroll - dy * 58.0, 0.0, self.scroll_max)
+
+    def price(self, surf, card, p, run, socket=None):
         """Cost and time along the top right of a card, in this house's
         money and this house's calendar."""
-        cost, alloy = run.price(p)
+        cost, alloy = run.price(p, socket)
         days = p.days
-        if run.bio and not isinstance(p, (YardUp, Refine)):
+        if run.bio and not isinstance(p, (YardUp, Refine, Relief)):
             days = int(math.ceil(days * GESTATE))
         cx = card.right - 10
         text(surf, "%dd" % days, 15, (cx, card.y + 8), DIM, right=True)
         cx -= font(15).size("%dd" % days)[0] + 12
-        if p.alloy:
+        if alloy:
             lab = "%d" % alloy
             text(surf, lab, 15, (cx, card.y + 8),
                  ALLOY_C if run.alloy >= alloy else BAD, right=True)
@@ -5972,7 +6533,7 @@ class Hangar:
             inside = m.has(mod.key)
             building = job is not None and job.target == mod.key
             room = len(m.mods) < m.bays
-            afford = run.can_afford(*run.price(mod))
+            afford = run.can_afford(*run.price(mod, MOD_SLOT))
             can = (not inside and not building and job is None and room
                    and afford and not run.no_room()
                    and (run.bio or run.free_crew > 0))
@@ -5992,7 +6553,7 @@ class Hangar:
                 text(surf, "%dd" % job.days_left(), 12,
                      (card.right - 10, card.y + 10), CORE, right=True)
             else:
-                self.price(surf, card, mod, run)
+                self.price(surf, card, mod, run, MOD_SLOT)
             for k, ln in enumerate(wrap(peffect(mod), 12, card.w - 20)[:2]):
                 text(surf, ln, 12, (card.x + 10, card.y + 28 + k * 14), CORE)
             for k, ln in enumerate(wrap(pblurb(MOD_SLOT, mod), 12,
@@ -6025,7 +6586,8 @@ class Hangar:
              (r.x + 12, r.y + 8), DIM)
         if bio:
             text(surf, "%d OF %d PODS RUNNING    %d OF %d %s ON THEM"
-                 % (len(run.jobs), run.pods, run.crew - run.free_crew,
+                 % (len(run.growing()), run.pods,
+                    run.crew - run.free_crew,
                     run.crew, word("crew", "CREW")), 13,
                  (r.right - 12, r.y + 10), FAINT, right=True)
         else:
@@ -6036,16 +6598,18 @@ class Hangar:
             text(surf, "Every pod is empty. Nothing is growing." if bio else
                  "Nobody is working on anything. That is a whole day.",
                  17, (r.centerx, r.centery), FAINT, center=True)
-        slots = max(1, min(4, run.pods if bio else 4))
+        slots = max(1, min(4, max(len(run.jobs[:4]),
+                                  run.pods if bio else 4)))
         cw = (r.w - 24) / slots
         for i, j in enumerate(run.jobs[:4]):
             box = pygame.Rect(r.x + 12 + i * cw, r.y + 28, cw - 8, 102)
             hot = j.socket == self.sel
             panel(surf, box, (21, 23, 31), CORE if hot else LINE, 5)
-            head = ("POD %d - " % (i + 1) if bio else "") + (
+            head = ("POD %d - " % (i + 1) if j.bio else "") + (
                 word("rack", "RACK") if j.socket == MOD_SLOT else
                 word("yard", "YARD") if j.socket == YARD_SLOT else
-                word("alloy", "ALLOY") if j.socket == REFINE_SLOT
+                word("alloy", "ALLOY") if j.socket == REFINE_SLOT else
+                word("city", "THE CITY") if j.socket == CITY_SLOT
                 else sock_label(j.socket))
             text(surf, head, fit(head, 12, box.w - 16), (box.x + 8, box.y + 5),
                  FAINT)
@@ -6057,7 +6621,7 @@ class Hangar:
             text(surf, "%d DAY%s" % (dl, "" if dl == 1 else "S"), 14,
                  (box.x + 8, box.y + 52), WARN)
             bw = 24
-            if bio:
+            if j.bio:
                 # the second bar is the one that decides whether it works
                 f = clamp(j.unstable / 100.0, 0, 1)
                 col = GOOD if f < 0.28 else (WARN if f < FAULT_AT / 100.0
@@ -6079,21 +6643,21 @@ class Hangar:
             self.buttons.append(Button(
                 pygame.Rect(box.right - bw * 2 - 12, box.y + 46, bw, 22),
                 "-", ("crew", (j, -1)),
-                enabled=j.crew > (0 if bio else 1)))
+                enabled=j.crew > (0 if j.bio else 1)))
             self.buttons.append(Button(
                 pygame.Rect(box.right - bw - 8, box.y + 46, bw, 22),
                 "+", ("crew", (j, 1)),
                 enabled=j.crew < run.crew_per_job and run.free_crew > 0))
             cost = int(math.ceil(j.left) * run.rush_rate)
             self.buttons.append(Button(
-                pygame.Rect(box.x + 8, box.y + (80 if bio else 68),
+                pygame.Rect(box.x + 8, box.y + (80 if j.bio else 68),
                             box.w * 0.52, 20),
-                ("FORCE %d" if bio else "RUSH %d") % cost, ("rush", j),
+                ("FORCE %d" if j.bio else "RUSH %d") % cost, ("rush", j),
                 enabled=not j.rushed and run.scrap >= cost and j.left > 0,
                 tone=RUST))
             self.buttons.append(Button(
                 pygame.Rect(box.x + 12 + box.w * 0.52,
-                            box.y + (80 if bio else 68), box.w * 0.34, 20),
+                            box.y + (80 if j.bio else 68), box.w * 0.34, 20),
                 "DROP", ("cancel", j), tone=BAD))
         if len(run.jobs) > 4:
             text(surf, "+%d MORE %s" % (len(run.jobs) - 4,
@@ -7017,15 +7581,44 @@ class Bazaar:
 # THE FRONT DOOR
 # ---------------------------------------------------------------------------
 class Title:
-    def __init__(self, save):
-        self.save = save
+    """The front door, and the three drawers behind it.
+
+    A slot owns EVERYTHING - the run, the record, and the Hendras' ledger.
+    The marks are the part of the game that outlives a campaign, so they
+    have to be per-slot or a fresh start would open with a stocked
+    cupboard, which is the opposite of a fresh start."""
+
+    SLOT_Y = 352
+    SLOT_W = 108
+
+    def __init__(self, save=None):
         self.t = 0.0
         self.buttons = []
+        self.save = load_save() if save is None else save
+        self.armed = 0.0             # the erase, waiting to be meant
+        self.demo_house = None
+        self.demo = None
+        self.build_demo()
+
+    def build_demo(self):
+        """Whatever the chosen slot is building, standing in its own bay."""
+        self.demo_house = CURRENT["house"]
         self.demo = Mech()
         for k, v in (("legs", 2), ("torso", 2), ("l_arm", 2), ("r_arm", 1),
                      ("head", 2), ("reactor", 2), ("l_wpn", "pile"),
                      ("r_wpn", "auto"), ("armour", 1)):
             self.demo.install(k, v)
+
+    def refresh(self):
+        self.save = load_save()
+
+    def update(self, dt):
+        self.t += dt
+        self.armed = max(0.0, self.armed - dt)
+
+    def slot_rect(self, n):
+        return pygame.Rect(74 + (n - 1) * (self.SLOT_W + 10), self.SLOT_Y,
+                           self.SLOT_W, 74)
 
     def draw(self, surf, mouse):
         surf.fill(BG)
@@ -7034,48 +7627,117 @@ class Title:
         ov.fill((8, 9, 14, 160))
         surf.blit(ov, (0, 0))
         g = pygame.Rect(W - 470, 60, 420, 640)
+        run = self.save.get("run") or {}
+        was = CURRENT["house"]
+        set_house(run.get("house") if run.get("house") in HOUSES else "keal")
+        if self.demo_house != CURRENT["house"]:
+            self.build_demo()
         draw_gantry(surf, g, _TitleRun(self.demo), self.t)
-        text(surf, "THE", 30, (74, 108), PAINT)
-        text(surf, "GREAT", 96, (68, 132), INK)
-        text(surf, "WORK", 96, (68, 224), INK)
-        text(surf, "Build the mech. The kaiju will not wait.", 22,
-             (74, 336), DIM)
-        has = bool(self.save.get("run"))
+        set_house(was)
+        text(surf, "THE", 28, (74, 96), PAINT)
+        text(surf, "GREAT", 88, (68, 118), INK)
+        text(surf, "WORK", 88, (68, 200), INK)
+        text(surf, "Build the mech. The kaiju will not wait.", 20,
+             (74, 296), DIM)
         self.buttons = []
-        y = 400
+        text(surf, "SAVE", 13, (74, self.SLOT_Y - 18), FAINT)
+        for n in range(1, SLOTS + 1):
+            self.draw_slot(surf, n, mouse)
+        has = bool(self.save.get("run"))
+        y = self.SLOT_Y + 92
         if has:
             r = self.save["run"]
-            self.buttons.append(Button(pygame.Rect(74, y, 330, 60),
+            self.buttons.append(Button(pygame.Rect(74, y, 348, 54),
                                        "CONTINUE - DAY %d" % r.get("day", 1),
                                        ("continue", None), primary=True))
-            y += 74
-        self.buttons.append(Button(pygame.Rect(74, y, 330, 60),
+            y += 60
+        self.buttons.append(Button(pygame.Rect(74, y, 348, 54),
                                    "A NEW MACHINE" if has else "BEGIN",
                                    ("new", None), primary=not has))
-        y += 74
-        self.buttons.append(Button(pygame.Rect(74, y, 330, 60),
+        y += 60
+        self.buttons.append(Button(pygame.Rect(74, y, 348, 54),
                                    "THE HENDRAS - %d MARKS" % marks(),
                                    ("shop", None), tone=ALLOY_C))
-        y += 74
-        self.buttons.append(Button(pygame.Rect(74, y, 330, 60), "QUIT",
+        y += 60
+        self.buttons.append(Button(pygame.Rect(74, y, 170, 54), "QUIT",
                                    ("quit", None), tone=BAD))
+        card = slot_card(SLOT[0])
+        if not card["empty"]:
+            lab = ("ERASE - SURE?" if self.armed > 0
+                   else "ERASE SAVE %d" % SLOT[0])
+            self.buttons.append(Button(pygame.Rect(252, y, 170, 54), lab,
+                                       ("erase", None),
+                                       tone=BAD, primary=self.armed > 0))
         for b in self.buttons:
             b.hover(mouse)
-            b.draw(surf, 24)
+            if not b.key[0].startswith("slot"):
+                b.draw(surf, 21)
         best = self.save.get("best", {})
         if best:
-            text(surf, "machines finished: %d      lost: %d      best run: "
+            text(surf, "in this save - finished: %d   lost: %d   best run: "
                  "%d kaiju" % (best.get("wins", 0), best.get("losses", 0),
-                               best.get("best_kills", 0)), 15,
-                 (74, H - 54), FAINT)
+                               best.get("best_kills", 0)), 14,
+                 (74, H - 52), FAINT)
         text(surf, "Every graphic and every note in this game is drawn or "
-             "synthesised in code.", 13, (74, H - 30), (56, 60, 76))
+             "synthesised in code.", 12, (74, H - 28), (56, 60, 76))
+
+    def draw_slot(self, surf, n, mouse):
+        r = self.slot_rect(n)
+        c = slot_card(n)
+        live = n == SLOT[0]
+        hot = r.collidepoint(mouse)
+        tone = PAINT
+        if c["run"]:
+            tone = HOUSES[c["run"]["house"]].colour
+        panel(surf, r, (30, 31, 42) if (live or hot) else (19, 20, 27),
+              tone if live else (LINE if not hot else DIM), 6,
+              2 if live else 1)
+        text(surf, str(n), 15, (r.x + 8, r.y + 4), tone if live else FAINT)
+        if c["empty"]:
+            text(surf, "EMPTY", 13, (r.centerx, r.y + 28), FAINT, center=True)
+            self.buttons.append(Button(r, "", ("slot%d" % n, None)))
+            return
+        if c["run"]:
+            ho = HOUSES[c["run"]["house"]]
+            ho.logo(surf, r.right - 15, r.y + 11, 8, self.t, True)
+            text(surf, "DAY %d" % c["run"]["day"], 17,
+                 (r.centerx, r.y + 24), INK, center=True)
+            cc = (GOOD if c["run"]["city"] > 50 else
+                  (WARN if c["run"]["city"] > 22 else BAD))
+            text(surf, "city %d%%" % c["run"]["city"], 12,
+                 (r.centerx, r.y + 44), cc, center=True)
+        else:
+            text(surf, "NO RUN", 15, (r.centerx, r.y + 24), DIM, center=True)
+            text(surf, "%dW  %dL" % (c["wins"], c["losses"]), 12,
+                 (r.centerx, r.y + 44), FAINT, center=True)
+        text(surf, "%d marks" % c["marks"], 12, (r.centerx, r.y + 58),
+             ALLOY_C if c["marks"] else FAINT, center=True)
+        self.buttons.append(Button(r, "", ("slot%d" % n, None)))
 
     def click(self, pos):
         for b in self.buttons:
             if b.hit(pos):
+                key = b.key[0]
+                if key.startswith("slot"):
+                    n = int(key[4:])
+                    if n != SLOT[0]:
+                        set_slot(n)
+                        self.refresh()
+                        self.armed = 0.0
+                        SFX.play("click", 0.5)
+                    return None
+                if key == "erase":
+                    if self.armed > 0:
+                        erase_slot(SLOT[0])
+                        self.refresh()
+                        self.armed = 0.0
+                        SFX.play("wreck", 0.5)
+                    else:
+                        self.armed = 3.0
+                        SFX.play("deny", 0.4)
+                    return None
                 SFX.play("click", 0.6)
-                return b.key[0]
+                return key
         return None
 
 
@@ -7158,7 +7820,7 @@ class App:
         self.screen = pygame.display.set_mode((W, H))
         self.clock = pygame.time.Clock()
         self.state = "title"
-        self.title = Title(load_save())
+        self.title = Title()
         self.choose = None
         self.bazaar = None
         self.run = None
@@ -7247,7 +7909,7 @@ class App:
             music("yard")
 
     def to_title(self):
-        self.title = Title(load_save())
+        self.title = Title()
         self.state = "title"
         set_house("keal")
         music("vigil")
@@ -7306,7 +7968,9 @@ class App:
             if picked:
                 self.begin_run(None, picked)
         elif self.state == "hangar":
-            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if ev.type == pygame.MOUSEWHEEL:
+                self.hangar.wheel(ev.y)
+            elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 if self.hangar.spec:
                     self.hangar.spec = False
                 elif self.hangar.click(ev.pos) == "landfall":
@@ -7407,7 +8071,7 @@ class App:
             self.handle(ev)
         s = self.screen
         if self.state == "title":
-            self.title.t += dt
+            self.title.update(dt)
             self.title.draw(s, mouse)
         elif self.state == "choose":
             self.choose.t += dt
@@ -7469,6 +8133,7 @@ def main():
     except pygame.error as e:
         print("no display:", e)
         return 1
+    restore_slot()
     App().loop()
     pygame.quit()
     return 0
