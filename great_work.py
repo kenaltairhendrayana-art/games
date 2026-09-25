@@ -1064,6 +1064,33 @@ WARE_LIST = [
          "a squad drops in mid-fight and takes a hit meant for you",
          "They are not brave. They are extremely well paid.",
          house="keal"),
+    # He does not only sell TO you. These make the animal worse and pay
+    # you for it - which is the only honest reading of a man who will not
+    # say where the crates come from or who has been taking them apart.
+    # Bought once, then ARMED or SHELVED per campaign: a permanent and
+    # irreversible "the game is harder now" would be a trap rather than a
+    # choice, and the whole point of these is that they are a choice.
+    Ware("c_coords", "zach", "SOLD COORDINATES", 72, "contract",
+         "it lands knowing where you are: +22% walk. +25% MARKS",
+         "Somebody told it. He will not say who, and he took a fee.",
+         house="keal"),
+    Ware("c_hide", "zach", "HARDENED HIDE", 84, "contract",
+         "something got into the water: +80% hide. +20% SCRAP",
+         "Whatever it was, it worked, and there is a lot of it left.",
+         house="keal"),
+    Ware("c_feed", "zach", "DEEP FEEDING", 96, "contract",
+         "it comes ashore fat: +18% health. +15% SCRAP and +1 ALLOY",
+         "Feeding grounds nobody was using. Nobody is using them now.",
+         house="keal"),
+    Ware("c_word", "zach", "A WORD IN THE WRONG EAR", 108, "contract",
+         "it hits 20% harder. +30% MARKS",
+         "One conversation, in a language you do not have.",
+         house="keal"),
+    Ware("c_early", "zach", "EARLY WAKE", 120, "contract",
+         "every landfall comes a day SOONER. +35% MARKS",
+         "He can move the date either way. He has never explained that.",
+         house="keal"),
+
     Ware("studies", "zach", "KAIJU STUDIES", 98, "power",
          "+8% damage, and every hardpoint cuts a third of the hide",
          "Somebody has been taking them apart. He will not say who.",
@@ -1099,6 +1126,8 @@ def meta():
                       (m.get("stock") or {}).items()
                       if k in WARES and int(v) > 0},
             "spent": max(0, int(m.get("spent", 0) or 0)),
+            # contracts that are owned but not currently signed
+            "off": [k for k in (m.get("off") or []) if k in WARES],
         }
     return _META[0]
 
@@ -1131,12 +1160,37 @@ def bought(key):
     return key in meta()["owned"]
 
 
+def shelved(key):
+    """A contract that is owned and not currently signed."""
+    return key in meta().get("off", ())
+
+
+def arm_ware(key, on=None):
+    """Sign a contract, or put it back in the drawer."""
+    w = WARES.get(key)
+    if w is None or w.kind != "contract" or not bought(key):
+        return False
+    m = dict(meta())
+    off = [k for k in m.get("off", ())]
+    want_on = (key in off) if on is None else bool(on)
+    if want_on:
+        off = [k for k in off if k != key]
+    elif key not in off:
+        off = off + [key]
+    m["off"] = off
+    _meta_put(m)
+    return True
+
+
 def has_ware(key):
     """Is it in the ledger AND does it do anything HERE? Everything else
     asks this. Mike and Zoe sell KEAL kit: machined parts and company
     buildings, which are no use at all to a house that grows its soldiers
-    in a tank. It stays bought - it just stays quiet."""
-    if key not in meta()["owned"]:
+    in a tank. It stays bought - it just stays quiet.
+
+    A shelved contract is the same idea one step further: bought, sitting
+    in the drawer, and doing nothing until it is signed."""
+    if key not in meta()["owned"] or shelved(key):
         return False
     w = WARES.get(key)
     return w is None or w.house is None or w.house == CURRENT["house"]
@@ -2243,6 +2297,25 @@ YARD = [
 ]
 YARD_SLOT = "yard"
 RELIEF_GAIN = 8.0                    # city points one relief job puts back
+# What Zach's contracts do to the thing walking up the road. One place,
+# because these are read from five different corners of the fight and a
+# multiplier applied at four of them is a bug that looks like balance.
+CONTRACTS = {
+    "c_coords": ("walk", 1.22),
+    "c_hide": ("hide", 1.80),
+    "c_feed": ("hp", 1.18),
+    "c_word": ("hit", 1.20),
+}
+
+
+def kaiju_mult(what):
+    m = 1.0
+    for key, (axis, v) in CONTRACTS.items():
+        if axis == what and has_ware(key):
+            m *= v
+    return m
+
+
 CHARGE_T = 0.85                      # seconds a shield charge lasts
 CHARGE_DMG = 340.0                   # what it does to what it runs into
 CHARGE_KNOCK = 420.0                 # and how far back that goes
@@ -4959,8 +5032,9 @@ class Enemy:
     @property
     def walk_speed(self):
         if self.slow > 0:
-            return self.kind.speed * (1.0 - clamp(self.slow_f, 0.0, 0.8))
-        return self.kind.speed
+            return (self.kind.speed * kaiju_mult("walk")
+                    * (1.0 - clamp(self.slow_f, 0.0, 0.8)))
+        return self.kind.speed * kaiju_mult("walk")
 
     def ail(self, dps, secs, cap, colour):
         """Fire and blight are one mechanic wearing two colours, and the
@@ -5008,7 +5082,8 @@ class Enemy:
     def hurtby(self, dmg, pierce=False, cut=0.0):
         """`cut` is partial pierce - a fraction of the hide ignored. A whole
         pierce is still a whole pierce; this is for everything else."""
-        hide = 0.0 if pierce else self.kind.dr * (1.0 - clamp(cut, 0.0, 1.0))
+        hide = (0.0 if pierce else self.kind.dr * kaiju_mult("hide")
+                * (1.0 - clamp(cut, 0.0, 1.0)))
         d = max(1.0, dmg - hide)
         self.hp -= d
         self.hurt = 0.28
@@ -5033,7 +5108,8 @@ class Fight:
         # The guns on the ridge do not stop one. They do take the edge off
         # the thing before it is anybody else's problem.
         self.enemies = [Enemy(kind, WORLD_W - 260,
-                              hp_mult=0.95 if has_ware("military") else 1.0)]
+                              hp_mult=(0.95 if has_ware("military") else 1.0)
+                              * kaiju_mult("hp"))]
         self.shots = []
         self.bits = []
         self.numbers = []
@@ -5496,7 +5572,8 @@ class Fight:
             a = e.attack
             if a["kind"] == "beam" and not self.mech.down:
                 if abs(e.x - self.mx) < a["reach"]:
-                    self.mech_hit(e, a["dmg"] * dt, silent=True, beam=True)
+                    self.mech_hit(e, a["dmg"] * dt * kaiju_mult("hit"),
+                                  silent=True, beam=True)
             if e.timer <= 0:
                 e.state = "walk"
                 e.beam_t = 0.0
@@ -5579,7 +5656,7 @@ class Fight:
         e.state = "walk"
         if k in ("swipe", "slam", "kick"):
             if not self.mech.down and abs(e.x - self.mx) <= a["reach"] + 60:
-                self.mech_hit(e, a["dmg"])
+                self.mech_hit(e, a["dmg"] * kaiju_mult("hit"))
                 if self.mech.has("shock"):        # the hull bills for it
                     back = e.hurtby(16.0, pierce=True)
                     self.dealt += back
@@ -5600,7 +5677,8 @@ class Fight:
             d = tgt - src
             tof = max(0.35, abs(d.x) / max(120.0, a.get("speed", 520)))
             v = Vector2(d.x / tof, d.y / tof - 0.5 * 520 * tof)
-            self.shots.append(Shot(src, v, a["dmg"], "kaiju",
+            self.shots.append(Shot(src, v, a["dmg"] * kaiju_mult("hit"),
+                                   "kaiju",
                                    mix(e.kind.hide, (230, 255, 150), 0.6),
                                    splash=90, size=9, arc=520.0))
             SFX.play("beam", 0.4)
@@ -6366,8 +6444,11 @@ class Run:
         """Days bought off the calendar. Three separate lines each buy one,
         and they are three lines rather than one because a day is the most
         valuable thing in the game and nobody should get three at once."""
-        return sum(1 for k in ("sabotage", "decoys", "prebomb")
+        days = sum(1 for k in ("sabotage", "decoys", "prebomb")
                    if has_ware(k))
+        if has_ware("c_early"):
+            days -= 1               # he moves it either way, for a fee
+        return days
 
     def landfall(self, i):
         return SCHEDULE[i] + self.grace if i < len(SCHEDULE) else None
@@ -6409,6 +6490,22 @@ class Run:
             m *= 1.05
         if has_ware("hazmat"):
             m *= 1.15
+        if has_ware("c_hide"):
+            m *= 1.20
+        if has_ware("c_feed"):
+            m *= 1.15
+        return m
+
+    @property
+    def marks_mult(self):
+        """What a body is worth, after everything anybody has signed."""
+        m = 1.25 if has_ware("evac") else 1.0
+        if has_ware("c_coords"):
+            m *= 1.25
+        if has_ware("c_word"):
+            m *= 1.30
+        if has_ware("c_early"):
+            m *= 1.35
         return m
 
     @property
@@ -6724,12 +6821,13 @@ class Run:
             got_s = int(kind.scrap * (1.30 if self.mech.has("claws") else 1.0)
                         * self.scrap_mult)
             got_a = (kind.alloy + (1 if self.yard >= 3 else 0)
-                     + (1 if has_ware("hazmat") else 0))
+                     + (1 if has_ware("hazmat") else 0)
+                     + (1 if has_ware("c_feed") else 0))
             self.scrap += got_s
             self.alloy += got_a
-            got_m = MARKS_FOR[min(self.kaiju_index, len(MARKS_FOR) - 1)]
-            if has_ware("evac"):
-                got_m = int(round(got_m * 1.25))
+            got_m = int(round(MARKS_FOR[min(self.kaiju_index,
+                                            len(MARKS_FOR) - 1)]
+                              * self.marks_mult))
             add_marks(got_m)
             lines.append("%s DOWN." % kind.name)
             lines.append("+%d MARKS FOR THE BODY" % got_m)
@@ -6748,8 +6846,11 @@ class Run:
             lines.append("-%d CITY" % round(hit))
             salv = int(kind.scrap * 0.45)
             salv_a = max(1, kind.alloy // 2) if kind.alloy else 0
-            salv_m = MARKS_FOR[min(self.kaiju_index,
-                                   len(MARKS_FOR) - 1)] // 2
+            # the contracts pay on a loss too: you took the risk either
+            # way, and he was paid either way
+            salv_m = int(round(MARKS_FOR[min(self.kaiju_index,
+                                             len(MARKS_FOR) - 1)]
+                               * self.marks_mult)) // 2
             self.scrap += salv
             self.alloy += salv_a
             add_marks(salv_m)
@@ -9271,6 +9372,84 @@ def draw_ware_icon(surf, r, w, t):
                          (cx - s * 0.04, top2 + s * 0.26, s * 0.08, s * 0.14))
         pygame.draw.rect(surf, (214, 190, 164),
                          (cx - s * 0.03, top2 + s * 0.21, s * 0.06, s * 0.06))
+    elif k == "c_coords":                     # a pin on a chart, and a wake
+        pygame.draw.rect(surf, (36, 52, 62),
+                         (cx - s * 0.32, cy - s * 0.26, s * 0.64, s * 0.52))
+        for i in range(4):
+            pygame.draw.line(surf, (58, 82, 96),
+                             (cx - s * 0.32, cy - s * 0.16 + i * s * 0.13),
+                             (cx + s * 0.32, cy - s * 0.16 + i * s * 0.13), 1)
+        px, py = cx + s * 0.12, cy - s * 0.06
+        pygame.draw.line(surf, (226, 90, 76), (px, py),
+                         (px, py + s * 0.22), 2)
+        pygame.draw.polygon(surf, (226, 90, 76),
+                            [(px, py), (px + s * 0.16, py + s * 0.05),
+                             (px, py + s * 0.10)])
+        f = (t * 0.7) % 1.0
+        pygame.draw.circle(surf, (226, 90, 76), (px, py + s * 0.22),
+                           s * (0.06 + 0.16 * f), 1)
+    elif k == "c_hide":                       # scales, thickening
+        for row in range(3):
+            for i in range(4):
+                x = cx - s * 0.30 + i * s * 0.17 + (s * 0.085 if row % 2
+                                                    else 0)
+                y = cy - s * 0.20 + row * s * 0.15
+                g = 96 + row * 22 + int(14 * math.sin(t * 2 + row + i))
+                pygame.draw.polygon(surf, (g - 30, g, g - 40),
+                                    [(x, y + s * 0.06),
+                                     (x + s * 0.07, y - s * 0.02),
+                                     (x + s * 0.14, y + s * 0.06),
+                                     (x + s * 0.07, y + s * 0.14)])
+    elif k == "c_feed":                       # a shoal going into a mouth
+        pygame.draw.polygon(surf, (62, 44, 52),
+                            [(cx + s * 0.34, cy - s * 0.26),
+                             (cx + s * 0.34, cy + s * 0.26),
+                             (cx + s * 0.02, cy)])
+        pygame.draw.polygon(surf, (206, 208, 214),
+                            [(cx + s * 0.30, cy - s * 0.18),
+                             (cx + s * 0.30, cy - s * 0.02),
+                             (cx + s * 0.10, cy - s * 0.02)])
+        pygame.draw.polygon(surf, (206, 208, 214),
+                            [(cx + s * 0.30, cy + s * 0.18),
+                             (cx + s * 0.30, cy + s * 0.02),
+                             (cx + s * 0.10, cy + s * 0.02)])
+        for i in range(4):
+            f = ((t * 0.8 + i * 0.25) % 1.0)
+            x = cx - s * 0.36 + f * s * 0.36
+            pygame.draw.ellipse(surf, (150, 190, 205),
+                                (x, cy - s * 0.14 + (i % 3) * s * 0.12,
+                                 s * 0.11, s * 0.05))
+    elif k == "c_word":                       # two heads, one of them close
+        for dx, col in ((-0.16, (178, 182, 196)), (0.16, (120, 126, 142))):
+            pygame.draw.circle(surf, col, (cx + s * dx, cy - s * 0.06),
+                               s * 0.13)
+            pygame.draw.polygon(surf, col,
+                                [(cx + s * dx - s * 0.14, cy + s * 0.26),
+                                 (cx + s * dx - s * 0.10, cy + s * 0.08),
+                                 (cx + s * dx + s * 0.10, cy + s * 0.08),
+                                 (cx + s * dx + s * 0.14, cy + s * 0.26)])
+        for i in range(3):
+            f = ((t * 1.4 + i * 0.33) % 1.0)
+            pygame.draw.circle(surf, (226, 200, 120),
+                               (cx - s * 0.02 + f * s * 0.10,
+                                cy - s * 0.14 - f * s * 0.10),
+                               s * 0.03 * (1 - f) + 1)
+    elif k == "c_early":                      # a clock, wound back
+        pygame.draw.circle(surf, (188, 194, 202), (cx, cy), s * 0.27)
+        pygame.draw.circle(surf, (30, 26, 32), (cx, cy), s * 0.22)
+        a = -t * 4.0
+        pygame.draw.line(surf, (226, 90, 76), (cx, cy),
+                         (cx + math.cos(a) * s * 0.17,
+                          cy + math.sin(a) * s * 0.17), 2)
+        pygame.draw.line(surf, (188, 194, 202), (cx, cy),
+                         (cx, cy - s * 0.12), 2)
+        pygame.draw.arc(surf, (226, 90, 76),
+                        (cx - s * 0.34, cy - s * 0.34, s * 0.68, s * 0.68),
+                        0.6, 2.8, max(2, int(s * 0.05)))
+        pygame.draw.polygon(surf, (226, 90, 76),
+                            [(cx - s * 0.34, cy - s * 0.02),
+                             (cx - s * 0.24, cy - s * 0.12),
+                             (cx - s * 0.22, cy + s * 0.04)])
     else:                                     # studies: a skull on a board
         pygame.draw.rect(surf, (40, 52, 44),
                          (cx - s * 0.32, cy - s * 0.28, s * 0.64, s * 0.56))
@@ -9660,6 +9839,7 @@ class Bazaar:
         self.tabs = []
         self.sec = 0
         self.open = None            # the ware being turned over
+        self.arm_btn = None
         self.flash = {}
         self.btn = Button(pygame.Rect(W // 2 - 150, H - 48, 300, 36),
                           "BACK TO THE YARD" if back == "hangar" else "BACK",
@@ -9687,7 +9867,9 @@ class Bazaar:
         his face. So neither the column count nor the card height is a
         constant any more - both are solved for the band that is actually
         free, and the card draws itself proportionally."""
-        top = r.y + 286                  # just under the counter top
+        # below the counter AND below the seller's tag line, which the
+        # old 286 sat exactly on top of once Zach carried twelve lines
+        top = r.y + 306
         avail = r.bottom - 12 - top
         best = None
         for cols in (2, 3, 4):
@@ -9695,7 +9877,7 @@ class Bazaar:
                 break
             rows = int(math.ceil(n / float(cols)))
             gh = (avail - 8 * (rows - 1)) / float(rows)
-            if gh < 72:
+            if gh < 68:
                 continue
             score = min(gh, 132)         # prefer the tallest card that fits
             if best is None or score > best[0]:
@@ -9767,13 +9949,14 @@ class Bazaar:
         return PAINT
 
     def good(self, surf, box, w, col, mouse):
-        own = w.kind != "specimen" and has_ware(w.key)
+        own = w.kind != "specimen" and bought(w.key)
+        armed = own and w.kind == "contract" and not shelved(w.key)
         have = stock_of(w.key)
         hot = box.collidepoint(mouse) and self.open is None
         lift = 4 if hot else 0
         b = box.move(0, -lift)
         panel(surf, b, (30, 30, 40) if hot else (22, 22, 30),
-              col if hot else (GOOD if own else LINE), 6)
+              col if hot else (BAD if armed else (GOOD if own else LINE)), 6)
         # everything below is a fraction of the card, because the card is
         # not one size any more - see slot_rects
         ic = int(min(68, b.h * 0.50))
@@ -9784,7 +9967,10 @@ class Bazaar:
         ny = b.y + 14 + ic
         text(surf, nm, fit(nm, 14, b.w - 12), (b.centerx, ny),
              INK if afford else FAINT, center=True)
-        if own:
+        if own and w.kind == "contract":
+            text(surf, "SIGNED" if armed else "SHELVED", 13,
+                 (b.centerx, ny + 20), BAD if armed else FAINT, center=True)
+        elif own:
             text(surf, "BOUGHT", 13, (b.centerx, ny + 20), GOOD, center=True)
         else:
             lab = "FREE - TAKE IT" if w.cost <= 0 else "%d MARKS" % w.cost
@@ -9814,6 +10000,8 @@ class Bazaar:
         kind = {"blueprint": "A BLUEPRINT - yours for good, once drawn",
                 "power": "A STANDING ORDER - every run, for good",
                 "chassis": "A WHOLE MACHINE - pick it when a run begins",
+                "contract": "A CONTRACT - it makes the animal worse, and "
+                            "it pays",
                 "specimen": "A SPECIMEN - one jar, opened in the street"}
         text(surf, kind[w.kind], 13, (x, r.y + 78), col)
         if w.house is not None:
@@ -9830,7 +10018,7 @@ class Bazaar:
         for line in wrap(w.blurb, 14, r.right - x - 30):
             text(surf, line, 14, (x, y), DIM, bold=False)
             y += 18
-        own = w.kind != "specimen" and has_ware(w.key)
+        own = w.kind != "specimen" and bought(w.key)
         if w.kind == "specimen":
             have = stock_of(w.key)
             text(surf, "%d in the cupboard" % have, 14, (x, r.bottom - 98),
@@ -9845,6 +10033,18 @@ class Bazaar:
                               tone=col, primary=can_buy(w.key))
         self.buy_btn.hover(mouse)
         self.buy_btn.draw(surf, 17)
+        self.arm_btn = None
+        if w.kind == "contract" and bought(w.key):
+            on = not shelved(w.key)
+            self.arm_btn = Button(pygame.Rect(x + 244, r.bottom - 48, 190, 34),
+                                  "PUT IT BACK" if on else "SIGN IT",
+                                  ("arm", w.key), tone=BAD if on else GOOD,
+                                  primary=not on)
+            self.arm_btn.hover(mouse)
+            self.arm_btn.draw(surf, 16)
+            text(surf, "SIGNED - the animal is worse, and it pays"
+                 if on else "in the drawer, doing nothing", 13,
+                 (x, r.bottom - 100), BAD if on else FAINT)
         text(surf, "ESC to put it back", 13, (r.x + 26, r.bottom - 30), FAINT)
 
     def update(self, dt):
@@ -9856,9 +10056,14 @@ class Bazaar:
 
     def click(self, pos):
         if self.open is not None:
+            if self.arm_btn and self.arm_btn.hit(pos):
+                arm_ware(self.open)
+                SFX.play("click", 0.6)
+                return None
             if self.buy_btn and self.buy_btn.hit(pos):
                 if buy_ware(self.open):
                     self.flash[self.open] = 1.0
+                    arm_ware(self.open, True)
                     SFX.play("done", 0.7)
                 else:
                     SFX.play("deny", 0.5)

@@ -1115,9 +1115,10 @@ def gov():
     surf = pygame.Surface((G.W, G.H))
     G.set_house("keal")
     gov_wares = [w for w in G.WARE_LIST if w.seller in ("genk", "zach")]
-    assert len(gov_wares) == 15, len(gov_wares)
+    assert len(gov_wares) == 20, len(gov_wares)
     assert all(w.house == "keal" for w in gov_wares)
-    assert {w.key for w in gov_wares} == set(GOV_KEYS)
+    sold = {w.key for w in gov_wares if w.kind != "contract"}
+    assert sold == set(GOV_KEYS), sold ^ set(GOV_KEYS)
 
     # -- everything measured twice: once bare, once bought -----------------
     bare = G.Run("keal")
@@ -1136,9 +1137,8 @@ def gov():
     for k in GOV_KEYS:
         assert G.can_buy(k), k
         assert G.buy_ware(k), k
-    print("  %d wares over two desks, %d marks" % (len(gov_wares),
-                                                   sum(w.cost for w in
-                                                       gov_wares)))
+    print("  %d lines over two desks - %d sold to you, %d sold about you"
+          % (len(gov_wares), len(sold), len(gov_wares) - len(sold)))
 
     run = G.Run("keal")
     run.killed, run.integrity = 3, 90.0
@@ -1250,13 +1250,132 @@ def gov():
     assert ryez.mech.hide_cut == 0.0
     print("  RYEZ owns all fifteen, keeps its own calendar and its own hide")
 
+    # -- and the other half of his book: contracts on the animal ----------
+    wipe_meta()
+    G.set_house("keal")
+    deals = [w for w in G.WARE_LIST if w.kind == "contract"]
+    assert len(deals) == 5, len(deals)
+    assert all(w.seller == "zach" for w in deals), "somebody else is dealing"
+    kind = G.roster_for("keal")[2]
+    bare = G.Run("keal")
+    bare.kaiju_index = 2
+    was = {"walk": G.Enemy(kind, 0).walk_speed,
+           "hide": G.Enemy(kind, 0).hurtby(100.0),
+           "hp": G.Fight(bare, kind).boss().max_hp,
+           "hit": G.kaiju_mult("hit"),
+           "marks": bare.marks_mult,
+           "scrap": bare.scrap_mult,
+           "days": [bare.landfall(i) for i in range(6)]}
+    G.add_marks(3000)
+    for w in deals:
+        assert G.buy_ware(w.key), w.key
+        assert not G.shelved(w.key), "%s did not sign itself" % w.key
+    run = G.Run("keal")
+    run.kaiju_index = 2
+    now = {"walk": G.Enemy(kind, 0).walk_speed,
+           "hide": G.Enemy(kind, 0).hurtby(100.0),
+           "hp": G.Fight(run, kind).boss().max_hp,
+           "hit": G.kaiju_mult("hit"),
+           "marks": run.marks_mult,
+           "scrap": run.scrap_mult,
+           "days": [run.landfall(i) for i in range(6)]}
+    assert now["walk"] > was["walk"], (was["walk"], now["walk"])
+    assert now["hide"] < was["hide"], "the hide did not thicken"
+    assert now["hp"] > was["hp"] * 1.15
+    assert now["hit"] > was["hit"]
+    assert now["marks"] > was["marks"] * 2.0, now["marks"]
+    assert now["scrap"] > was["scrap"]
+    assert now["days"] == [d - 1 for d in was["days"]], now["days"]
+    print("  all five signed: walk %.0f->%.0f, 100 lands as %.0f->%.0f,"
+          % (was["walk"], now["walk"], was["hide"], now["hide"]))
+    print("    health %.0f->%.0f, marks x%.2f, scrap x%.2f, landfall %d->%d"
+          % (was["hp"], now["hp"], now["marks"], now["scrap"],
+             was["days"][0], now["days"][0]))
+
+    # -- EARLY WAKE fights his own three, which is the point --------------
+    for k in ("sabotage", "decoys", "prebomb"):
+        G.buy_ware(k)
+    both = G.Run("keal")
+    assert both.grace == 2, "three forward and one back is not two: %d" % (
+        both.grace)
+    print("  three days bought and one sold back nets %+d" % both.grace)
+
+    # -- shelving one puts it back without losing it ----------------------
+    for w in deals:
+        assert G.arm_ware(w.key, False), w.key
+        assert G.shelved(w.key) and G.bought(w.key), w.key
+    off = G.Run("keal")
+    off.kaiju_index = 2
+    assert G.Enemy(kind, 0).walk_speed == was["walk"], "still running fast"
+    assert G.kaiju_mult("hit") == 1.0 and G.kaiju_mult("hp") == 1.0
+    assert off.marks_mult == was["marks"], off.marks_mult
+    assert [off.landfall(i) for i in range(6)] == [d + 3 for d in was["days"]]
+    assert not G.can_buy(deals[0].key), "a shelved contract went back on sale"
+    print("  shelved: every number back where it was, and still owned")
+    for w in deals:
+        G.arm_ware(w.key, True)
+        assert not G.shelved(w.key)
+    print("  and signing them again is one click, not another 480 marks")
+
+    # -- it survives the save, and the slot ---------------------------------
+    G.meta_forget()
+    assert not G.shelved("c_word"), "the arming did not reach the disk"
+    G.arm_ware("c_word", False)
+    G.meta_forget()
+    assert G.shelved("c_word"), "the shelving did not either"
+    G.arm_ware("c_word", True)
+
+    # -- a signed contract does nothing whatsoever to a RYEZ run ----------
+    G.set_house("ryez")
+    assert G.kaiju_mult("hit") == 1.0 and G.kaiju_mult("walk") == 1.0
+    ry = G.Run("ryez")
+    assert ry.marks_mult == 1.0 and ry.grace == 0
+    print("  and none of it reaches a house that grows its own")
+    G.set_house("keal")
+
+    # -- the fight is genuinely harder, measured -------------------------
+    for w in deals:
+        G.arm_ware(w.key, False)
+
+    def _run_one():
+        """Kill it, and also say how much was still standing at twenty
+        seconds - `taken` is no use here, because a tier-three build with
+        two autocannons finishes a BULWARK without ever being reached."""
+        r = G.Run("keal")
+        r.kaiju_index = 2
+        for s, v in (("legs", 3), ("torso", 3), ("l_arm", 3), ("r_arm", 3),
+                     ("head", 3), ("reactor", 3), ("armour", 3),
+                     ("l_wpn", "auto"), ("r_wpn", "auto")):
+            r.mech.install(s, v)
+        f = G.Fight(r, kind)
+        left = None
+        for _ in range(4800):
+            f.update(1 / 40.0, {"fire_l": True, "fire_r": True})
+            if left is None and f.t >= 20.0:
+                b = f.boss()
+                left = b.hp if b else 0.0
+            if f.over:
+                break
+        return f, (left if left is not None else 0.0)
+    easy, easy_left = _run_one()
+    for w in deals:
+        G.arm_ware(w.key, True)
+    hard, hard_left = _run_one()
+    assert hard.t > easy.t, (easy.t, hard.t)
+    assert hard_left > easy_left, (easy_left, hard_left)
+    print("  same build, same animal: dead in %.0fs -> %.0fs, and at 20s "
+          "there is %.0f left instead of %.0f"
+          % (easy.t, hard.t, hard_left, easy_left))
+    wipe_meta()
+    G.set_house("keal")
+
     # -- and the desk draws ------------------------------------------------
     G.set_house("keal")
     b = G.Bazaar()
     b.t = 2.0
     b.sec = 2
     b.draw(surf, (0, 0))
-    assert len(b.slots) == 15, len(b.slots)
+    assert len(b.slots) == 20, len(b.slots)
     for box, _ in b.slots:
         assert box.bottom <= G.H and box.right <= G.W, "a card fell off"
     b.click(b.slots[0][0].center)
@@ -1266,7 +1385,7 @@ def gov():
     b.draw(surf, (0, 0))
     b.click(b.tab_rect(0).center)
     assert b.sec == 0, "the office would not let go"
-    print("  the office draws, fifteen cards fit, and the tabs still move")
+    print("  the office draws, twenty cards fit, and the tabs still move")
     wipe_meta()
     G.set_house("keal")
     print("\ngov ok")
