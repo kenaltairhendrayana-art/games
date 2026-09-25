@@ -2,6 +2,7 @@
 measured.
 
     python gw_test.py smoke          draw every screen offscreen, save PNGs
+    python gw_test.py capital        the KEAL counters, and the house gate
     python gw_test.py yard           the option list, the ladder, the city
     python gw_test.py slots          prove the three save slots stay apart
     python gw_test.py flow           drive the real App through a whole run
@@ -113,15 +114,25 @@ def smoke():
     snap("hangar_early")
 
     G.meta_forget()
-    G.add_marks(400)
+    G.add_marks(900)
     for k in ("bp_rail", "warchest", "spec_shriek", "spec_shriek",
-              "spec_venom"):
+              "spec_venom", "bp_claw", "furnace"):
         G.buy_ware(k)
     for back, name in (("title", "hendras"), ("hangar", "hendras_mid")):
         bz = G.Bazaar(back)
         bz.t = 3.1
         bz.draw(surf, (300, 520))
         snap(name)
+    for i, nm in enumerate(("market", "capital")):   # both halves of the shop
+        bz = G.Bazaar()
+        bz.t = 3.1
+        bz.sec = i
+        bz.draw(surf, (0, 0))
+        snap("shop_" + nm)
+    bz.open = "mod_eject"                            # and a card turned over
+    bz.draw(surf, (0, 0))
+    snap("shop_inspect")
+    bz.open = None
 
     ch = G.Choose()
     ch.t = 2.0
@@ -893,6 +904,196 @@ def yard():
     print("\nyard ok")
 
 
+# ---------------------------------------------------------------------------
+# CAPITAL - the KEAL half of the shop, and the gate under it
+# ---------------------------------------------------------------------------
+def capital():
+    """Twelve things that are bought in one house and used in one house.
+
+    The dangerous half of this is not the effects, it is the GATE. Every
+    one of these is paid for out of a ledger that is shared between both
+    houses in a slot, so the thing to prove is that RYEZ cannot reach any
+    of it while still being able to see that it owns it."""
+    wipe_meta()
+    surf = pygame.Surface((G.W, G.H))
+    cap = [w for w in G.WARE_LIST if w.seller in ("mike", "zoe")]
+    assert len(cap) == 12, len(cap)
+    assert all(w.house == "keal" for w in cap), "a Capital ware is unlocked"
+    print("  %d wares over two counters, all KEAL" % len(cap))
+
+    G.set_house("keal")
+    base_mods = len(G.module_list())
+    base_wpns = len(G.options_for("l_wpn", None))
+    G.add_marks(4000)
+    for w in cap:
+        assert G.can_buy(w.key), w.key
+        assert G.buy_ware(w.key), w.key
+        assert not G.can_buy(w.key), "%s sold twice" % w.key
+    print("  bought the lot for %d marks, %d left" % (4000 - G.marks(),
+                                                      G.marks()))
+
+    # -- the gate ----------------------------------------------------------
+    for w in cap:
+        assert G.bought(w.key), w.key
+        assert G.has_ware(w.key), w.key
+    G.set_house("ryez")
+    for w in cap:
+        assert G.bought(w.key), "%s left the ledger" % w.key
+        assert not G.has_ware(w.key), "%s works in a RYEZ run" % w.key
+    assert len(G.module_list()) == base_mods, "KEAL bays in a RYEZ rack"
+    assert len(G.options_for("l_wpn", None)) == base_wpns, "KEAL guns, RYEZ"
+    ryez = G.Run("ryez")
+    assert ryez.crew == 2, ryez.crew
+    assert ryez.max_crew == G.MAX_CREW, ryez.max_crew
+    print("  RYEZ owns all twelve and can use none of them")
+
+    G.set_house("keal")
+    assert len(G.module_list()) == base_mods + 4, len(G.module_list())
+    assert len(G.options_for("l_wpn", None)) == base_wpns + 3
+    print("  KEAL rack %d -> %d, hardpoint %d -> %d"
+          % (base_mods, base_mods + 4, base_wpns, base_wpns + 3))
+
+    # -- Zoe: five things the company does while you build -----------------
+    run = G.Run("keal")
+    assert run.crew == 3, "the HQ did not send anybody: %d" % run.crew
+    assert run.max_crew == G.RECRUIT_CAP, run.max_crew
+    plain = G.WEAPONS["auto"].scrap
+    assert run.price(G.WEAPONS["auto"], "l_wpn")[0] == int(round(plain * 0.9))
+    run.crew, run.alloy = 2, 0
+    for _ in range(4):
+        run.capital_night()
+    assert run.alloy == 2, "the furnace: %d in four nights" % run.alloy
+    assert run.crew == 4, "the office: %d in four nights" % run.crew
+    run.crew = G.RECRUIT_CAP
+    for _ in range(6):
+        run.capital_night()
+    assert run.crew == G.RECRUIT_CAP, "the office went past its cap"
+    print("  furnace 2 alloy / office 2 hands in four nights, capped at %d"
+          % G.RECRUIT_CAP)
+
+    r2 = G.Run("keal")
+    r2.mech.install("torso", 2)
+    r2.mech.hp["torso"] *= 0.4
+    cost, days = r2.mech.repair_cost("torso")
+    assert cost > 0 and days >= 1, (cost, days)
+    r2.killed = 3
+    assert r2.income > G.Run("ryez").income, "the colony pays nothing"
+    print("  mending %d/%dd, and the colony is in the income" % (cost, days))
+
+    # -- Mike: four bays and three hardpoints ------------------------------
+    def rig(lw="auto", rw="auto", mods=()):
+        r = G.Run("keal")
+        r.kaiju_index = 2
+        for k, v in (("legs", 2), ("torso", 3), ("l_arm", 3), ("r_arm", 3),
+                     ("head", 2), ("reactor", 3), ("armour", 2),
+                     ("l_wpn", lw), ("r_wpn", rw)):
+            r.mech.install(k, v)
+        for m in mods:
+            assert r.mech.fit_module(m), m
+        return r
+
+    plain = G.Run("keal")
+    plain.mech.install("reactor", 3)
+    aux = rig(mods=("aux",))
+    assert aux.mech.heat_cap > plain.mech.heat_cap, "the aux core is inert"
+    assert aux.mech.vent > plain.mech.vent
+    assert not plain.mech.can_boost, "tier-2 legs should not dash"
+    assert rig(mods=("thrust",)).mech.can_boost, "thrusters do not dash"
+    print("  aux core %d -> %d ceiling, thrusters dash on tier-2 legs"
+          % (plain.mech.heat_cap, aux.mech.heat_cap))
+
+    r = rig(mods=("emp",))
+    f = G.Fight(r, G.roster_for("keal")[2])
+    for _ in range(40):
+        f.update(1 / 40.0, {})
+    assert f.fire_emp(), "the EMP did not fire"
+    assert f.boss().stun >= 2.9, f.boss().stun
+    assert not f.fire_emp(), "the EMP fired twice in one landfall"
+    print("  EMP stops one for %.0fs, once a landfall" % f.boss().stun)
+
+    r = rig(mods=("eject",))
+    f = G.Fight(r, G.roster_for("keal")[2])
+    f.mech.hp["torso"] = 6.0
+    f.mech_hit(f.boss(), 9999)
+    assert f.over is None, "the seat did not catch it"
+    assert r.ejected and f.mech.hp["torso"] > 0
+    f.mech.hp["torso"] = 6.0
+    f.mech_hit(f.boss(), 9999)
+    assert f.over == "lost", "the seat caught it twice"
+    bare = rig()
+    fb = G.Fight(bare, G.roster_for("keal")[2])
+    fb.mech.hp["torso"] = 6.0
+    fb.mech_hit(fb.boss(), 9999)
+    assert fb.over == "lost", "no seat and it still stood up"
+    print("  the seat catches one core a CAMPAIGN, and the flag saves")
+
+    # -- the three hardpoints, each doing the thing it is sold as ----------
+    r = rig("blight", "blight")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    for _ in range(240):
+        f.update(1 / 40.0, {"fire_l": True, "fire_r": True, "right": True})
+    e = f.boss()
+    assert e.rot_t > 4.0, "the blight did not stack: %.1f" % e.rot_t
+    hp = e.hp
+    for _ in range(80):
+        f.update(1 / 40.0, {"right": True})
+    assert e.hp < hp - 40, "it stopped working the moment the guns did"
+    print("  blight stacks to %.1fs and bills %.0f after the guns go cold"
+          % (e.rot_t, hp - e.hp))
+
+    r = rig("flame", "flame")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    peak = 0.0
+    for _ in range(900):
+        f.update(1 / 40.0, {"fire_l": True, "fire_r": True, "right": True})
+        if f.boss() and f.boss().alive:
+            peak = max(peak, f.boss().rot_t)
+        if f.over:
+            break
+    assert 0 < peak <= G.WEAPONS["flame"].rot_cap + 0.01, peak
+    print("  flame refreshes to %.1fs and never past its cap" % peak)
+
+    r = rig("claw", "claw")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    far = 0
+    for _ in range(120):
+        f.update(1 / 40.0, {"fire_l": True, "fire_r": True})
+        far = max(far, len(f.shots))
+    assert far > 0, "the claw did not throw anything"
+    assert f.dealt > 0, "and nothing it threw arrived"
+    print("  claw put %d bolts up before anything was in reach" % far)
+
+    # -- a Capital run has to round-trip -----------------------------------
+    r = rig(mods=("eject",))
+    r.ejected = True
+    r.furnace, r.queue = 0.5, 1
+    back = G.Run.from_json(r.to_json())
+    assert back.ejected and back.queue == 1 and abs(back.furnace - 0.5) < 1e-6
+    print("  a spent seat and a half-built billet survive a save")
+
+    # -- and the screen draws, both halves of it ---------------------------
+    b = G.Bazaar()
+    b.t = 2.0
+    for i in range(len(G.Bazaar.SECTIONS)):
+        b.sec = i
+        b.draw(surf, (0, 0))
+        assert b.slots, "section %d has nothing on the boards" % i
+        for box, _ in b.slots:
+            assert box.bottom <= G.H, "a card fell off the screen"
+    b.sec = 0
+    b.draw(surf, (0, 0))
+    b.click(b.tab_rect(1).center)
+    assert b.sec == 1, "the tab did not switch"
+    b.draw(surf, (0, 0))
+    b.click(b.slots[0][0].center)
+    assert b.open == b.slots[0][1], "a Capital ware would not pick up"
+    b.draw(surf, (0, 0))
+    print("  both counters draw, the tabs switch, the stock picks up")
+    wipe_meta()
+    G.set_house("keal")
+    print("\ncapital ok")
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     SLOPPY[0] = "sloppy" in sys.argv
@@ -901,6 +1102,9 @@ def main():
     if what in ("smoke", "all"):
         print("== SMOKE ==")
         smoke()
+    if what in ("capital", "all"):
+        print("== CAPITAL ==")
+        capital()
     if what in ("yard", "all"):
         print("== YARD ==")
         yard()
@@ -915,7 +1119,8 @@ def main():
         print("\n== BALANCE ==")
         for hk in ("keal", "ryez"):
             balance(6 if what == "all" else n, hk)
-    if what not in ("smoke", "yard", "slots", "flow", "balance", "all"):
+    if what not in ("smoke", "capital", "yard", "slots", "flow",
+                    "balance", "all"):
         print(__doc__)
         return 2
     return 0

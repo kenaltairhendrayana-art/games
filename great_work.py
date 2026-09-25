@@ -863,16 +863,19 @@ def slot_card(n):
 # part of the game that does not reset.
 # ---------------------------------------------------------------------------
 class Ware:
-    __slots__ = ("key", "seller", "name", "cost", "kind", "effect", "blurb")
+    __slots__ = ("key", "seller", "name", "cost", "kind", "effect", "blurb",
+                 "house")
 
-    def __init__(self, key, seller, name, cost, kind, effect, blurb):
+    def __init__(self, key, seller, name, cost, kind, effect, blurb,
+                 house=None):
         self.key = key
-        self.seller = seller        # "sarah" or "jack"
+        self.seller = seller        # who is behind the counter
         self.name = name
         self.cost = cost
         self.kind = kind            # "blueprint", "power" or "specimen"
         self.effect = effect
         self.blurb = blurb
+        self.house = house          # None = both; "keal" = steel only
 
 
 WARE_LIST = [
@@ -911,6 +914,62 @@ WARE_LIST = [
     Ware("deepgut", "jack", "DEEP GUT", 130, "power",
          "one more bay in the rack, for good",
          "Room made where there was not room. Do not ask for what."),
+
+    # -- Mike: the workshop on the fourth terrace ---------------------------
+    # Everything from the Capital is KEAL kit. It is machined, it bolts to
+    # a frame, and there is nothing in it for a house that grows its
+    # soldiers - so it sits in the ledger either way and only does anything
+    # when the run it is in is made of steel.
+    Ware("bp_claw", "mike", "PLASMA CLAW", 150, "blueprint",
+         "a hardpoint that cuts up close and throws the arc at range",
+         "One emitter, two jobs. He is very pleased with himself.",
+         house="keal"),
+    Ware("bp_flame", "mike", "FLAME PROJECTOR", 130, "blueprint",
+         "a short cone that sets what it touches burning",
+         "Reach of nothing. Ask the ones it has been used on.",
+         house="keal"),
+    Ware("bp_blight", "mike", "BLIGHT THROWER", 145, "blueprint",
+         "a hardpoint whose hits keep working after they land",
+         "Borrowed from the other side and made properly.",
+         house="keal"),
+    Ware("mod_emp", "mike", "EMP LANCE", 160, "blueprint",
+         "a bay: stops one of them dead for three seconds",
+         "Everything with a nerve in it stops. Yours included, briefly.",
+         house="keal"),
+    Ware("mod_aux", "mike", "AUXILIARY CORE", 140, "blueprint",
+         "a bay: a second small core that takes the strain off the first",
+         "It does not make you faster. It makes you able to keep going.",
+         house="keal"),
+    Ware("mod_thrust", "mike", "THRUSTERS", 120, "blueprint",
+         "a bay: SHIFT to dash, on any legs at all",
+         "Bolted where the ankle used to just be an ankle.",
+         house="keal"),
+    Ware("mod_eject", "mike", "EJECTOR SEAT", 190, "blueprint",
+         "a bay: the core goes and you are still standing - once a run",
+         "He built it after the third funeral. Nobody argued.",
+         house="keal"),
+
+    # -- Zoe: the ledger, four terraces down --------------------------------
+    Ware("furnace", "zoe", "ARC FURNACE", 170, "power",
+         "half an ALLOY a day, every day, for good",
+         "It runs whether you are looking at it or not.",
+         house="keal"),
+    Ware("hq", "zoe", "REGIONAL HQ", 200, "power",
+         "one more pair of hands, and everything costs 10% less",
+         "A building full of people whose whole job is your job.",
+         house="keal"),
+    Ware("mining", "zoe", "MINING COLONY", 150, "power",
+         "10% more SCRAP off everything you are paid",
+         "Out past the ridge. You will never see it and it never stops.",
+         house="keal"),
+    Ware("hangar", "zoe", "MECH HANGAR", 160, "power",
+         "mending costs 10% less and lands a day sooner",
+         "A roof, a pit, and a gantry that was not improvised.",
+         house="keal"),
+    Ware("recruit", "zoe", "RECRUITING OFFICE", 180, "power",
+         "a new pair of hands every second day, up to ten",
+         "There is a queue. There has been a queue since the first one.",
+         house="keal"),
 ]
 WARES = {w.key: w for w in WARE_LIST}
 SPECIMENS = [w for w in WARE_LIST if w.kind == "specimen"]
@@ -967,8 +1026,21 @@ def add_marks(n):
     _meta_put(m)
 
 
-def has_ware(key):
+def bought(key):
+    """Is it in the ledger? The shop asks this - a thing you paid for is
+    bought whichever run you are looking at."""
     return key in meta()["owned"]
+
+
+def has_ware(key):
+    """Is it in the ledger AND does it do anything HERE? Everything else
+    asks this. Mike and Zoe sell KEAL kit: machined parts and company
+    buildings, which are no use at all to a house that grows its soldiers
+    in a tank. It stays bought - it just stays quiet."""
+    if key not in meta()["owned"]:
+        return False
+    w = WARES.get(key)
+    return w is None or w.house is None or w.house == CURRENT["house"]
 
 
 def stock_of(key):
@@ -979,7 +1051,7 @@ def can_buy(key):
     w = WARES.get(key)
     if w is None:
         return False
-    if w.kind != "specimen" and has_ware(key):
+    if w.kind != "specimen" and bought(key):
         return False               # a blueprint is bought once
     return marks() >= w.cost
 
@@ -1495,11 +1567,13 @@ CATALOGUE["r_arm"] = [
 class Weapon:
     __slots__ = ("key", "name", "kind", "scrap", "alloy", "days", "hp",
                  "dmg", "cd", "heat", "reach", "blurb", "base", "shots",
-                 "splash", "stagger", "speed", "pierce", "slow", "slow_t")
+                 "splash", "stagger", "speed", "pierce", "slow", "slow_t",
+                 "rot", "rot_t", "rot_cap", "throw")
 
     def __init__(self, key, name, kind, scrap, alloy, days, hp, dmg, cd,
                  heat, reach, blurb, base=None, shots=1, splash=0,
-                 stagger=0.0, speed=0.0, pierce=0, slow=0.0, slow_t=0.0):
+                 stagger=0.0, speed=0.0, pierce=0, slow=0.0, slow_t=0.0,
+                 rot=0.0, rot_t=0.0, rot_cap=0.0, throw=0.0):
         self.slow = slow            # fraction taken off its walk
         self.slow_t = slow_t        # for how long
         self.key = key
@@ -1520,6 +1594,10 @@ class Weapon:
         self.stagger = stagger      # how much of the stagger meter one hit fills
         self.speed = speed          # projectile speed
         self.pierce = pierce
+        self.rot = rot              # damage a second it leaves behind
+        self.rot_t = rot_t          # for how long, per hit
+        self.rot_cap = rot_cap      # ...and the most that can be stacked up
+        self.throw = throw          # melee that also has a way to reach
 
     @property
     def dph(self):
@@ -1610,6 +1688,20 @@ WEAPON_LIST = [
            "Drags what it catches back into reach, whatever it wanted.",
            stagger=0.16),
 
+    # Mike's, and locked until the Capital has been paid
+    Weapon("claw", "PLASMA CLAW", "melee", 360, 2, 5, 190,
+           42, 0.62, 8.2, 200,
+           "Cuts up close, and throws the arc when nothing is close.",
+           stagger=0.14, throw=1250),
+    Weapon("flame", "FLAME PROJECTOR", "beam", 300, 1, 4, 170,
+           64, 0.0, 25.0, 330,
+           "Reach of nothing at all. Ask the ones it has been used on.",
+           stagger=0.0, rot=26.0, rot_t=2.6, rot_cap=2.6),
+    Weapon("blight", "BLIGHT THROWER", "gun", 380, 2, 5, 180,
+           17, 0.40, 5.0, 1050,
+           "It keeps working after it lands. That is the whole idea.",
+           speed=1150, stagger=0.03, rot=21.0, rot_t=1.3, rot_cap=9.0),
+
     Weapon("sun", "SUN LANCE", "beam", 560, 3, 6, 250,
            170, 0.0, 40.0, 1150,
            "Goes through the first one and into whatever is behind it.",
@@ -1621,8 +1713,21 @@ WEAPON_FAMILIES = (("fist", "pile"), ("saw", "ripper"), ("auto", "revolver"),
                    ("missile", "swarm"), ("lance", "sun"),
                    ("storm", "tempest"), ("mortar", "bombard"),
                    ("tether", "harpoon"))
-# families that are not in the book until a Hendra sells you the book
-BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook"}
+# what is not in the book until somebody has sold you the book
+BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook",
+                     "claw": "bp_claw", "flame": "bp_flame",
+                     "blight": "bp_blight"}
+BLUEPRINT_MODULES = {"emp": "mod_emp", "aux": "mod_aux",
+                     "thrust": "mod_thrust", "eject": "mod_eject"}
+
+
+def module_list():
+    """The rack, minus anything nobody has drawn for you yet. `has_ware`
+    and not `bought`, so a bay full of KEAL electronics is simply not
+    offered to a house that grows its soldiers."""
+    return [m for m in MODULE_LIST
+            if m.key not in BLUEPRINT_MODULES
+            or has_ware(BLUEPRINT_MODULES[m.key])]
 
 
 def part_of(socket, fit):
@@ -1747,6 +1852,19 @@ MODULE_LIST = [
     Module("baffles", "CORE BAFFLES", 260, 1, 4,
            "the reactor cannot be hit; the frame takes it instead",
            "The one part you cannot fight without, moved inboard."),
+    # Mike's, and locked until the Capital has been paid
+    Module("emp", "EMP LANCE", 320, 1, 4,
+           "E: stops one of them dead for 3s, once a landfall",
+           "Everything with a nerve in it stops. Yours included, briefly."),
+    Module("aux", "AUXILIARY CORE", 300, 1, 4,
+           "ceiling +22%, vent +18%",
+           "It does not make you faster. It lets you keep going."),
+    Module("thrust", "THRUSTERS", 210, 0, 3,
+           "SHIFT to dash, on any legs at all",
+           "Bolted where the ankle used to just be an ankle."),
+    Module("eject", "EJECTOR SEAT", 340, 2, 5,
+           "the core goes and you are still standing - once a run",
+           "He built it after the third funeral. Nobody argued."),
     Module("spotter", "SPOTTER DRONE", 320, 1, 4,
            "sensors and wind-up warning with no head at all",
            "It sits above the fight and tells you what is coming."),
@@ -1793,6 +1911,9 @@ YARD = [
 ]
 YARD_SLOT = "yard"
 RELIEF_GAIN = 8.0                    # city points one relief job puts back
+PLASMA_C = (150, 220, 255)           # Mike's arc
+FLAME_C = (255, 150, 60)             # and his cone
+BLIGHT_C = (168, 226, 96)            # and the thing he borrowed from Jack
 
 
 # ---------------------------------------------------------------------------
@@ -1964,18 +2085,22 @@ class Mech:
 
     @property
     def can_boost(self):
-        return bool(self.stat("legs", "boost", 0))
+        return bool(self.stat("legs", "boost", 0)) or self.has("thrust")
 
     @property
     def heat_cap(self):
         # no reactor at all is not no heat - it is a very small budget
         v = self.stat("reactor", "heat", 60.0)
-        return v * 0.86 if self.has("sinks") else v
+        if self.has("sinks"):
+            v *= 0.86
+        return v * 1.22 if self.has("aux") else v
 
     @property
     def vent(self):
         v = self.stat("reactor", "vent", 5.0)
-        return v * 1.30 if self.has("sinks") else v
+        if self.has("sinks"):
+            v *= 1.30
+        return v * 1.18 if self.has("aux") else v
 
     @property
     def dr(self):
@@ -2099,6 +2224,8 @@ class Mech:
         cost = int(round(f * base * 0.32)) + 8
         if has_ware("sharptools"):
             cost = int(round(cost * 0.70))
+        if has_ware("hangar"):
+            cost = int(round(cost * 0.90))
         return (cost, days)
 
     def needs_repair(self):
@@ -2326,6 +2453,47 @@ def shape_weapon(key, side, tier_arm):
     w = WEAPONS.get(key)
     if w is None:
         return []
+    if key == "claw":                          # three prongs and an emitter
+        out = [([(hx - 11, hy - 6), (hx + 11, hy - 6), (hx + 9, hy + 16),
+                 (hx - 9, hy + 16)], "dark")]
+        out.append(([(hx + math.cos(a) * 9, hy + 18 + math.sin(a) * 9)
+                     for a in (i * TAU / 8 for i in range(8))], "light"))
+        for k in (-1, 0, 1):
+            bx = hx + k * 9
+            out.append(([(bx - 3.4, hy + 20), (bx + 3.4, hy + 20),
+                         (bx + 1.6 + k * 4, hy + 52 + abs(k) * -6),
+                         (bx - 1.6 + k * 4, hy + 52 + abs(k) * -6)], "main"))
+        out.append(([(hx - 7, hy + 26), (hx + 7, hy + 26), (hx + 7, hy + 31),
+                     (hx - 7, hy + 31)], "light"))
+        return out
+    if key == "flame":                         # a nozzle and the tank for it
+        out = [([(hx - 12, hy - 8), (hx + 12, hy - 8), (hx + 10, hy + 14),
+                 (hx - 10, hy + 14)], "dark"),
+               ([(hx - 6, hy + 12), (hx + 6, hy + 12), (hx + 9, hy + 40),
+                 (hx - 9, hy + 40)], "main"),
+               ([(hx - 12, hy + 38), (hx + 12, hy + 38), (hx + 8, hy + 48),
+                 (hx - 8, hy + 48)], "light")]
+        for k in (-1, 1):                      # the bottles on the back
+            out.append(([(hx + k * 15 - 4, hy - 4), (hx + k * 15 + 4, hy - 4),
+                         (hx + k * 15 + 4, hy + 24),
+                         (hx + k * 15 - 4, hy + 24)], "main"))
+        out.append(([(hx - 2, hy + 44), (hx + 2, hy + 44), (hx + 4, hy + 58),
+                     (hx - 4, hy + 58)], "light"))
+        return out
+    if key == "blight":                        # a gun with a canister on it
+        out = [([(hx - 10, hy - 6), (hx + 10, hy - 6), (hx + 10, hy + 14),
+                 (hx - 10, hy + 14)], "dark"),
+               ([(hx - 4, hy + 12), (hx + 4, hy + 12), (hx + 4, hy + 58),
+                 (hx - 4, hy + 58)], "main"),
+               ([(hx - 7, hy + 52), (hx + 7, hy + 52), (hx + 7, hy + 60),
+                 (hx - 7, hy + 60)], "light")]
+        out.append(([(hx + math.cos(a) * 10 - 13, hy + 6 + math.sin(a) * 7)
+                     for a in (i * TAU / 10 for i in range(10))], "light"))
+        for i in range(3):
+            y = hy + 22 + i * 12
+            out.append(([(hx - 8, y), (hx + 8, y), (hx + 8, y + 4),
+                         (hx - 8, y + 4)], "light"))
+        return out
     if key in ("storm", "tempest"):            # barrels on a drum
         n = 6 if key == "tempest" else 4
         long = 56 if key == "tempest" else 48
@@ -4162,13 +4330,18 @@ def draw_city(surf, city, cam, t, shake=(0, 0)):
 # ---------------------------------------------------------------------------
 class Shot:
     __slots__ = ("pos", "vel", "dmg", "splash", "owner", "life", "colour",
-                 "size", "arc", "trail", "pierce", "slow", "slow_t")
+                 "size", "arc", "trail", "pierce", "slow", "slow_t",
+                 "rot", "rot_t", "rot_cap")
 
     def __init__(self, pos, vel, dmg, owner, colour, splash=0, life=3.0,
-                 size=5, arc=0.0, pierce=0, slow=0.0, slow_t=0.0):
+                 size=5, arc=0.0, pierce=0, slow=0.0, slow_t=0.0,
+                 rot=0.0, rot_t=0.0, rot_cap=0.0):
         self.pierce = pierce
         self.slow = slow
         self.slow_t = slow_t
+        self.rot = rot
+        self.rot_t = rot_t
+        self.rot_cap = rot_cap
         self.pos = Vector2(pos)
         self.vel = Vector2(vel)
         self.dmg = dmg
@@ -4231,12 +4404,31 @@ class Enemy:
         self.stun = 0.0
         self.slow = 0.0             # seconds left on a tether
         self.slow_f = 0.0           # and how much of its walk it costs
+        self.rot = 0.0              # damage a second still to be delivered
+        self.rot_t = 0.0            # for how long
+        self.rot_c = (255, 150, 60)  # what colour it is while it does
 
     @property
     def walk_speed(self):
         if self.slow > 0:
             return self.kind.speed * (1.0 - clamp(self.slow_f, 0.0, 0.8))
         return self.kind.speed
+
+    def ail(self, dps, secs, cap, colour):
+        """Fire and blight are one mechanic wearing two colours, and the
+        difference is entirely in how the seconds behave.
+
+        A flame REFRESHES: holding the cone on something keeps a short,
+        fierce burn topped up, and it ends the moment you look away. A
+        blight STACKS: every hit adds to the clock up to a ceiling, so it
+        is worth putting rounds into a thing and then leaving, which is
+        the opposite way to use a gun."""
+        if dps <= 0 or secs <= 0:
+            return
+        self.rot_t = (max(self.rot_t, secs) if cap <= secs
+                      else min(cap, self.rot_t + secs))
+        self.rot = max(self.rot, dps)
+        self.rot_c = colour
 
     def tether(self, frac, secs):
         """A line in it. The longest and hardest-pulling one wins."""
@@ -4308,6 +4500,7 @@ class Fight:
         self.stun = 0.0
         self.spared = False          # redundant linkage, one part per landfall
         self.flushed = False         # coolant flush, one tank per landfall
+        self.emped = False           # EMP lance, one shot per landfall
         self.venom = 0.0             # Jack's sac, while it lasts
         self.jars = []               # what came out in the log
         self.tutorial = 4.0 if run.kaiju_index == 0 else 0.0
@@ -4384,8 +4577,11 @@ class Fight:
                 dealt = e.hurtby(wpn.dmg * dt * self.mech.dmg_mult * gun_mult,
                                  pierce=self.pierce_now(wpn))
                 self.dealt += dealt
+                if wpn.rot > 0:
+                    e.ail(wpn.rot, wpn.rot_t, wpn.rot_cap, FLAME_C)
                 if random.random() < dt * 8:
-                    self.spark(e.x, -80 - random.uniform(0, 90), (180, 230, 255))
+                    self.spark(e.x, -80 - random.uniform(0, 90),
+                               FLAME_C if wpn.rot > 0 else (180, 230, 255))
             if hit and random.random() < dt * 3.5:
                 SFX.play("beam", 0.35)
             return
@@ -4397,6 +4593,13 @@ class Fight:
         mult = self.mech.dmg_mult * (1.9 if crit else 1.0)
         if wpn.kind != "melee":
             mult *= gun_mult
+        if wpn.kind == "melee" and wpn.throw > 0 and not self.in_reach(wpn):
+            # The claw's second job. It is the same emitter either way, so
+            # it costs the same heat and does less at distance - the point
+            # of it is that a hardpoint that used to be dead weight while
+            # you closed the ground is now doing something.
+            self.throw_arc(side, wpn, mult * 0.62)
+            return
         if wpn.kind == "melee":
             self.pose.swing[side] = 0.0001
             mult *= self.mech.arm_stat(side, "melee", 1.0)
@@ -4462,7 +4665,27 @@ class Fight:
                                    size=5 if wpn.kind == "gun" else 7,
                                    arc=520.0 if wpn.kind == "salvo" else 0.0,
                                    pierce=1 if self.pierce_now(wpn) else 0,
-                                   slow=wpn.slow, slow_t=wpn.slow_t))
+                                   slow=wpn.slow, slow_t=wpn.slow_t,
+                                   rot=wpn.rot, rot_t=wpn.rot_t,
+                                   rot_cap=wpn.rot_cap))
+
+    def in_reach(self, wpn):
+        """Is there anything close enough to swing at?"""
+        for e in self.enemies:
+            if e.alive and abs(e.x - self.mx) <= wpn.reach + e.span * 0.55:
+                return True
+        return False
+
+    def throw_arc(self, side, wpn, mult):
+        """The claw at distance: one bolt, along the hardpoint's own aim."""
+        SFX.play("beam", 0.42)
+        self.pose.recoil[side] = 1.0
+        self.shake = max(self.shake, 1.4)
+        ang = self.pose.aim[side] + random.uniform(-0.04, 0.04) * self.mech.spread
+        v = Vector2(math.cos(ang) * self.pose.face, math.sin(ang)) * wpn.throw
+        self.shots.append(Shot((self.mx + 60 * self.pose.face, -300.0), v,
+                               wpn.dmg * mult, "mech", PLASMA_C, size=7,
+                               pierce=1 if self.pierce_now(wpn) else 0))
 
     def pierce_now(self, wpn):
         """Whether this hit ignores hide: the rail always does, and a venom
@@ -4514,6 +4737,19 @@ class Fight:
             self.log.pop(0)
 
     # -- the animals ------------------------------------------------------
+    def rot_tick(self, e, dt):
+        """What was left in it, arriving. Runs whether or not the thing is
+        stunned, staggered or mid-leap - that is the point of it."""
+        if e.rot_t <= 0 or not e.alive:
+            return
+        e.rot_t = max(0.0, e.rot_t - dt)
+        self.dealt += e.hurtby(e.rot * dt)
+        if random.random() < dt * 9:
+            self.spark(e.x + random.uniform(-40, 40),
+                       -60 - random.uniform(0, 140), e.rot_c, 1, 90)
+        if e.rot_t <= 0:
+            e.rot = 0.0
+
     def enemy_think(self, e, dt):
         if not e.alive:
             e.dead_t += dt
@@ -4742,9 +4978,53 @@ class Fight:
                                       random.uniform(-320, -20)),
                                      1.0, (150, 120, 96), 5))
         if self.mech.down and self.over is None:
+            if self.eject():
+                return
             self.over, self.over_t = "lost", 0.0
             SFX.play("wreck", 1.0)
             self.say("THE MACHINE IS DOWN")
+
+    def eject(self):
+        """Mike's seat. Once a CAMPAIGN, not once a landfall - the flag
+        lives on the Run, so spending it on the BULWARK means it is not
+        there for the LEVIATHAN. It costs you the ground you were standing
+        on: the core comes back at a third and you are stunned while it
+        does, which is long enough for whatever put you down to still be
+        there when you get up."""
+        if not self.mech.has("eject") or self.run.ejected:
+            return False
+        self.run.ejected = True
+        self.mech.hp["torso"] = self.mech.max_hp("torso") * 0.34
+        self.stun = 1.6
+        self.shake = max(self.shake, 12)
+        self.say("CORE BLEW - THE SEAT CAUGHT IT. ONCE ONLY.")
+        SFX.play("done", 0.9)
+        for _ in range(26):
+            self.bits.append(Bit((self.mx, -240),
+                                 (random.uniform(-300, 300),
+                                  random.uniform(-400, -40)),
+                                 1.1, PLASMA_C, 4))
+        return True
+
+    def fire_emp(self):
+        """One shot a landfall, and it stops something dead."""
+        if not self.mech.has("emp") or self.emped or self.mech.down:
+            return False
+        e = self.nearest(self.mx)
+        if e is None or not e.alive:
+            return False
+        self.emped = True
+        e.stun = max(e.stun, 3.0)
+        e.state, e.timer, e.attack = "stagger", 3.0, None
+        self.say(e.kind.name + " IS OFF THE AIR")
+        SFX.play("beam", 0.8)
+        self.shake = max(self.shake, 5)
+        for _ in range(22):
+            self.bits.append(Bit((e.x, -200),
+                                 (random.uniform(-260, 260),
+                                  random.uniform(-300, 60)),
+                                 0.8, PLASMA_C, 3))
+        return True
 
     # -- the tick ---------------------------------------------------------
     def update(self, dt, inp):
@@ -4821,10 +5101,13 @@ class Fight:
             self.say("COOLANT DUMPED")
             SFX.play("beam", 0.7)
             self.spark(self.mx, -240, (180, 240, 255), 18, 220)
+        if inp.get("emp") and not down:
+            self.fire_emp()
         self.pose.flash = approach(self.pose.flash, 0.0, dt * 3.0)
 
         # -- the animals ---------------------------------------------------
         for e in self.enemies:
+            self.rot_tick(e, dt)
             self.enemy_think(e, dt)
             if e.alive and e.state == "walk" and e.moving > 0.05:
                 e.walk += dt * (2.2 + e.kind.speed / 70.0) * e.moving
@@ -4857,6 +5140,11 @@ class Fight:
                             e.tether(s.slow, s.slow_t)
                             if fresh:
                                 self.say(e.kind.name + " IS SNAGGED")
+                        if s.rot > 0:
+                            fresh = e.rot_t <= 0
+                            e.ail(s.rot, s.rot_t, s.rot_cap, BLIGHT_C)
+                            if fresh:
+                                self.say(e.kind.name + " IS TAKING IT BADLY")
                         self.number(e.x, s.pos.y, int(dealt))
                         e.stagger += 0.05 / e.kind.poise
                         self.burst(s, e)
@@ -5197,6 +5485,7 @@ class Fight:
 # ---------------------------------------------------------------------------
 SCHEDULE = (7, 15, 24, 34, 45, 57)
 MAX_CREW = 6
+RECRUIT_CAP = 10                     # what Zoe's office will fill you to
 CREW_PER_JOB = 3
 RUSH_PER_DAY = 62
 
@@ -5307,9 +5596,14 @@ class Run:
                          "RYEZ PUTS ONE ASHORE ON DAY %d." % SCHEDULE[0]]
         self.spent = 0
         self.rushes = 0
+        self.ejected = False         # Mike's seat, once a campaign
+        self.furnace = 0.0           # Zoe's, half an alloy at a time
+        self.queue = 0               # ...and her recruiting office's clock
         if has_ware("warchest"):
             self.scrap += 200
         if has_ware("earlyshift"):
+            self.crew += 1
+        if has_ware("hq"):
             self.crew += 1
 
     # -- the calendar -----------------------------------------------------
@@ -5337,7 +5631,8 @@ class Run:
         # half-ruined city still pays most of it now.
         base = 80 + 16 * self.killed
         got = base * (0.70 + 0.30 * clamp(self.integrity / 100.0, 0, 1))
-        return int(got * (1.25 if self.yard >= 3 else 1.0))
+        got *= 1.25 if self.yard >= 3 else 1.0
+        return int(got * (1.10 if has_ware("mining") else 1.0))
 
     @property
     def bio(self):
@@ -5365,7 +5660,10 @@ class Run:
 
     @property
     def max_crew(self):
-        return MAX_CREW + (1 if self.yard >= 2 else 0)
+        n = MAX_CREW + (1 if self.yard >= 2 else 0)
+        if has_ware("recruit"):
+            n = max(n, RECRUIT_CAP)
+        return n
 
     def refine_yield(self):
         return 2 if self.yard >= 3 else 1
@@ -5442,7 +5740,10 @@ class Run:
         if self.skipping(part, socket):
             s += WEAPONS[part.base].scrap
             al += WEAPONS[part.base].alloy
-        return int(round(s * (BIO_COST if self.bio else 1.0))), al
+        s *= BIO_COST if self.bio else 1.0
+        if has_ware("hq"):
+            s *= 0.90
+        return int(round(s)), al
 
     def skipping(self, part, socket):
         """Is this a refit going onto a hardpoint that is not holding the
@@ -5495,6 +5796,8 @@ class Run:
         scrap, days = self.mech.repair_cost(socket)
         if self.yard >= 2:
             days = max(1, days - 1)       # the night shift
+        if has_ware("hangar"):
+            days = max(1, days - 1)       # and a pit built for it
         if days <= 0 or self.scrap < scrap:
             return False
         self.scrap -= scrap
@@ -5536,9 +5839,32 @@ class Run:
         job.crew = int(clamp(n, low, self.crew_per_job))
 
     # -- the night --------------------------------------------------------
+    def capital_night(self):
+        """What Zoe's buildings do while nobody is looking.
+
+        Both of these are fractional on purpose. Half an alloy a day and
+        half a crewman every day are the same idea as the smelter - a slow
+        trickle that you cannot spend until it adds up, so the buildings
+        change what a long run feels like without changing what any single
+        day can do."""
+        if has_ware("furnace"):
+            self.furnace += 0.5
+            while self.furnace >= 1.0:
+                self.furnace -= 1.0
+                self.alloy += 1
+                self.news.append("+1 %s OUT OF THE ARC FURNACE"
+                                 % word("alloy", "ALLOY"))
+        if has_ware("recruit") and self.crew < self.max_crew:
+            self.queue += 1
+            if self.queue >= 2:
+                self.queue = 0
+                self.crew += 1
+                self.news.append("THE RECRUITING OFFICE SENT ONE MORE")
+
     def end_day(self):
         """Returns "landfall", "done" or None."""
         self.news = []
+        self.capital_night()
         for job in list(self.jobs):
             if job.bio:
                 # a pod advances one day, whoever is standing over it; what
@@ -5608,7 +5934,8 @@ class Run:
         kind = fight.kind
         if fight.over == "won":
             self.killed += 1
-            got_s = int(kind.scrap * (1.30 if self.mech.has("claws") else 1.0))
+            got_s = int(kind.scrap * (1.30 if self.mech.has("claws") else 1.0)
+                        * (1.10 if has_ware("mining") else 1.0))
             got_a = kind.alloy + (1 if self.yard >= 3 else 0)
             self.scrap += got_s
             self.alloy += got_a
@@ -5665,7 +5992,9 @@ class Run:
                 "kaiju_index": self.kaiju_index, "killed": self.killed,
                 "mech": self.mech.to_json(),
                 "jobs": [j.to_json() for j in self.jobs],
-                "spent": self.spent, "rushes": self.rushes}
+                "spent": self.spent, "rushes": self.rushes,
+                "ejected": self.ejected,
+                "furnace": round(self.furnace, 2), "queue": self.queue}
 
     @classmethod
     def from_json(cls, d):
@@ -5688,6 +6017,9 @@ class Run:
                                                        REFINE_SLOT, CITY_SLOT)]
             r.spent = int(d.get("spent", 0))
             r.rushes = int(d.get("rushes", 0))
+            r.ejected = bool(d.get("ejected", False))
+            r.furnace = clamp(float(d.get("furnace", 0)), 0.0, 1.0)
+            r.queue = int(clamp(int(d.get("queue", 0)), 0, 2))
             r.news = ["RUN RESUMED - DAY %d" % r.day]
         except (ValueError, TypeError, AttributeError, KeyError):
             return cls()
@@ -5765,6 +6097,17 @@ def stat_line(p):
             bits.append("splash")
         if p.pierce:
             bits.append("pierces")
+        if p.slow:
+            bits.append("-%d%% walk" % round(p.slow * 100))
+        if p.rot:
+            # dmg/heat reads as an insult on these two without it: the
+            # flame is 2.6 on the sticker and most of its damage arrives
+            # after the trigger is released.
+            bits.append("+%d/s for %.0fs"
+                        % (p.rot, p.rot_cap if p.rot_cap > p.rot_t
+                           else p.rot_t))
+        if p.throw:
+            bits.append("throws at range")
         return "  ".join(bits)
     s = getattr(p, "stats", None)
     if s is None:
@@ -6524,9 +6867,15 @@ class Hangar:
                 run.alloy, word("crew", "CREW"), run.free_crew), 16,
              (r.right - 22, r.y + 20), DIM, right=True)
         job = run.job_on(MOD_SLOT)
-        cols, cw, ch = 3, (r.w - 44) // 3, 104
+        mods = module_list()
+        # Mike's four push the rack past the five rows the overlay has, so
+        # it goes four across rather than growing a scrollbar for one more
+        # row. Thirteen in three columns is five rows and fits; seventeen
+        # in three columns is six and does not.
+        cols = 3 if len(mods) <= 15 else 4
+        cw, ch = (r.w - 44) // cols, 104
         self.rack_buttons = []
-        for i, mod in enumerate(MODULE_LIST):
+        for i, mod in enumerate(mods):
             cx = r.x + 16 + (i % cols) * cw
             cy = r.y + 56 + (i // cols) * (ch + 8)
             card = pygame.Rect(cx, cy, cw - 10, ch)
@@ -6574,7 +6923,8 @@ class Hangar:
                 % sock_label("torso").lower()
                 if len(m.mods) >= m.bays else
                 "One job at a time in here." if job is not None else
-                "Three bays, thirteen of them. That is the whole point.")
+                "%d %s, %d of them. That is the whole point."
+                % (m.bays, word("bays", "bays").lower(), len(mods)))
         text(surf, note, 15, (r.centerx, r.bottom - 26), FAINT, center=True)
 
     def job_strip(self, surf):
@@ -7235,6 +7585,167 @@ def _jar(surf, box, t, col, body):
     surf.blit(g, r.topleft)
 
 
+# ---------------------------------------------------------------------------
+# KEAL CAPITAL
+#
+# Four terraces of white concrete and glass with the sea behind it, lit in
+# daylight instead of bulbs. The Hendras sell to anybody; these two work
+# for the company, and everything on their counters is machined, bolted
+# and no use whatever to a house that grows its soldiers.
+#
+# Same construction as the market pair - blocks, straight on, head about
+# as tall as the visible body - because they stand in the same frame, and
+# a different rig would read as a different game.
+# ---------------------------------------------------------------------------
+MIKE_TONE = (122, 196, 226)
+ZOE_TONE = (214, 176, 96)
+
+COAT = (238, 241, 246)
+COAT_D = (198, 204, 214)
+MIKE_HAIR = (26, 26, 32)
+MIKE_VISOR = (96, 224, 244)
+MIKE_SHIRT = (52, 60, 74)
+ZOE_HAIR = (58, 40, 30)
+ZOE_MASK = (222, 228, 236)
+ZOE_SHIRT = (66, 74, 92)
+
+
+def _coat(surf, cx, top, u, shirt, tone):
+    """The lab coat both of them wear, with the company on the chest."""
+    _blk(surf, cx - 32 * u, top, 64 * u, 50 * u, COAT, 0.78, 4)
+    _blk(surf, cx - 7 * u, top, 14 * u, 50 * u, shirt, 0.72, 2)
+    for sgn in (-1, 1):                          # lapels, folded back
+        pygame.draw.polygon(surf, COAT_D, [
+            (cx + sgn * 7 * u, top),
+            (cx + sgn * 20 * u, top),
+            (cx + sgn * 9 * u, top + 26 * u)])
+    for sgn in (-1, 1):                          # arms, out on the counter
+        ax = cx + sgn * 38 * u
+        _blk(surf, ax - 12 * u, top + 2 * u, 25 * u, 30 * u, COAT, 0.78, 3)
+        _blk(surf, ax - 11 * u, top + 30 * u, 23 * u, 10 * u, COAT_D, 0.78, 3)
+        _blk(surf, cx + sgn * 25 * u - 8 * u, top + 35 * u, 17 * u, 10 * u,
+             SKIN_D, 0.8, 3)
+    _blk(surf, cx - 30 * u, top + 30 * u, 13 * u, 11 * u, COAT_D, 0.8, 2)
+    draw_keal_logo(surf, cx + 20 * u, top + 13 * u, 7.5 * u, 0.0, True)
+    pygame.draw.line(surf, shade(tone, 0.9),     # a lanyard, in their colour
+                     (cx - 9 * u, top + 2 * u), (cx - 2 * u, top + 17 * u),
+                     max(1, int(1.8 * u)))
+
+
+def draw_mike_front(surf, cx, gy, h, t):
+    """A visor instead of eyes, and a great black shock of hair that goes
+    up and out. Lab coat, company badge, and a face that is mostly jaw."""
+    u = h / 100.0
+    bob = math.sin(t * 1.25 + 0.6) * 1.0 * u
+    top = gy - 38 * u + bob
+    _coat(surf, cx, top, u, MIKE_SHIRT, MIKE_TONE)
+    _blk(surf, cx - 10 * u, top - 9 * u, 20 * u, 12 * u, SKIN_D, 0.8, 2)
+    hb = top - 8 * u
+    hh = 42 * u
+    _blk(surf, cx - 23 * u, hb - hh, 46 * u, hh, SKIN, 0.8, 4)
+    pygame.draw.line(surf, (188, 170, 158),      # the jaw, in one stroke
+                     (cx - 15 * u, hb - 9 * u), (cx + 15 * u, hb - 9 * u),
+                     max(1, int(1.6 * u)))
+    br = hb - hh                                 # where the hair starts
+    # It is a MASS, not a set of spikes - wider than the head and taller
+    # than half of it, with the peaks cut into the top edge rather than
+    # stuck onto it. Drawn as one polygon so the silhouette closes.
+    crown = [(cx - 30 * u, br + 8 * u), (cx - 37 * u, br - 10 * u)]
+    peaks = ((-30, -34), (-14, -46), (2, -39), (17, -48), (31, -33))
+    for px, py in peaks:
+        crown.append((cx + px * u, br + py * u))
+        crown.append((cx + (px + 7) * u, br + (py + 13) * u))
+    crown += [(cx + 37 * u, br - 10 * u), (cx + 30 * u, br + 8 * u)]
+    pygame.draw.polygon(surf, MIKE_HAIR, crown)
+    for sgn in (-1, 1):                          # the flares off the temples
+        pygame.draw.polygon(surf, MIKE_HAIR, [
+            (cx + sgn * 26 * u, br - 18 * u),
+            (cx + sgn * 52 * u, br - 26 * u),
+            (cx + sgn * 47 * u, br - 8 * u),
+            (cx + sgn * 27 * u, br + 6 * u)])
+    _blk(surf, cx - 26 * u, br - 4 * u, 52 * u, 13 * u, MIKE_HAIR, 0.7, 4)
+    vz = hb - 24 * u                             # the visor
+    band = pygame.Rect(int(cx - 25 * u), int(vz - 7 * u), int(50 * u),
+                       int(14 * u))
+    pygame.draw.rect(surf, (30, 34, 44), band, border_radius=max(1, int(3 * u)))
+    inner = band.inflate(int(-6 * u), int(-6 * u))
+    pygame.draw.rect(surf, MIKE_VISOR, inner, border_radius=max(1, int(2 * u)))
+    pygame.draw.rect(surf, shade(MIKE_VISOR, 0.5), inner, 1,
+                     border_radius=max(1, int(2 * u)))
+    sweep = math.sin(t * 1.6) * 0.5 + 0.5        # something tracking across it
+    sx = inner.x + 3 * u + sweep * (inner.w - 6 * u)
+    pygame.draw.line(surf, (235, 255, 255), (sx, inner.y + 1.5 * u),
+                     (sx, inner.bottom - 1.5 * u), max(1, int(2.2 * u)))
+    blit_glow(surf, band.center, band.w * 0.8, MIKE_VISOR, 46)
+    for sgn in (-1, 1):                          # temple pieces
+        _blk(surf, cx + sgn * 25 * u - 3 * u, vz - 4 * u, 6 * u, 8 * u,
+             (46, 52, 64), 0.7, 1)
+    pygame.draw.lines(surf, (120, 96, 92), False,  # half a grin
+                      [(cx - 9 * u, hb - 15 * u), (cx - 2 * u, hb - 11 * u),
+                       (cx + 10 * u, hb - 14 * u)], max(2, int(2.0 * u)))
+
+
+def draw_zoe_front(surf, cx, gy, h, t):
+    """Hair up in a tail that swings, a mask over the lower half of the
+    face, and the same coat with the same badge on it."""
+    u = h / 100.0
+    bob = math.sin(t * 1.5 + 2.2) * 1.0 * u
+    top = gy - 38 * u + bob
+    swing = math.sin(t * 1.1) * 3.0 * u
+    hb = top - 8 * u
+    hh = 42 * u
+    br = hb - hh
+    pygame.draw.polygon(surf, shade(ZOE_HAIR, 0.8), [    # the tail, behind
+        (cx + 21 * u, br - 6 * u), (cx + 40 * u + swing, br - 10 * u),
+        (cx + 52 * u + swing * 1.5, br + 10 * u),
+        (cx + 50 * u + swing * 2.0, br + 40 * u),
+        (cx + 40 * u + swing * 2.2, br + 52 * u),
+        (cx + 33 * u + swing * 1.2, br + 34 * u),
+        (cx + 34 * u + swing * 0.6, br + 12 * u),
+        (cx + 24 * u, br + 6 * u)])
+    _coat(surf, cx, top, u, ZOE_SHIRT, ZOE_TONE)
+    _blk(surf, cx - 9 * u, top - 9 * u, 18 * u, 12 * u, SKIN_D, 0.8, 2)
+    _blk(surf, cx - 23 * u, br, 46 * u, hh, SKIN, 0.8, 4)
+    for sgn in (-1, 1):                          # brows, over the mask
+        pygame.draw.line(surf, (74, 56, 44),     # outer end LOW, or she
+                         (cx + sgn * 6 * u, br + 10 * u),   # looks furious
+                         (cx + sgn * 17 * u, br + 12 * u),
+                         max(2, int(2.3 * u)))
+    for sgn in (-1, 1):                          # eyes, which is all you get
+        pygame.draw.circle(surf, (40, 36, 42),
+                           (cx + sgn * 11 * u, br + 18 * u), 2.4 * u)
+        pygame.draw.circle(surf, (250, 250, 252),
+                           (cx + sgn * 12.4 * u, br + 16.6 * u), 1.0 * u)
+    mask = [(cx - 19 * u, br + 22 * u), (cx + 19 * u, br + 22 * u),
+            (cx + 16 * u, br + 39 * u), (cx - 16 * u, br + 39 * u)]
+    pygame.draw.polygon(surf, ZOE_MASK, mask)
+    pygame.draw.polygon(surf, shade(ZOE_MASK, 0.72), mask, 1)
+    for i in range(3):                           # the pleats in it
+        y = br + 27 * u + i * 4 * u
+        pygame.draw.line(surf, shade(ZOE_MASK, 0.84),
+                         (cx - 15 * u, y), (cx + 15 * u, y), 1)
+    for sgn in (-1, 1):                          # and the straps over the ear
+        pygame.draw.line(surf, shade(ZOE_MASK, 0.66),
+                         (cx + sgn * 19 * u, br + 24 * u),
+                         (cx + sgn * 25 * u, br + 19 * u),
+                         max(1, int(1.8 * u)))
+    pygame.draw.polygon(surf, ZOE_HAIR, [        # swept back off the face
+        (cx - 25 * u, br + 9 * u), (cx - 23 * u, br - 9 * u),
+        (cx, br - 13 * u), (cx + 23 * u, br - 9 * u),
+        (cx + 25 * u, br + 9 * u), (cx + 14 * u, br + 2 * u),
+        (cx - 14 * u, br + 2 * u)])
+    for sgn in (-1, 1):                          # the sides, tucked in
+        pygame.draw.polygon(surf, shade(ZOE_HAIR, 0.88), [
+            (cx + sgn * 21 * u, br - 3 * u),
+            (cx + sgn * 26 * u, br + 5 * u),
+            (cx + sgn * 24 * u, br + 21 * u),
+            (cx + sgn * 19 * u, br + 12 * u)])
+    pygame.draw.circle(surf, shade(ZOE_TONE, 0.9),   # the tie
+                       (cx + 22 * u, br - 1 * u), 4.6 * u)
+    pygame.draw.circle(surf, shade(ZOE_HAIR, 0.6),
+                       (cx + 22 * u, br - 1 * u), 4.6 * u, 1)
+
+
 def draw_ware_icon(surf, r, w, t):
     """One thing on the boards, drawn at whatever size it is asked for."""
     k = w.key
@@ -7252,6 +7763,77 @@ def draw_ware_icon(surf, r, w, t):
                 y = box.y + 6 + i * 5
                 pygame.draw.line(s, shade(SARAH_INK, 0.55),
                                  (box.x + 5, y), (box.x + box.w * 0.4, y), 1)
+        _sheet(surf, r, t, lines)
+        return
+    if k in ("bp_claw", "bp_flame", "bp_blight"):
+        wep = WEAPONS[{"bp_claw": "claw", "bp_flame": "flame",
+                       "bp_blight": "blight"}[k]]
+
+        def lines(s, box):
+            rig = Rig(s, box.centerx, box.bottom - box.h * 0.16,
+                      box.h / 260.0)
+            for pts, _ in shape_weapon(wep.key, "r", 3):
+                rig.poly(pts, MIKE_TONE, 1)
+            for pts, _ in shape_arm(3, "r"):
+                rig.poly(pts, shade(MIKE_TONE, 0.62), 1)
+            for i in range(3):
+                y = box.y + 6 + i * 5
+                pygame.draw.line(s, shade(MIKE_TONE, 0.55),
+                                 (box.x + 5, y), (box.x + box.w * 0.4, y), 1)
+        _sheet(surf, r, t, lines)
+        return
+    if k in BLUEPRINT_MODULES.values():
+        def lines(s, box):
+            cx, cy = box.centerx, box.centery + box.h * 0.04
+            u = box.h / 100.0
+            col = MIKE_TONE
+            if k == "mod_emp":                 # a coil with an arc off it
+                pygame.draw.rect(s, col, (cx - 5 * u, cy - 22 * u, 10 * u,
+                                          44 * u), 1)
+                for i in range(5):
+                    y = cy - 16 * u + i * 8 * u
+                    pygame.draw.line(s, col, (cx - 13 * u, y),
+                                     (cx + 13 * u, y), 1)
+                a = (math.sin(t * 3.0) * 0.5 + 0.5)
+                pygame.draw.lines(s, (235, 255, 255), False, [
+                    (cx + 13 * u, cy - 18 * u), (cx + 24 * u, cy - 6 * u),
+                    (cx + 15 * u, cy - 2 * u),
+                    (cx + 27 * u, cy + 14 * u)], max(1, int(1 + 2 * a)))
+            elif k == "mod_aux":               # a small core beside a big one
+                pygame.draw.circle(s, col, (cx - 8 * u, cy), 17 * u, 1)
+                pygame.draw.circle(s, col, (cx + 16 * u, cy + 9 * u),
+                                   9 * u, 1)
+                pygame.draw.circle(s, shade(col, 1.3),
+                                   (cx + 16 * u, cy + 9 * u),
+                                   4 * u * (1 + 0.2 * math.sin(t * 3.4)))
+                pygame.draw.line(s, col, (cx + 6 * u, cy + 4 * u),
+                                 (cx + 9 * u, cy + 8 * u), 1)
+            elif k == "mod_thrust":            # an ankle with a nozzle on it
+                pygame.draw.rect(s, col, (cx - 9 * u, cy - 24 * u, 18 * u,
+                                          26 * u), 1)
+                pygame.draw.polygon(s, col, [
+                    (cx - 13 * u, cy + 2 * u), (cx + 13 * u, cy + 2 * u),
+                    (cx + 8 * u, cy + 16 * u), (cx - 8 * u, cy + 16 * u)], 1)
+                for i in range(3):
+                    f = 0.4 + 0.6 * ((math.sin(t * 6 + i) * 0.5 + 0.5))
+                    pygame.draw.line(s, (255, 214, 150),
+                                     (cx + (i - 1) * 6 * u, cy + 17 * u),
+                                     (cx + (i - 1) * 6 * u,
+                                      cy + (17 + 14 * f) * u), 2)
+            else:                              # the seat, and its rails
+                pygame.draw.polygon(s, col, [
+                    (cx - 11 * u, cy + 16 * u), (cx - 11 * u, cy - 6 * u),
+                    (cx - 3 * u, cy - 6 * u), (cx - 3 * u, cy - 22 * u),
+                    (cx + 11 * u, cy - 22 * u), (cx + 11 * u, cy + 16 * u)], 1)
+                for sgn in (-1, 1):
+                    pygame.draw.line(s, shade(col, 0.7),
+                                     (cx + sgn * 17 * u, cy - 24 * u),
+                                     (cx + sgn * 17 * u, cy + 16 * u), 1)
+                rise = (math.sin(t * 1.8) * 0.5 + 0.5) * 8 * u
+                pygame.draw.polygon(s, (255, 214, 150), [
+                    (cx - 6 * u, cy + 18 * u + rise),
+                    (cx + 6 * u, cy + 18 * u + rise),
+                    (cx, cy + 30 * u + rise)])
         _sheet(surf, r, t, lines)
         return
     if k == "spec_shriek":
@@ -7335,6 +7917,67 @@ def draw_ware_icon(surf, r, w, t):
             if prev:
                 pygame.draw.line(surf, RYEZ_ACID, prev, p, 2)
             prev = p
+    elif k == "furnace":                      # a crucible with an arc in it
+        _blk(surf, cx - s * 0.26, cy - s * 0.10, s * 0.52, s * 0.34,
+             (74, 68, 66), 0.6, 3)
+        _blk(surf, cx - s * 0.30, cy - s * 0.16, s * 0.60, s * 0.10,
+             (96, 88, 84), 0.6, 3)
+        for i in range(3):
+            f = (math.sin(t * 4.0 + i * 1.7) * 0.5 + 0.5)
+            pygame.draw.line(surf, (255, 190 - i * 30, 90),
+                             (cx - s * 0.14 + i * s * 0.14, cy + s * 0.20),
+                             (cx - s * 0.14 + i * s * 0.14,
+                              cy + s * (0.02 - 0.12 * f)), 3)
+        pygame.draw.line(surf, (200, 222, 255), (cx, cy - s * 0.30),
+                         (cx, cy - s * 0.16), 2)
+    elif k == "hq":                           # a building, and a light on
+        _blk(surf, cx - s * 0.28, cy - s * 0.24, s * 0.56, s * 0.50,
+             (120, 132, 150), 0.6, 2)
+        for row in range(4):
+            for col_ in range(4):
+                lit = (row * 4 + col_ * 3 + int(t * 1.2)) % 5 < 2
+                pygame.draw.rect(surf, PAINT if lit else (44, 50, 62),
+                                 (cx - s * 0.22 + col_ * s * 0.13,
+                                  cy - s * 0.18 + row * s * 0.12,
+                                  s * 0.08, s * 0.07))
+        pygame.draw.rect(surf, (156, 166, 182),
+                         (cx - s * 0.32, cy - s * 0.30, s * 0.64, s * 0.07))
+    elif k == "mining":                       # a headframe over a shaft
+        pygame.draw.polygon(surf, (132, 118, 96), [
+            (cx - s * 0.26, cy + s * 0.26), (cx - s * 0.06, cy - s * 0.28),
+            (cx + s * 0.06, cy - s * 0.28), (cx + s * 0.26, cy + s * 0.26)], 3)
+        pygame.draw.line(surf, (96, 104, 120), (cx - s * 0.20, cy + s * 0.06),
+                         (cx + s * 0.20, cy + s * 0.06), 2)
+        pygame.draw.circle(surf, PAINT, (cx, cy - s * 0.22), s * 0.06)
+        y = cy + s * (0.10 + 0.10 * (math.sin(t * 1.8) * 0.5 + 0.5))
+        _blk(surf, cx - s * 0.07, y, s * 0.14, s * 0.11, (150, 126, 74),
+             0.6, 2)
+    elif k == "hangar":                       # a roof, a pit and a gantry
+        pygame.draw.polygon(surf, (110, 122, 140), [
+            (cx - s * 0.34, cy - s * 0.02), (cx, cy - s * 0.28),
+            (cx + s * 0.34, cy - s * 0.02)])
+        _blk(surf, cx - s * 0.30, cy - s * 0.02, s * 0.60, s * 0.30,
+             (54, 60, 74), 0.6, 2)
+        for i in range(3):
+            pygame.draw.line(surf, (92, 100, 118),
+                             (cx - s * 0.20 + i * s * 0.20, cy + s * 0.02),
+                             (cx - s * 0.20 + i * s * 0.20, cy + s * 0.26), 2)
+        pygame.draw.circle(surf, PAINT,
+                           (cx + s * (0.24 * math.sin(t * 1.1)), cy + s * 0.04),
+                           s * 0.05)
+    elif k == "recruit":                      # a queue of them, shuffling up
+        for i in range(4):
+            f = (t * 0.5 + i * 0.25) % 1.0
+            x = cx - s * 0.30 + f * s * 0.60
+            a = 90 + int(120 * min(1.0, f * 3))
+            _blk(surf, x - s * 0.05, cy - s * 0.02, s * 0.10, s * 0.20,
+                 (a, a - 10, a + 16), 0.6, 2)
+            pygame.draw.circle(surf, (a + 40, a + 24, a + 14),
+                               (x, cy - s * 0.08), s * 0.055)
+        pygame.draw.line(surf, (96, 104, 120), (cx - s * 0.34, cy + s * 0.20),
+                         (cx + s * 0.34, cy + s * 0.20), 2)
+        pygame.draw.rect(surf, PAINT,
+                         (cx + s * 0.26, cy - s * 0.26, s * 0.08, s * 0.44))
     else:                                     # deepgut
         pygame.draw.circle(surf, (78, 54, 78), (cx, cy), s * 0.30)
         pygame.draw.circle(surf, (32, 22, 32), (cx, cy), s * 0.19)
@@ -7411,18 +8054,119 @@ def draw_stall(surf, r, tone, t, seller):
     pygame.draw.rect(surf, (44, 36, 26), (r.x + 10, top.bottom, r.w - 20, 14))
 
 
-class Bazaar:
-    """The only screen in the game where nothing is trying to kill you."""
+def draw_capital_day(surf, t):
+    """The other end of the same road. Terraces of white concrete stepping
+    down to the sea, glass, planting, and a sky with nothing wrong with it.
 
-    SELLERS = (("sarah", "SARAH HENDRA", "she draws it", SARAH_INK,
-                draw_sarah_front),
-               ("jack", "JACK HENDRA", "he grows it", JACK_GLASS,
-                draw_jack_front))
+    Deliberately the opposite of the market in every respect that is easy
+    to read at a glance - daylight instead of bulbs, horizontals instead of
+    stripes, cold white instead of warm brown - because the two halves of
+    the shop have to be distinguishable from the corner of the eye."""
+    for i in range(0, H, 4):
+        f = i / float(H)
+        surf.fill(mix((126, 176, 214), (216, 230, 238), f ** 0.7),
+                  (0, i, W, 4))
+    sun = (W * 0.78, 96)
+    blit_glow(surf, sun, 260, (255, 244, 214), 54)
+    pygame.draw.rect(surf, (150, 190, 206), (0, 252, W, 34))   # the sea
+    for i in range(30):                                        # and its light
+        f = (i * 37 % 100) / 100.0
+        x = f * W + math.sin(t * 0.4 + i) * 14
+        pygame.draw.line(surf, (196, 222, 230), (x, 258 + (i % 5) * 6),
+                         (x + 26, 258 + (i % 5) * 6), 2)
+    rnd = random.Random(29)
+    for band, (col, base, step) in enumerate((
+            ((196, 206, 214), 288, 150), ((214, 222, 228), 330, 186))):
+        for x in range(-40, W + 140, step):
+            hgt = rnd.randint(70, 150)
+            wdt = step - rnd.randint(16, 40)
+            tower = pygame.Rect(x, base - hgt, wdt, hgt + 70)
+            pygame.draw.rect(surf, col, tower)
+            pygame.draw.rect(surf, shade(col, 0.9), tower, 1)
+            for wy in range(tower.y + 12, base + 30, 22):       # glass bands
+                pygame.draw.rect(surf, (128, 172, 196),
+                                 (tower.x + 6, wy, tower.w - 12, 9))
+                pygame.draw.line(surf, (188, 214, 228), (tower.x + 6, wy),
+                                 (tower.right - 6, wy), 1)
+            if band:                                            # roof planting
+                for gx in range(tower.x + 8, tower.right - 8, 16):
+                    pygame.draw.circle(surf, (118, 162, 116),
+                                       (gx, tower.y - 2), 5)
+    for i in range(4):                                          # the terraces
+        y = 318 + i * 26
+        pygame.draw.rect(surf, (226, 230, 234), (0, y, W, 16))
+        pygame.draw.rect(surf, (198, 204, 210), (0, y + 14, W, 4))
+    for i in range(9):                                          # traffic, high
+        f = ((t * 0.06 + i / 9.0) % 1.0)
+        x = f * (W + 120) - 60
+        y = 118 + (i % 3) * 30
+        pygame.draw.ellipse(surf, (240, 246, 250), (x, y, 26, 7))
+        pygame.draw.ellipse(surf, (150, 196, 222), (x + 5, y + 2, 16, 3))
+    pygame.draw.rect(surf, (232, 235, 240), (0, H - 74, W, 74))
+    pygame.draw.rect(surf, (206, 212, 220), (0, H - 74, W, 5))
+
+
+def draw_counter(surf, r, tone, t, seller):
+    """A Capital counter: no awning, a light shelf, and a lot of glass."""
+    panel(surf, r, (238, 241, 245), (186, 196, 208), 8)
+    head = pygame.Rect(r.x + 4, r.y + 4, r.w - 8, 46)
+    pygame.draw.rect(surf, (250, 251, 253), head, border_radius=6)
+    pygame.draw.rect(surf, shade(tone, 1.0), (head.x, head.bottom - 4,
+                                              head.w, 4))
+    for i in range(0, head.w - 16, 30):          # a light shelf, not a hem
+        pygame.draw.rect(surf, (248, 240, 208),
+                         (head.x + 8 + i, head.bottom - 11, 18, 4),
+                         border_radius=2)
+    draw_keal_logo(surf, r.x + 30, r.y + 26, 13, t, True)
+    blit_glow(surf, (r.centerx, r.y + 120), 190, (255, 250, 228), 30)
+    glass = pygame.Rect(r.x + 16, r.y + 62, r.w - 32, 212)
+    pygame.draw.rect(surf, (214, 230, 240), glass, border_radius=6)
+    pygame.draw.rect(surf, (186, 202, 216), glass, 1, border_radius=6)
+    for i in range(3):
+        gx = glass.x + 14 + i * (glass.w - 28) / 3.0
+        pygame.draw.line(surf, (232, 242, 248), (gx, glass.y + 8),
+                         (gx, glass.bottom - 8), 2)
+    seller(surf, r.centerx, r.y + 272, 176, t)
+    top = pygame.Rect(r.x + 10, r.y + 272, r.w - 20, 16)
+    pygame.draw.rect(surf, (226, 231, 238), top, border_radius=3)
+    pygame.draw.rect(surf, (188, 196, 208), top, 1, border_radius=3)
+    pygame.draw.rect(surf, (206, 212, 222), (r.x + 10, top.bottom, r.w - 20,
+                                             14))
+
+
+class Bazaar:
+    """The only screen in the game where nothing is trying to kill you.
+
+    Two halves of one shop. The market is the Hendras, who sell to both
+    houses and always did. The Capital is the company, and everything on
+    those two counters is machined - it sits in the ledger whoever buys
+    it, and does nothing at all in a run made of meat. That gate is in
+    `has_ware`, not here; this screen only has to say so."""
+
+    SECTIONS = (
+        ("market", "THE NIGHT MARKET",
+         "the Hendras do not work for either company, and will sell to both",
+         "draw_market_night", "draw_stall", INK, DIM,
+         (("sarah", "SARAH HENDRA", "she draws it", SARAH_INK,
+           "draw_sarah_front"),
+          ("jack", "JACK HENDRA", "he grows it", JACK_GLASS,
+           "draw_jack_front"))),
+        ("capital", "KEAL CAPITAL",
+         "company stock. None of it does anything in a run that is grown",
+         "draw_capital_day", "draw_counter", (34, 38, 48), (96, 104, 118),
+         (("mike", "MIKE ODUYA", "he bolts it on", MIKE_TONE,
+           "draw_mike_front"),
+          ("zoe", "ZOE ABRANTES", "she signs for it", ZOE_TONE,
+           "draw_zoe_front"))),
+    )
+    HEAD = 84                       # the dark strip the header sits on
 
     def __init__(self, back="title"):
         self.t = 0.0
         self.back = back
         self.slots = []
+        self.tabs = []
+        self.sec = 0
         self.open = None            # the ware being turned over
         self.flash = {}
         self.btn = Button(pygame.Rect(W // 2 - 150, H - 48, 300, 36),
@@ -7430,44 +8174,79 @@ class Bazaar:
                           ("go", None), primary=True)
         self.buy_btn = None
 
+    def section(self):
+        return self.SECTIONS[self.sec]
+
     def stall_rect(self, i):
         w = (W - 68) // 2
-        return pygame.Rect(26 + i * (w + 16), 66, w, H - 136)
+        return pygame.Rect(26 + i * (w + 16), self.HEAD + 4, w,
+                           H - self.HEAD - 62)
 
     def slot_rects(self, r, n):
+        """Anchored to the BOTTOM of the stall, not the top. Mike carries
+        seven lines to Sarah's five, and a grid measured downwards from the
+        counter put his last row through the floor of the panel."""
+        cols = 3 if n <= 6 else 4
+        rows = int(math.ceil(n / float(cols)))
+        gw, gh = (r.w - 24) / float(cols), 132
+        y0 = r.bottom - 12 - rows * (gh + 8) + 8
         out = []
-        gw, gh = (r.w - 24) / 3.0, 138
         for i in range(n):
-            out.append(pygame.Rect(int(r.x + 12 + (i % 3) * gw),
-                                   int(r.y + 318 + (i // 3) * (gh + 8)),
-                                   int(gw - 8), gh))
+            out.append(pygame.Rect(int(r.x + 12 + (i % cols) * gw),
+                                   int(y0 + (i // cols) * (gh + 8)),
+                                   int(gw - 8), int(gh)))
         return out
 
     def panel_rect(self):
         return pygame.Rect(W // 2 - 330, H // 2 - 200, 660, 400)
 
+    def tab_rect(self, i):
+        return pygame.Rect(W - 372 + i * 174, 44, 168, 32)
+
     # -- frame -------------------------------------------------------------
     def draw(self, surf, mouse):
-        draw_market_night(surf, self.t)
-        text(surf, "THE NIGHT MARKET", 30, (24, 12), PAINT)
-        text(surf, "the Hendras do not work for either company, and they "
-             "will sell to both", 13, (24, 44), FAINT)
-        text(surf, "%d MARKS" % marks(), 27, (W - 24, 12), INK, right=True)
-        text(surf, "what the city pays for a body", 11, (W - 24, 42), FAINT,
-             right=True)
+        key, title, sub, scene, stall, ink, dim, sellers = self.section()
+        globals()[scene](surf, self.t)
+        # The Capital is broad daylight and the market is not, so the
+        # header gets its own dark strip in both rather than two palettes.
+        bar = pygame.Surface((W, self.HEAD), pygame.SRCALPHA)
+        bar.fill((10, 11, 18, 226))
+        surf.blit(bar, (0, 0))
+        pygame.draw.line(surf, LINE, (0, self.HEAD - 1), (W, self.HEAD - 1))
+        text(surf, title, 30, (24, 10), PAINT)
+        text(surf, sub, 13, (24, 46), FAINT)
+        text(surf, "%d MARKS" % marks(), 27, (W - 24, 26), INK, right=True)
+        self.tabs = []
+        for i, sn in enumerate(self.SECTIONS):
+            tr = self.tab_rect(i)
+            on = i == self.sec
+            hot = tr.collidepoint(mouse) and self.open is None
+            panel(surf, tr, (34, 36, 48) if (on or hot) else (18, 19, 26),
+                  PAINT if on else (LINE if not hot else DIM), 5,
+                  2 if on else 1)
+            text(surf, sn[1], fit(sn[1], 14, tr.w - 14), tr.center,
+                 INK if on else FAINT, center=True)
+            self.tabs.append((tr, i))
         self.slots = []
-        for i, (key, name, tag, col, art) in enumerate(self.SELLERS):
+        for i, (skey, name, tag, col, art) in enumerate(sellers):
             r = self.stall_rect(i)
-            draw_stall(surf, r, col, self.t, art)
-            text(surf, name, 22, (r.centerx, r.y + 15), INK, center=True)
-            text(surf, tag, 13, (r.centerx, r.y + 296), DIM, center=True)
-            wares = [x for x in WARE_LIST if x.seller == key]
+            globals()[stall](surf, r, col, self.t, globals()[art])
+            text(surf, name, 22, (r.centerx, r.y + 15), ink, center=True)
+            text(surf, tag, 13, (r.centerx, r.y + 296), dim, center=True)
+            wares = [x for x in WARE_LIST if x.seller == skey]
             for box, w in zip(self.slot_rects(r, len(wares)), wares):
                 self.good(surf, box, w, col, mouse)
         self.btn.hover(mouse)
         self.btn.draw(surf, 19)
         if self.open is not None:
             self.inspect(surf, mouse)
+
+    def tone_of(self, w):
+        for sn in self.SECTIONS:
+            for skey, _, _, col, _ in sn[7]:
+                if skey == w.seller:
+                    return col
+        return PAINT
 
     def good(self, surf, box, w, col, mouse):
         own = w.kind != "specimen" and has_ware(w.key)
@@ -7500,7 +8279,7 @@ class Bazaar:
     def inspect(self, surf, mouse):
         """Picked up off the boards and turned over."""
         w = WARES[self.open]
-        col = SARAH_INK if w.seller == "sarah" else JACK_GLASS
+        col = self.tone_of(w)
         ov = pygame.Surface((W, H), pygame.SRCALPHA)
         ov.fill((6, 6, 12, 200))
         surf.blit(ov, (0, 0))
@@ -7514,6 +8293,12 @@ class Bazaar:
                 "power": "A STANDING ORDER - every run, for good",
                 "specimen": "A SPECIMEN - one jar, opened in the street"}
         text(surf, kind[w.kind], 13, (x, r.y + 78), col)
+        if w.house is not None:
+            other = "ryez" if w.house == "keal" else "keal"
+            text(surf, "%s KIT - it does nothing in a %s run"
+                 % (HOUSES[w.house].name.split()[0],
+                    HOUSES[other].name.split()[0]), 13,
+                 (x, r.y + 94), WARN)
         y = r.y + 106
         for line in wrap(w.effect, 17, r.right - x - 30):
             text(surf, line, 17, (x, y), (214, 220, 234))
@@ -7562,6 +8347,12 @@ class Bazaar:
         if self.btn.hit(pos):
             SFX.play("click", 0.6)
             return "go"
+        for tr, i in self.tabs:
+            if tr.collidepoint(pos):
+                if i != self.sec:
+                    self.sec = i
+                    SFX.play("click", 0.5)
+                return None
         for box, key in self.slots:
             if box.collidepoint(pos):
                 self.open = key
@@ -8055,7 +8846,9 @@ class App:
             "left": k[pygame.K_a] or k[pygame.K_LEFT],
             "right": k[pygame.K_d] or k[pygame.K_RIGHT],
             "brace": k[pygame.K_s] or k[pygame.K_DOWN],
-            "boost": k[pygame.K_SPACE],
+            "boost": (k[pygame.K_SPACE] or k[pygame.K_LSHIFT]
+                      or k[pygame.K_RSHIFT]),
+            "emp": k[pygame.K_e],
             "fire_l": k[pygame.K_j] or mb[0],
             "fire_r": k[pygame.K_k] or mb[2],
             "flush": k[pygame.K_v],
