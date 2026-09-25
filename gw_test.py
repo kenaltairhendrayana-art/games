@@ -3,6 +3,7 @@ measured.
 
     python gw_test.py smoke          draw every screen offscreen, save PNGs
     python gw_test.py capital        the KEAL counters, and the house gate
+    python gw_test.py gov            the state's desk, the calendar, the squad
     python gw_test.py yard           the option list, the ladder, the city
     python gw_test.py slots          prove the three save slots stay apart
     python gw_test.py flow           drive the real App through a whole run
@@ -123,7 +124,7 @@ def smoke():
         bz.t = 3.1
         bz.draw(surf, (300, 520))
         snap(name)
-    for i, nm in enumerate(("market", "capital")):   # both halves of the shop
+    for i, nm in enumerate(("market", "capital", "gov")):   # all of the shop
         bz = G.Bazaar()
         bz.t = 3.1
         bz.sec = i
@@ -1094,6 +1095,204 @@ def capital():
     print("\ncapital ok")
 
 
+# ---------------------------------------------------------------------------
+# GOV - the state's counter, which moves the calendar and the numbers
+# ---------------------------------------------------------------------------
+GOV_KEYS = ("coffee", "rushhour", "evac", "hazmat", "walls", "qscrap",
+            "military", "funding", "sabotage", "decoys", "prebomb",
+            "supplies", "shipping", "mercs", "studies")
+
+
+def gov():
+    """Fifteen more, and this counter reaches further into the run than
+    either of the others: it moves the landfall dates, the income, what a
+    part carries, what the city loses and what the animal shows up with.
+
+    Which is why almost every check below is a BEFORE and an AFTER of the
+    same number rather than an assertion that a flag is set."""
+    wipe_meta()
+    surf = pygame.Surface((G.W, G.H))
+    G.set_house("keal")
+    gov_wares = [w for w in G.WARE_LIST if w.seller in ("genk", "zach")]
+    assert len(gov_wares) == 15, len(gov_wares)
+    assert all(w.house == "keal" for w in gov_wares)
+    assert {w.key for w in gov_wares} == set(GOV_KEYS)
+
+    # -- everything measured twice: once bare, once bought -----------------
+    bare = G.Run("keal")
+    bare.killed, bare.integrity = 3, 90.0
+    bare.mech.install("torso", 2)
+    was = {
+        "landfalls": [bare.landfall(i) for i in range(6)],
+        "income": bare.income,
+        "rush": bare.rush_rate,
+        "price": bare.price(G.WEAPONS["auto"], "l_wpn")[0],
+        "torso_hp": bare.mech.max_hp("torso"),
+        "dmg": bare.mech.dmg_mult,
+        "cut": bare.mech.hide_cut,
+    }
+    G.add_marks(4000)
+    for k in GOV_KEYS:
+        assert G.can_buy(k), k
+        assert G.buy_ware(k), k
+    print("  %d wares over two desks, %d marks" % (len(gov_wares),
+                                                   sum(w.cost for w in
+                                                       gov_wares)))
+
+    run = G.Run("keal")
+    run.killed, run.integrity = 3, 90.0
+    run.mech.install("torso", 2)
+    assert run.grace == 3, run.grace
+    now = [run.landfall(i) for i in range(6)]
+    assert now == [d + 3 for d in was["landfalls"]], now
+    assert run.next_landfall == now[0]
+    print("  three separate lines, three days: %s -> %s"
+          % (was["landfalls"], now))
+
+    assert run.income > was["income"], (was["income"], run.income)
+    assert run.rush_rate < was["rush"], (was["rush"], run.rush_rate)
+    assert run.price(G.WEAPONS["auto"], "l_wpn")[0] < was["price"]
+    assert run.mech.max_hp("torso") > was["torso_hp"]
+    assert run.mech.dmg_mult > was["dmg"]
+    assert run.mech.hide_cut > was["cut"] == 0.0
+    print("  income %d->%d  rush %d->%d  price %d->%d  torso %.0f->%.0f"
+          % (was["income"], run.income, was["rush"], run.rush_rate,
+             was["price"], run.price(G.WEAPONS["auto"], "l_wpn")[0],
+             was["torso_hp"], run.mech.max_hp("torso")))
+
+    # -- COFFEE: a day of work is worth more -------------------------------
+    run.crew = 3
+    run.scrap = 4000
+    run.start_build("legs", G.CATALOGUE["legs"][0])
+    j = run.job_on("legs")
+    run.set_crew(j, 3)
+    run.end_day()
+    assert j.done > 3.0, "the coffee did nothing: %.2f" % j.done
+    print("  three hands did %.1f days of work in one night" % j.done)
+
+    # -- EVACUATIONS and HAZMAT, on a body ---------------------------------
+    wipe_meta()
+    G.set_house("keal")
+    plain = G.Run("keal")
+    plain.kaiju_index = 2
+    m0 = G.marks()
+    _pay(plain)
+    bare_marks, bare_scrap, bare_alloy = G.marks() - m0, plain.scrap, plain.alloy
+    G.add_marks(4000)
+    for k in GOV_KEYS:
+        G.buy_ware(k)
+    rich = G.Run("keal")
+    rich.kaiju_index = 2
+    m1 = G.marks()
+    _pay(rich)
+    assert G.marks() - m1 > bare_marks, "evacuations paid nothing"
+    assert rich.scrap > bare_scrap and rich.alloy > bare_alloy
+    print("  a body pays %d->%d marks, %d->%d scrap, %d->%d alloy"
+          % (bare_marks, G.marks() - m1, bare_scrap, rich.scrap,
+             bare_alloy, rich.alloy))
+
+    # -- MILITARY SUPPORT and BETTER WALLS ---------------------------------
+    kind = G.roster_for("keal")[2]
+    f = G.Fight(_rig(), kind)
+    assert f.boss().max_hp < kind.hp, "it landed at full health"
+    assert f.city_mult < 1.0, "the walls do nothing"
+    print("  it lands on %.0f of %d, and the city takes %d%% of everything"
+          % (f.boss().max_hp, kind.hp, round(f.city_mult * 100)))
+
+    # -- KAIJU STUDIES: the hide is thinner --------------------------------
+    e = G.Enemy(kind, 0)
+    flat = e.hurtby(100.0)
+    e2 = G.Enemy(kind, 0)
+    cut = e2.hurtby(100.0, cut=0.34)
+    assert cut > flat, (flat, cut)
+    whole = G.Enemy(kind, 0).hurtby(100.0, pierce=True)
+    assert flat < cut < whole, (flat, cut, whole)
+    print("  100 into %s hide: %.0f flat, %.0f with studies, %.0f piercing"
+          % (kind.name, flat, cut, whole))
+
+    # -- MERCENARIES: somebody else takes it -------------------------------
+    r = _rig(tier=1)
+    r.kaiju_index = 4
+    f = G.Fight(r, G.roster_for("keal")[4])
+    took = 0
+    for _ in range(2400):
+        f.update(1 / 40.0, {})
+        for row in f.log:
+            if "MERCENARY TOOK" in row[0]:
+                took += 1
+                row[0] = ""
+        if f.over:
+            break
+    assert took > 0, "nobody stood in the way in a whole fight"
+    print("  a squad took %d blows meant for the machine" % took)
+
+    wipe_meta()
+    G.set_house("keal")
+    r = _rig(tier=1)
+    r.kaiju_index = 4
+    f = G.Fight(r, G.roster_for("keal")[4])
+    for _ in range(400):
+        f.update(1 / 40.0, {})
+    assert not f.mercs, "a squad turned up for somebody who has not paid"
+    print("  and nobody turns up for somebody who has not paid")
+
+    # -- the gate, from the other house ------------------------------------
+    G.add_marks(4000)
+    for k in GOV_KEYS:
+        G.buy_ware(k)
+    G.set_house("ryez")
+    for k in GOV_KEYS:
+        assert G.bought(k) and not G.has_ware(k), k
+    ryez = G.Run("ryez")
+    assert [ryez.landfall(i) for i in range(6)] == list(G.SCHEDULE)
+    assert ryez.grace == 0 and ryez.scrap_mult == 1.0
+    assert ryez.mech.hide_cut == 0.0
+    print("  RYEZ owns all fifteen, keeps its own calendar and its own hide")
+
+    # -- and the desk draws ------------------------------------------------
+    G.set_house("keal")
+    b = G.Bazaar()
+    b.t = 2.0
+    b.sec = 2
+    b.draw(surf, (0, 0))
+    assert len(b.slots) == 15, len(b.slots)
+    for box, _ in b.slots:
+        assert box.bottom <= G.H and box.right <= G.W, "a card fell off"
+    b.click(b.slots[0][0].center)
+    assert b.open == b.slots[0][1]
+    b.draw(surf, (0, 0))
+    b.open = None
+    b.draw(surf, (0, 0))
+    b.click(b.tab_rect(0).center)
+    assert b.sec == 0, "the office would not let go"
+    print("  the office draws, fifteen cards fit, and the tabs still move")
+    wipe_meta()
+    G.set_house("keal")
+    print("\ngov ok")
+
+
+def _pay(run):
+    """Put a body down and collect for it, without a whole fight."""
+    class _Won:
+        over = "won"
+        wrecked = 0
+        taken = 0.0
+        dealt = 0.0
+        integrity = run.integrity
+        kind = G.roster_for(run.house)[run.kaiju_index]
+    run.resolve(_Won())
+
+
+def _rig(tier=2):
+    r = G.Run("keal")
+    r.kaiju_index = 2
+    for k, v in (("legs", tier), ("torso", tier), ("l_arm", tier),
+                 ("r_arm", tier), ("head", tier), ("reactor", tier),
+                 ("armour", tier), ("l_wpn", "auto"), ("r_wpn", "auto")):
+        r.mech.install(k, v)
+    return r
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     SLOPPY[0] = "sloppy" in sys.argv
@@ -1102,6 +1301,9 @@ def main():
     if what in ("smoke", "all"):
         print("== SMOKE ==")
         smoke()
+    if what in ("gov", "all"):
+        print("== GOV ==")
+        gov()
     if what in ("capital", "all"):
         print("== CAPITAL ==")
         capital()
@@ -1119,7 +1321,7 @@ def main():
         print("\n== BALANCE ==")
         for hk in ("keal", "ryez"):
             balance(6 if what == "all" else n, hk)
-    if what not in ("smoke", "capital", "yard", "slots", "flow",
+    if what not in ("smoke", "capital", "gov", "yard", "slots", "flow",
                     "balance", "all"):
         print(__doc__)
         return 2

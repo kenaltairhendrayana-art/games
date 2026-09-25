@@ -880,38 +880,38 @@ class Ware:
 
 WARE_LIST = [
     # -- Sarah: the drawing office ------------------------------------------
-    Ware("bp_rail", "sarah", "RAIL LANCE", 120, "blueprint",
+    Ware("bp_rail", "sarah", "RAIL LANCE", 75, "blueprint",
          "a hardpoint gun that ignores hide entirely",
          "She drew it in an afternoon and spent a year on the rails."),
-    Ware("bp_hook", "sarah", "GRAVE HOOK", 110, "blueprint",
+    Ware("bp_hook", "sarah", "GRAVE HOOK", 70, "blueprint",
          "melee that drags what it hits back into reach",
          "For the ones that would rather be somewhere else."),
-    Ware("warchest", "sarah", "WAR CHEST", 70, "power",
+    Ware("warchest", "sarah", "WAR CHEST", 45, "power",
          "every run starts with 200 more in the bank",
          "She knows somebody. She always knows somebody."),
-    Ware("earlyshift", "sarah", "EARLY SHIFT", 90, "power",
+    Ware("earlyshift", "sarah", "EARLY SHIFT", 55, "power",
          "every run starts with a third pair of hands",
          "Signed on before you got there and already working."),
-    Ware("sharptools", "sarah", "SHARP TOOLS", 80, "power",
+    Ware("sharptools", "sarah", "SHARP TOOLS", 50, "power",
          "mending costs 30% less, for good",
          "A proper set, indexed, and nobody is allowed to borrow them."),
     # -- Jack: the menagerie ------------------------------------------------
-    Ware("spec_shriek", "jack", "SHRIEKER", 35, "specimen",
+    Ware("spec_shriek", "jack", "SHRIEKER", 22, "specimen",
          "one jar: staggers whatever is in front of you",
          "Do not open it indoors. He is not joking about that."),
-    Ware("spec_leech", "jack", "LEECH BLOOM", 40, "specimen",
+    Ware("spec_leech", "jack", "LEECH BLOOM", 25, "specimen",
          "one jar: mends the worst-hurt part by a third, mid-fight",
          "It eats the damage. Nobody has asked what it does afterwards."),
-    Ware("spec_venom", "jack", "VENOM SAC", 45, "specimen",
+    Ware("spec_venom", "jack", "VENOM SAC", 28, "specimen",
          "one jar: ten seconds where nothing's hide counts",
          "Green, and it moves on its own when the lid is off."),
-    Ware("thickblood", "jack", "THICK BLOOD", 100, "power",
+    Ware("thickblood", "jack", "THICK BLOOD", 62, "power",
          "every part carries 12% more, for good",
          "A graft that takes on steel as happily as on meat."),
-    Ware("quicknerve", "jack", "QUICK NERVE", 85, "power",
+    Ware("quicknerve", "jack", "QUICK NERVE", 52, "power",
          "10% faster on its feet, for good",
          "Shorter path from deciding to moving. That is all it is."),
-    Ware("deepgut", "jack", "DEEP GUT", 130, "power",
+    Ware("deepgut", "jack", "DEEP GUT", 80, "power",
          "one more bay in the rack, for good",
          "Room made where there was not room. Do not ask for what."),
 
@@ -920,57 +920,126 @@ WARE_LIST = [
     # a frame, and there is nothing in it for a house that grows its
     # soldiers - so it sits in the ledger either way and only does anything
     # when the run it is in is made of steel.
-    Ware("bp_claw", "mike", "PLASMA CLAW", 150, "blueprint",
+    Ware("bp_claw", "mike", "PLASMA CLAW", 85, "blueprint",
          "a hardpoint that cuts up close and throws the arc at range",
          "One emitter, two jobs. He is very pleased with himself.",
          house="keal"),
-    Ware("bp_flame", "mike", "FLAME PROJECTOR", 130, "blueprint",
+    Ware("bp_flame", "mike", "FLAME PROJECTOR", 65, "blueprint",
          "a short cone that sets what it touches burning",
          "Reach of nothing. Ask the ones it has been used on.",
          house="keal"),
-    Ware("bp_blight", "mike", "BLIGHT THROWER", 145, "blueprint",
+    Ware("bp_blight", "mike", "BLIGHT THROWER", 80, "blueprint",
          "a hardpoint whose hits keep working after they land",
          "Borrowed from the other side and made properly.",
          house="keal"),
-    Ware("mod_emp", "mike", "EMP LANCE", 160, "blueprint",
+    Ware("mod_emp", "mike", "EMP LANCE", 90, "blueprint",
          "a bay: stops one of them dead for three seconds",
          "Everything with a nerve in it stops. Yours included, briefly.",
          house="keal"),
-    Ware("mod_aux", "mike", "AUXILIARY CORE", 140, "blueprint",
+    Ware("mod_aux", "mike", "AUXILIARY CORE", 75, "blueprint",
          "a bay: a second small core that takes the strain off the first",
          "It does not make you faster. It makes you able to keep going.",
          house="keal"),
-    Ware("mod_thrust", "mike", "THRUSTERS", 120, "blueprint",
+    Ware("mod_thrust", "mike", "THRUSTERS", 58, "blueprint",
          "a bay: SHIFT to dash, on any legs at all",
          "Bolted where the ankle used to just be an ankle.",
          house="keal"),
-    Ware("mod_eject", "mike", "EJECTOR SEAT", 190, "blueprint",
+    Ware("mod_eject", "mike", "EJECTOR SEAT", 110, "blueprint",
          "a bay: the core goes and you are still standing - once a run",
          "He built it after the third funeral. Nobody argued.",
          house="keal"),
 
     # -- Zoe: the ledger, four terraces down --------------------------------
-    Ware("furnace", "zoe", "ARC FURNACE", 170, "power",
+    Ware("furnace", "zoe", "ARC FURNACE", 95, "power",
          "half an ALLOY a day, every day, for good",
          "It runs whether you are looking at it or not.",
          house="keal"),
-    Ware("hq", "zoe", "REGIONAL HQ", 200, "power",
+    Ware("hq", "zoe", "REGIONAL HQ", 110, "power",
          "one more pair of hands, and everything costs 10% less",
          "A building full of people whose whole job is your job.",
          house="keal"),
-    Ware("mining", "zoe", "MINING COLONY", 150, "power",
+    Ware("mining", "zoe", "MINING COLONY", 82, "power",
          "10% more SCRAP off everything you are paid",
          "Out past the ridge. You will never see it and it never stops.",
          house="keal"),
-    Ware("hangar", "zoe", "MECH HANGAR", 160, "power",
+    Ware("hangar", "zoe", "MECH HANGAR", 88, "power",
          "mending costs 10% less and lands a day sooner",
          "A roof, a pit, and a gantry that was not improvised.",
          house="keal"),
-    Ware("recruit", "zoe", "RECRUITING OFFICE", 180, "power",
+    Ware("recruit", "zoe", "RECRUITING OFFICE", 100, "power",
          "a new pair of hands every second day, up to ten",
          "There is a queue. There has been a queue since the first one.",
          house="keal"),
+
+    # -- General K: the state, which does not work for KEAL ------------------
+    # It does not work AGAINST it either. The company builds the machine and
+    # the government owns the coastline, so everything on this counter is
+    # something a ministry can do that a shipyard cannot: move a date, put a
+    # wall up, get a lorry through a checkpoint.
+    Ware("coffee", "genk", "COFFEE RATION", 48, "power",
+         "a pair of hands gets 20% more done in a day",
+         "Requisitioned, shipped and guarded. It is very bad coffee.",
+         house="keal"),
+    Ware("rushhour", "genk", "RUSH HOUR", 52, "power",
+         "overtime costs 25% less",
+         "The rate was set by somebody who has never done the work.",
+         house="keal"),
+    Ware("evac", "genk", "EVACUATIONS", 68, "power",
+         "25% more MARKS for every body you put down",
+         "Fewer people under it when it falls. They notice that.",
+         house="keal"),
+    Ware("hazmat", "genk", "HAZMAT TEAM", 72, "power",
+         "+15% SCRAP and one more ALLOY off every body",
+         "Men in white suits who get the parts nobody else will touch.",
+         house="keal"),
+    Ware("walls", "genk", "BETTER WALLS", 78, "power",
+         "the city takes 20% less from everything",
+         "Poured over a winter by people who were not asked twice.",
+         house="keal"),
+    Ware("qscrap", "genk", "QUALITY SCRAP", 82, "power",
+         "every part on the machine carries 5% more",
+         "The same steel, off the top of the pile instead of the bottom.",
+         house="keal"),
+    Ware("military", "genk", "MILITARY SUPPORT", 88, "power",
+         "they soften it first - it lands on 95% of its health",
+         "Guns from the ridge. It does not stop them. It slows them.",
+         house="keal"),
+    Ware("funding", "genk", "GOVERNMENT FUNDING", 92, "power",
+         "everything in the yard costs 5% less",
+         "A line in a budget with your name misspelled on it.",
+         house="keal"),
+
+    # -- Agent Zach: the other kind of help ----------------------------------
+    Ware("sabotage", "zach", "SABOTAGE", 58, "power",
+         "one more day before every landfall",
+         "Nobody will say what was done, or where, or to whom.",
+         house="keal"),
+    Ware("decoys", "zach", "DECOY CITIES", 60, "power",
+         "one more day before every landfall",
+         "Lights and noise on an empty headland. It works every time.",
+         house="keal"),
+    Ware("prebomb", "zach", "PRE-BOMBING", 62, "power",
+         "one more day before every landfall",
+         "The shallows, before it wades out of them. Expensive.",
+         house="keal"),
+    Ware("supplies", "zach", "FOREIGN SUPPLIES", 66, "power",
+         "+5% SCRAP and +5% ALLOY off everything",
+         "Unmarked crates. He will not say from where, and you stopped.",
+         house="keal"),
+    Ware("shipping", "zach", "FOREIGN SHIPPING", 74, "power",
+         "one ALLOY after every landfall, win or lose",
+         "It sails whatever happened here. That is the arrangement.",
+         house="keal"),
+    Ware("mercs", "zach", "MERCENARIES", 95, "power",
+         "a squad drops in mid-fight and takes a hit meant for you",
+         "They are not brave. They are extremely well paid.",
+         house="keal"),
+    Ware("studies", "zach", "KAIJU STUDIES", 98, "power",
+         "+8% damage, and every hardpoint cuts a third of the hide",
+         "Somebody has been taking them apart. He will not say who.",
+         house="keal"),
 ]
+
 WARES = {w.key: w for w in WARE_LIST}
 SPECIMENS = [w for w in WARE_LIST if w.kind == "specimen"]
 
@@ -2023,7 +2092,8 @@ class Mech:
         p = part_of(socket, self.fit[socket])
         if p is None:
             return 0.0
-        return float(p.hp) * (1.12 if has_ware("thickblood") else 1.0)
+        hp = float(p.hp) * (1.12 if has_ware("thickblood") else 1.0)
+        return hp * (1.05 if has_ware("qscrap") else 1.0)
 
     def held(self, socket):
         return part_of(socket, self.fit[socket])
@@ -2131,7 +2201,14 @@ class Mech:
 
     @property
     def dmg_mult(self):
-        return self.stat("head", "dmg", 1.0)
+        m = self.stat("head", "dmg", 1.0)
+        return m * (1.08 if has_ware("studies") else 1.0)
+
+    @property
+    def hide_cut(self):
+        """How much of a kaiju's hide every hardpoint gets to ignore. Zach
+        will not say who has been taking them apart."""
+        return 0.34 if has_ware("studies") else 0.0
 
     def arm_stat(self, side, key, default=1.0):
         return self.stat("l_arm" if side == "l" else "r_arm", key, default)
@@ -4380,6 +4457,30 @@ class Number:
         self.s = s
 
 
+class Merc:
+    """One of Zach's, on the ground, between you and it.
+
+    Ablative and nothing else. A merc does not meaningfully hurt a kaiju -
+    the numbers are a rounding error against forty metres of hide - and
+    pretending otherwise would make MERCENARIES a damage upgrade dressed
+    as a story. What it does is stand somewhere a swipe is about to land,
+    which is worth a great deal and costs somebody their afternoon."""
+
+    __slots__ = ("x", "hp", "t", "fire", "dead", "face")
+
+    def __init__(self, x, face):
+        self.x = float(x)
+        self.hp = 1.0
+        self.t = 0.0
+        self.fire = random.uniform(0.2, 0.9)
+        self.dead = 0.0
+        self.face = face
+
+
+MERC_EVERY = 17.0                    # seconds between drops
+MERC_SQUAD = 3                       # how many come out of one
+MERC_DPS = 5.0                       # a rounding error, and meant to be
+
 class Enemy:
     """One animal on the field. The broodlings are these too."""
 
@@ -4457,8 +4558,11 @@ class Enemy:
     def alive(self):
         return self.hp > 0
 
-    def hurtby(self, dmg, pierce=False):
-        d = max(1.0, dmg - (0.0 if pierce else self.kind.dr))
+    def hurtby(self, dmg, pierce=False, cut=0.0):
+        """`cut` is partial pierce - a fraction of the hide ignored. A whole
+        pierce is still a whole pierce; this is for everything else."""
+        hide = 0.0 if pierce else self.kind.dr * (1.0 - clamp(cut, 0.0, 1.0))
+        d = max(1.0, dmg - hide)
         self.hp -= d
         self.hurt = 0.28
         return d
@@ -4479,7 +4583,10 @@ class Fight:
         self.mvel = 0.0
         self.pose = Pose()
         self.pose.face = 1
-        self.enemies = [Enemy(kind, WORLD_W - 260)]
+        # The guns on the ridge do not stop one. They do take the edge off
+        # the thing before it is anybody else's problem.
+        self.enemies = [Enemy(kind, WORLD_W - 260,
+                              hp_mult=0.95 if has_ware("military") else 1.0)]
         self.shots = []
         self.bits = []
         self.numbers = []
@@ -4501,6 +4608,8 @@ class Fight:
         self.spared = False          # redundant linkage, one part per landfall
         self.flushed = False         # coolant flush, one tank per landfall
         self.emped = False           # EMP lance, one shot per landfall
+        self.mercs = []              # Zach's, when any are on the ground
+        self.merc_t = 6.0            # ...and how long until the next drop
         self.venom = 0.0             # Jack's sac, while it lasts
         self.jars = []               # what came out in the log
         self.tutorial = 4.0 if run.kaiju_index == 0 else 0.0
@@ -4575,7 +4684,8 @@ class Fight:
                     hit.append(e)
             for e in hit:
                 dealt = e.hurtby(wpn.dmg * dt * self.mech.dmg_mult * gun_mult,
-                                 pierce=self.pierce_now(wpn))
+                                 pierce=self.pierce_now(wpn),
+                                 cut=self.mech.hide_cut)
                 self.dealt += dealt
                 if wpn.rot > 0:
                     e.ail(wpn.rot, wpn.rot_t, wpn.rot_cap, FLAME_C)
@@ -4611,7 +4721,8 @@ class Fight:
                 if abs(e.x - self.mx) <= reach + e.span * 0.55:
                     dealt = e.hurtby(wpn.dmg * mult * (1.0 if not struck
                                                        else 0.55),
-                                     pierce=self.pierce_now(wpn))
+                                     pierce=self.pierce_now(wpn),
+                                     cut=self.mech.hide_cut)
                     self.dealt += dealt
                     e.stagger += wpn.stagger / e.kind.poise
                     if wpn.slow > 0:
@@ -4668,6 +4779,90 @@ class Fight:
                                    slow=wpn.slow, slow_t=wpn.slow_t,
                                    rot=wpn.rot, rot_t=wpn.rot_t,
                                    rot_cap=wpn.rot_cap))
+
+    def merc_tick(self, dt):
+        """Drop a squad now and then, walk them up, and let them chip."""
+        if not has_ware("mercs") or self.over is not None:
+            return
+        self.merc_t -= dt
+        if self.merc_t <= 0:
+            self.merc_t = MERC_EVERY
+            e = self.nearest(self.mx)
+            if e is not None and e.alive:
+                base = self.mx + (e.x - self.mx) * 0.45
+                face = 1 if e.x > self.mx else -1
+                for i in range(MERC_SQUAD):
+                    self.mercs.append(Merc(base + (i - 1) * 46, face))
+                self.say("A SQUAD CAME DOWN")
+                SFX.play("thud", 0.4)
+        for m in list(self.mercs):
+            m.t += dt
+            if m.hp <= 0:
+                m.dead += dt
+                if m.dead > 1.2:
+                    self.mercs.remove(m)
+                continue
+            e = self.nearest(m.x)
+            if e is None or not e.alive:
+                continue
+            gap = (e.x - m.x) * m.face
+            if gap > 200:
+                m.x += m.face * 86.0 * dt
+            m.fire -= dt
+            if m.fire <= 0:
+                m.fire = random.uniform(0.5, 0.9)
+                self.dealt += e.hurtby(MERC_DPS, cut=self.mech.hide_cut)
+                self.spark(m.x + m.face * 30, -40, (255, 226, 150), 2, 60)
+            if m.t > 26.0:               # they do not stay all fight
+                m.hp = 0.0
+
+    def merc_screen(self, e):
+        """The one that is standing where the blow is going to land, if
+        there is one. Called from `mech_hit`, which is the single funnel
+        everything the animal does has to come through - so this covers
+        swipes, slams, kicks, beams and anything it spits, without each of
+        them having to know that mercenaries exist."""
+        best = None
+        for m in self.mercs:
+            if m.hp <= 0:
+                continue
+            if abs(m.x - e.x) < e.span + 260:
+                if best is None or abs(m.x - e.x) < abs(best.x - e.x):
+                    best = m
+        return best
+
+    def draw_merc(self, surf, m, gy, sh):
+        """About ten pixels of person, which is the whole point of them.
+
+        The first pass scaled these off FSCALE * 10 and put a man the size
+        of the mech's shin on the road. A person is roughly a thirtieth of
+        the machine and a sixtieth of the animal, and the picture is only
+        honest if they are specks - so the detail is four rectangles and
+        a muzzle flash, and it is meant to be hard to see."""
+        x = int(self.sx(m.x) + sh[0])
+        if x < -40 or x > W + 40:
+            return
+        g = int(gy)
+        if m.hp <= 0:
+            f = clamp(m.dead / 1.2, 0, 1)
+            pygame.draw.rect(surf, mix((128, 46, 42), (38, 20, 20), f),
+                             (x - 4, g - 2, 8, 2))
+            return
+        bob = 1 if math.sin(m.t * 8.0) > 0 else 0
+        pygame.draw.rect(surf, (50, 58, 46), (x - 2, g - 7 - bob, 4, 5))
+        pygame.draw.rect(surf, (36, 42, 34), (x - 2, g - 2, 1, 2))
+        pygame.draw.rect(surf, (36, 42, 34), (x + 1, g - 2, 1, 2))
+        pygame.draw.rect(surf, (212, 188, 162), (x - 1, g - 10 - bob, 3, 3))
+        pygame.draw.rect(surf, (58, 66, 50), (x - 2, g - 11 - bob, 4, 1))
+        pygame.draw.rect(surf, (82, 86, 70),
+                         (x if m.face > 0 else x - 5, g - 7 - bob, 5, 1))
+        if m.fire < 0.10:
+            blit_glow(surf, (x + m.face * 7, g - 7 - bob), 11,
+                      (255, 226, 160), 90)
+
+    @property
+    def city_mult(self):
+        return 0.80 if has_ware("walls") else 1.0
 
     def in_reach(self, wpn):
         """Is there anything close enough to swing at?"""
@@ -4878,7 +5073,7 @@ class Fight:
             # it is inside the wall now, and it is not fighting any more
             e.x = WALL_X
             e.moving = approach(e.moving, 0.0, dt * 2)
-            self.integrity -= e.kind.wreck * dt
+            self.integrity -= e.kind.wreck * dt * self.city_mult
             if random.random() < dt * 0.55:
                 b = self.city.wreck_one()
                 if b is not None:
@@ -4950,6 +5145,18 @@ class Fight:
             self.say("THE ROAR - SYSTEMS SCRAMBLED")
 
     def mech_hit(self, e, dmg, silent=False, beam=False):
+        m = self.merc_screen(e) if self.mercs else None
+        if m is not None:
+            m.hp = 0.0
+            self.say("A MERCENARY TOOK THAT ONE")
+            SFX.play("wreck", 0.4)
+            self.shake = max(self.shake, 4)
+            for _ in range(10):
+                self.bits.append(Bit((m.x, -30),
+                                     (random.uniform(-160, 160),
+                                      random.uniform(-260, -40)),
+                                     0.7, (206, 96, 84), 3))
+            return
         if self.mech.down:
             return
         socket, applied, wrecked = self.mech.hurt(
@@ -5105,6 +5312,7 @@ class Fight:
             self.fire_emp()
         self.pose.flash = approach(self.pose.flash, 0.0, dt * 3.0)
 
+        self.merc_tick(dt)
         # -- the animals ---------------------------------------------------
         for e in self.enemies:
             self.rot_tick(e, dt)
@@ -5133,7 +5341,9 @@ class Fight:
                         continue
                     if abs(e.x - s.pos.x) < e.span * 0.9 and \
                             e.top < s.pos.y < -8:
-                        dealt = e.hurtby(s.dmg, pierce=bool(s.pierce))
+                        dealt = e.hurtby(s.dmg, pierce=bool(s.pierce),
+                                         cut=(self.mech.hide_cut
+                                              if s.owner == "mech" else 0.0))
                         self.dealt += dealt
                         if s.slow > 0:
                             fresh = e.slow <= 0
@@ -5208,7 +5418,9 @@ class Fight:
                 if not other.alive or other is e:
                     continue
                 if abs(other.x - s.pos.x) < s.splash + other.span * 0.6:
-                    dealt = other.hurtby(s.dmg * 0.55)
+                    dealt = other.hurtby(s.dmg * 0.55,
+                                         cut=(self.mech.hide_cut
+                                              if s.owner == "mech" else 0.0))
                     self.dealt += dealt
                     self.number(other.x, -140, int(dealt))
             if e is not None:
@@ -5238,6 +5450,8 @@ class Fight:
             if e.state == "strike" and e.attack and e.attack["kind"] == "beam":
                 self.draw_beam(surf, e, gy, sh)
 
+        for m in self.mercs:                  # small, and in front of it
+            self.draw_merc(surf, m, gy, sh)
         mx = self.sx(self.mx) + sh[0]
         if self.mech.down:
             # it kneels where it fell
@@ -5589,11 +5803,13 @@ class Run:
         if self.house == "ryez":
             self.news = ["THE SKELETON AND ONE FORELIMB TOOK LAST WINTER.",
                          "THEN THE FUNDING WENT.",
-                         "KEAL COMES UP THE ROAD ON DAY %d." % SCHEDULE[0]]
+                         "KEAL COMES UP THE ROAD ON DAY %d."
+                         % self.landfall(0)]
         else:
             self.news = ["THE FRAME AND THE LEFT ARM WENT UP LAST WINTER.",
                          "THEN THE MONEY RAN OUT.",
-                         "RYEZ PUTS ONE ASHORE ON DAY %d." % SCHEDULE[0]]
+                         "RYEZ PUTS ONE ASHORE ON DAY %d."
+                         % self.landfall(0)]
         self.spent = 0
         self.rushes = 0
         self.ejected = False         # Mike's seat, once a campaign
@@ -5608,10 +5824,19 @@ class Run:
 
     # -- the calendar -----------------------------------------------------
     @property
+    def grace(self):
+        """Days bought off the calendar. Three separate lines each buy one,
+        and they are three lines rather than one because a day is the most
+        valuable thing in the game and nobody should get three at once."""
+        return sum(1 for k in ("sabotage", "decoys", "prebomb")
+                   if has_ware(k))
+
+    def landfall(self, i):
+        return SCHEDULE[i] + self.grace if i < len(SCHEDULE) else None
+
+    @property
     def next_landfall(self):
-        if self.kaiju_index >= len(SCHEDULE):
-            return None
-        return SCHEDULE[self.kaiju_index]
+        return self.landfall(self.kaiju_index)
 
     @property
     def days_left(self):
@@ -5632,7 +5857,28 @@ class Run:
         base = 80 + 16 * self.killed
         got = base * (0.70 + 0.30 * clamp(self.integrity / 100.0, 0, 1))
         got *= 1.25 if self.yard >= 3 else 1.0
-        return int(got * (1.10 if has_ware("mining") else 1.0))
+        return int(got * self.scrap_mult)
+
+    @property
+    def scrap_mult(self):
+        """Everything anybody has ever sold you about money, multiplied out
+        in one place. Four of these stack and they were written three
+        commits apart, so they live here rather than at each till."""
+        m = 1.0
+        if has_ware("mining"):
+            m *= 1.10
+        if has_ware("supplies"):
+            m *= 1.05
+        if has_ware("hazmat"):
+            m *= 1.15
+        return m
+
+    @property
+    def alloy_bonus(self):
+        """Extra rare stuff off a body, before the FOUNDRY's own."""
+        return (1 if has_ware("hazmat") else 0) + (1 if has_ware("supplies")
+                                                   and random.random() < 0.05
+                                                   else 0)
 
     @property
     def bio(self):
@@ -5743,6 +5989,8 @@ class Run:
         s *= BIO_COST if self.bio else 1.0
         if has_ware("hq"):
             s *= 0.90
+        if has_ware("funding"):
+            s *= 0.95
         return int(round(s)), al
 
     def skipping(self, part, socket):
@@ -5755,7 +6003,8 @@ class Run:
 
     @property
     def rush_rate(self):
-        return int(RUSH_PER_DAY * (0.75 if self.yard >= 1 else 1.0))
+        r = RUSH_PER_DAY * (0.75 if self.yard >= 1 else 1.0)
+        return int(r * (0.75 if has_ware("rushhour") else 1.0))
 
     @property
     def free_crew(self):
@@ -5873,7 +6122,7 @@ class Run:
                 job.unstable = clamp(job.unstable + DRIFT_PER_DAY
                                      - HANDLER_CALM * job.crew, 0.0, 100.0)
             else:
-                job.done += job.crew
+                job.done += job.crew * (1.20 if has_ware("coffee") else 1.0)
             if job.done >= job.need - 1e-6:
                 flawed = job.bio and job.faulted
                 if job.kind == "repair":
@@ -5935,11 +6184,14 @@ class Run:
         if fight.over == "won":
             self.killed += 1
             got_s = int(kind.scrap * (1.30 if self.mech.has("claws") else 1.0)
-                        * (1.10 if has_ware("mining") else 1.0))
-            got_a = kind.alloy + (1 if self.yard >= 3 else 0)
+                        * self.scrap_mult)
+            got_a = (kind.alloy + (1 if self.yard >= 3 else 0)
+                     + (1 if has_ware("hazmat") else 0))
             self.scrap += got_s
             self.alloy += got_a
             got_m = MARKS_FOR[min(self.kaiju_index, len(MARKS_FOR) - 1)]
+            if has_ware("evac"):
+                got_m = int(round(got_m * 1.25))
             add_marks(got_m)
             lines.append("%s DOWN." % kind.name)
             lines.append("+%d MARKS FOR THE BODY" % got_m)
@@ -5950,11 +6202,12 @@ class Run:
                 self.crew += 1
                 lines.append("ONE MORE PAIR OF HANDS SIGNED ON")
         else:
-            self.integrity = clamp(self.integrity - kind.rampage, 0.0, 100.0)
+            hit = kind.rampage * (0.80 if has_ware("walls") else 1.0)
+            self.integrity = clamp(self.integrity - hit, 0.0, 100.0)
             lines.append("THE MACHINE WENT DOWN.")
             lines.append("%s WENT THROUGH THE CITY AND BACK TO THE SEA."
                          % kind.name)
-            lines.append("-%d CITY" % kind.rampage)
+            lines.append("-%d CITY" % round(hit))
             salv = int(kind.scrap * 0.45)
             salv_a = max(1, kind.alloy // 2) if kind.alloy else 0
             salv_m = MARKS_FOR[min(self.kaiju_index,
@@ -5973,6 +6226,11 @@ class Run:
             lines.append("+%d %s, +%d %s, +%d MARKS"
                          % (salv, word("scrap", "SCRAP"), salv_a,
                             word("alloy", "ALLOY"), salv_m))
+        if has_ware("shipping"):
+            # the one line on either counter that does not care how it went
+            self.alloy += 1
+            lines.append("+1 %s CAME IN ON THE BOAT ANYWAY"
+                         % word("alloy", "ALLOY"))
         if fight.wrecked:
             lines.append("%d BLOCKS LOST" % fight.wrecked)
         self.kaiju_index += 1
@@ -5980,7 +6238,7 @@ class Run:
             return "over", lines
         if self.kaiju_index >= len(roster_for(self.house)):
             return ("victory" if fight.over == "won" else "unfinished"), lines
-        lines.append("NEXT LANDFALL: DAY %d" % SCHEDULE[self.kaiju_index])
+        lines.append("NEXT LANDFALL: DAY %d" % self.landfall(self.kaiju_index))
         return None, lines
 
     # -- saved ------------------------------------------------------------
@@ -7746,6 +8004,181 @@ def draw_zoe_front(surf, cx, gy, h, t):
                        (cx + 22 * u, br - 1 * u), 4.6 * u, 1)
 
 
+# ---------------------------------------------------------------------------
+# THE GOVERNMENT OFFICE
+#
+# Neither of these two works for KEAL, and the room says so before either
+# of them does: no bolt-head anywhere, a state seal on the back wall
+# instead, filing cabinets, blinds, and the particular green that only
+# ministries paint things.
+#
+# Same rig as the other four - blocks, straight on, head about as tall as
+# the body you can see.
+# ---------------------------------------------------------------------------
+GENK_TONE = (160, 178, 124)
+ZACH_TONE = (146, 152, 178)
+
+GOV_GREEN = (86, 98, 70)
+GOV_DARK = (52, 60, 44)
+GOV_BRASS = (198, 164, 84)
+GENK_HAIR = (206, 206, 200)
+ZACH_SUIT = (38, 40, 50)
+ZACH_SHIRT = (232, 234, 240)
+ZACH_TIE = (72, 78, 96)
+ZACH_HAIR = (34, 30, 28)
+
+
+def draw_gov_seal(surf, cx, cy, r, t=0.0):
+    """A star in a wreath. No company owns this one."""
+    pygame.draw.circle(surf, (34, 38, 30), (cx, cy), r)
+    pygame.draw.circle(surf, GOV_BRASS, (cx, cy), r, max(1, int(r * 0.10)))
+    for i in range(14):                          # the wreath
+        a = i * TAU / 14 + math.sin(t * 0.4) * 0.02
+        pygame.draw.circle(surf, shade(GOV_BRASS, 0.7),
+                           (cx + math.cos(a) * r * 0.78,
+                            cy + math.sin(a) * r * 0.78),
+                           max(1, r * 0.09))
+    pts = []
+    for i in range(10):                          # and the star in it
+        rad = r * (0.52 if i % 2 == 0 else 0.22)
+        a = i * TAU / 10 - math.pi / 2
+        pts.append((cx + math.cos(a) * rad, cy + math.sin(a) * rad))
+    pygame.draw.polygon(surf, GOV_BRASS, pts)
+
+
+def draw_genk_front(surf, cx, gy, h, t):
+    """Peaked cap, high collar, a chest of ribbons and a white moustache.
+    He has been doing this since before the company existed."""
+    u = h / 100.0
+    bob = math.sin(t * 0.9 + 1.1) * 0.8 * u
+    top = gy - 38 * u + bob
+    _blk(surf, cx - 34 * u, top, 68 * u, 50 * u, GOV_GREEN, 0.72, 4)
+    for sgn in (-1, 1):                          # epaulettes
+        _blk(surf, cx + sgn * 26 * u - 8 * u, top - 2 * u, 17 * u, 7 * u,
+             GOV_BRASS, 0.6, 2)
+    for sgn in (-1, 1):                          # arms on the counter
+        ax = cx + sgn * 40 * u
+        _blk(surf, ax - 12 * u, top + 3 * u, 25 * u, 29 * u, GOV_GREEN,
+             0.72, 3)
+        _blk(surf, ax - 11 * u, top + 28 * u, 23 * u, 8 * u,
+             shade(GOV_GREEN, 0.8), 0.72, 2)
+        _blk(surf, cx + sgn * 26 * u - 8 * u, top + 34 * u, 17 * u, 10 * u,
+             SKIN_D, 0.8, 3)
+    for sgn in (-1, 1):                          # the lapels of the tunic
+        pygame.draw.polygon(surf, GOV_DARK, [
+            (cx + sgn * 6 * u, top),
+            (cx + sgn * 21 * u, top),
+            (cx + sgn * 8 * u, top + 28 * u)])
+    _blk(surf, cx - 6 * u, top, 12 * u, 50 * u, shade(GOV_GREEN, 0.86),
+         0.72, 2)
+    for row in range(3):                         # ribbons, three rows of four
+        for i in range(4):
+            col = ((186, 62, 54), (198, 164, 84), (78, 106, 168),
+                   (96, 140, 86))[(row + i) % 4]
+            pygame.draw.rect(surf, col,
+                             (cx - 30 * u + i * 6 * u, top + 8 * u
+                              + row * 5 * u, 5 * u, 3.6 * u))
+    for i in range(3):                           # buttons
+        pygame.draw.circle(surf, GOV_BRASS, (cx, top + (12 + i * 12) * u),
+                           1.8 * u)
+    _blk(surf, cx - 11 * u, top - 8 * u, 22 * u, 11 * u, GOV_DARK, 0.7, 2)
+    hb = top - 7 * u
+    hh = 42 * u
+    br = hb - hh
+    _blk(surf, cx - 23 * u, br, 46 * u, hh, SKIN, 0.8, 4)
+    for sgn in (-1, 1):                          # brows, heavy and level
+        pygame.draw.line(surf, (176, 176, 170),
+                         (cx + sgn * 5 * u, br + 15 * u),
+                         (cx + sgn * 18 * u, br + 14 * u),
+                         max(2, int(3.0 * u)))
+    for sgn in (-1, 1):
+        pygame.draw.circle(surf, (48, 44, 46),
+                           (cx + sgn * 11 * u, br + 21 * u), 2.3 * u)
+    pygame.draw.rect(surf, GENK_HAIR,                 # the moustache
+                     (cx - 15 * u, br + 28 * u, 30 * u, 6 * u),
+                     border_radius=max(1, int(2 * u)))
+    pygame.draw.line(surf, (150, 120, 112),           # and not much of a mouth
+                     (cx - 7 * u, br + 37 * u), (cx + 7 * u, br + 37 * u),
+                     max(1, int(1.8 * u)))
+    for sgn in (-1, 1):                               # sideburns
+        _blk(surf, cx + sgn * 22 * u - 3 * u, br + 6 * u, 6 * u, 16 * u,
+             GENK_HAIR, 0.8, 2)
+    cap = br + 2 * u                                  # the cap sits low
+    _blk(surf, cx - 27 * u, cap - 4 * u, 54 * u, 7 * u, GOV_DARK, 0.7, 2)
+    pygame.draw.polygon(surf, (30, 34, 28), [         # the peak
+        (cx - 26 * u, cap + 3 * u), (cx + 26 * u, cap + 3 * u),
+        (cx + 20 * u, cap + 9 * u), (cx - 20 * u, cap + 9 * u)])
+    _blk(surf, cx - 25 * u, cap - 18 * u, 50 * u, 15 * u, GOV_GREEN, 0.72, 3)
+    pygame.draw.polygon(surf, shade(GOV_GREEN, 1.12), [
+        (cx - 25 * u, cap - 18 * u), (cx + 25 * u, cap - 18 * u),
+        (cx + 21 * u, cap - 22 * u), (cx - 21 * u, cap - 22 * u)])
+    draw_gov_seal(surf, cx, cap - 10 * u, 7 * u, t)
+
+
+def draw_zach_front(surf, cx, gy, h, t):
+    """Dark suit, dark glasses, an earpiece with the wire showing, and a
+    face that has never once been surprised."""
+    u = h / 100.0
+    bob = math.sin(t * 1.3 + 0.3) * 0.9 * u
+    top = gy - 38 * u + bob
+    _blk(surf, cx - 32 * u, top, 64 * u, 50 * u, ZACH_SUIT, 0.72, 4)
+    _blk(surf, cx - 9 * u, top, 18 * u, 50 * u, ZACH_SHIRT, 0.76, 2)
+    for sgn in (-1, 1):                          # lapels, notched
+        pygame.draw.polygon(surf, shade(ZACH_SUIT, 1.25), [
+            (cx + sgn * 8 * u, top),
+            (cx + sgn * 22 * u, top),
+            (cx + sgn * 10 * u, top + 30 * u)])
+    for sgn in (-1, 1):
+        ax = cx + sgn * 38 * u
+        _blk(surf, ax - 12 * u, top + 2 * u, 25 * u, 30 * u, ZACH_SUIT,
+             0.72, 3)
+        _blk(surf, ax - 11 * u, top + 30 * u, 23 * u, 9 * u,
+             shade(ZACH_SUIT, 0.8), 0.72, 3)
+        _blk(surf, cx + sgn * 25 * u - 8 * u, top + 35 * u, 17 * u, 10 * u,
+             SKIN_D, 0.8, 3)
+    pygame.draw.polygon(surf, ZACH_TIE, [        # a thin one, done tight
+        (cx - 3 * u, top + 1 * u), (cx + 3 * u, top + 1 * u),
+        (cx + 4 * u, top + 34 * u), (cx, top + 40 * u),
+        (cx - 4 * u, top + 34 * u)])
+    _blk(surf, cx - 9 * u, top - 8 * u, 18 * u, 11 * u, SKIN_D, 0.8, 2)
+    hb = top - 7 * u
+    hh = 42 * u
+    br = hb - hh
+    _blk(surf, cx - 23 * u, br, 46 * u, hh, SKIN, 0.8, 4)
+    pygame.draw.line(surf, (150, 120, 112),      # a mouth doing nothing
+                     (cx - 7 * u, br + 33 * u), (cx + 7 * u, br + 33 * u),
+                     max(1, int(1.9 * u)))
+    gl = br + 18 * u                             # the glasses
+    pygame.draw.line(surf, (22, 22, 26), (cx - 20 * u, gl), (cx + 20 * u, gl),
+                     max(2, int(2.2 * u)))
+    for sgn in (-1, 1):
+        rr = pygame.Rect(int(cx + sgn * 10 * u - 9 * u), int(gl - 5 * u),
+                         int(18 * u), int(10 * u))
+        pygame.draw.rect(surf, (26, 26, 32), rr, border_radius=2)
+        pygame.draw.rect(surf, (14, 14, 18), rr, 1, border_radius=2)
+        pygame.draw.line(surf, (92, 100, 122),   # one cold highlight each
+                         (rr.x + 3 * u, rr.bottom - 2 * u),
+                         (rr.right - 4 * u, rr.y + 2 * u),
+                         max(1, int(1.4 * u)))
+    pygame.draw.polygon(surf, ZACH_HAIR, [       # flat, parted, no nonsense
+        (cx - 25 * u, br + 9 * u), (cx - 24 * u, br - 5 * u),
+        (cx + 24 * u, br - 5 * u), (cx + 25 * u, br + 9 * u),
+        (cx + 8 * u, br + 1 * u), (cx - 18 * u, br + 3 * u)])
+    pygame.draw.line(surf, shade(ZACH_HAIR, 1.5),
+                     (cx + 6 * u, br - 4 * u), (cx + 7 * u, br + 2 * u),
+                     max(1, int(1.6 * u)))
+    ear = (cx + 23 * u, br + 22 * u)             # and the wire
+    pygame.draw.circle(surf, (226, 226, 230), ear, 3.0 * u)
+    pygame.draw.circle(surf, (120, 124, 134), ear, 3.0 * u, 1)
+    prev = ear
+    for i in range(1, 7):
+        f = i / 6.0
+        p = (ear[0] + 4 * u + math.sin(f * 7.0 + t * 1.4) * 2.0 * u,
+             ear[1] + f * 26 * u)
+        pygame.draw.line(surf, (188, 190, 196), prev, p, max(1, int(1.4 * u)))
+        prev = p
+
+
 def draw_ware_icon(surf, r, w, t):
     """One thing on the boards, drawn at whatever size it is asked for."""
     k = w.key
@@ -7978,11 +8411,211 @@ def draw_ware_icon(surf, r, w, t):
                          (cx + s * 0.34, cy + s * 0.20), 2)
         pygame.draw.rect(surf, PAINT,
                          (cx + s * 0.26, cy - s * 0.26, s * 0.08, s * 0.44))
-    else:                                     # deepgut
+    elif k == "deepgut":
         pygame.draw.circle(surf, (78, 54, 78), (cx, cy), s * 0.30)
         pygame.draw.circle(surf, (32, 22, 32), (cx, cy), s * 0.19)
         pygame.draw.circle(surf, HEART, (cx, cy),
                            s * 0.09 * (1 + 0.2 * math.sin(t * 2.6)))
+    elif k == "coffee":                       # a tin mug, steaming
+        _blk(surf, cx - s * 0.16, cy - s * 0.08, s * 0.32, s * 0.30,
+             (196, 200, 208), 0.6, 2)
+        pygame.draw.arc(surf, (168, 172, 180),
+                        (cx + s * 0.12, cy - s * 0.02, s * 0.18, s * 0.18),
+                        -1.2, 1.2, max(2, int(s * 0.04)))
+        pygame.draw.rect(surf, (74, 46, 30),
+                         (cx - s * 0.13, cy - s * 0.05, s * 0.26, s * 0.06))
+        for i in range(3):
+            a = t * 2.0 + i * 1.3
+            pygame.draw.line(surf, (150, 156, 164),
+                             (cx - s * 0.08 + i * s * 0.08, cy - s * 0.12),
+                             (cx - s * 0.08 + i * s * 0.08
+                              + math.sin(a) * s * 0.04, cy - s * 0.28), 2)
+    elif k == "rushhour":                     # a clock being wound past itself
+        pygame.draw.circle(surf, (188, 194, 202), (cx, cy), s * 0.27)
+        pygame.draw.circle(surf, (32, 36, 42), (cx, cy), s * 0.22)
+        a = t * 5.0
+        pygame.draw.line(surf, PAINT, (cx, cy),
+                         (cx + math.cos(a) * s * 0.17,
+                          cy + math.sin(a) * s * 0.17), 2)
+        pygame.draw.arc(surf, GOV_BRASS,
+                        (cx - s * 0.32, cy - s * 0.32, s * 0.64, s * 0.64),
+                        0.4, 2.6, max(2, int(s * 0.05)))
+    elif k == "evac":                         # a coach, and people off it
+        _blk(surf, cx - s * 0.30, cy - s * 0.10, s * 0.46, s * 0.22,
+             (198, 176, 92), 0.6, 2)
+        for i in range(3):
+            pygame.draw.rect(surf, (120, 160, 190),
+                             (cx - s * 0.26 + i * s * 0.13, cy - s * 0.06,
+                              s * 0.09, s * 0.08))
+        for wx in (-0.20, 0.04):
+            pygame.draw.circle(surf, (40, 42, 48),
+                               (cx + s * wx, cy + s * 0.14), s * 0.05)
+        for i in range(3):
+            f = (t * 0.6 + i * 0.33) % 1.0
+            x = cx + s * (0.20 + f * 0.16)
+            pygame.draw.rect(surf, (214, 198, 170),
+                             (x, cy - s * 0.02, s * 0.04, s * 0.12))
+            pygame.draw.circle(surf, (230, 214, 186),
+                               (x + s * 0.02, cy - s * 0.05), s * 0.028)
+    elif k == "hazmat":                       # a suit and a hose
+        pygame.draw.circle(surf, (226, 230, 234), (cx, cy - s * 0.14),
+                           s * 0.11)
+        pygame.draw.rect(surf, (120, 170, 190),
+                         (cx - s * 0.07, cy - s * 0.18, s * 0.14, s * 0.08))
+        _blk(surf, cx - s * 0.13, cy - s * 0.04, s * 0.26, s * 0.28,
+             (232, 236, 240), 0.7, 3)
+        for i in range(2):
+            pygame.draw.rect(surf, (216, 176, 60),
+                             (cx - s * 0.13, cy + s * (0.04 + i * 0.09),
+                              s * 0.26, s * 0.04))
+        prev = (cx + s * 0.13, cy)
+        for i in range(1, 6):
+            f = i / 5.0
+            p = (cx + s * (0.13 + f * 0.20),
+                 cy + math.sin(f * 6 + t * 2) * s * 0.07)
+            pygame.draw.line(surf, (150, 156, 164), prev, p, 2)
+            prev = p
+    elif k == "walls":                        # a wall, and something off it
+        for row in range(3):
+            for i in range(4):
+                x = cx - s * 0.30 + i * s * 0.16 + (s * 0.08 if row % 2 else 0)
+                pygame.draw.rect(surf, (156, 150, 138),
+                                 (x, cy - s * 0.02 + row * s * 0.11,
+                                  s * 0.14, s * 0.09))
+                pygame.draw.rect(surf, (104, 100, 92),
+                                 (x, cy - s * 0.02 + row * s * 0.11,
+                                  s * 0.14, s * 0.09), 1)
+        f = abs(math.sin(t * 1.6))
+        pygame.draw.circle(surf, (188, 96, 72),
+                           (cx + s * (0.30 - f * 0.12), cy - s * 0.22),
+                           s * 0.06)
+    elif k == "qscrap":                       # a billet with a stamp on it
+        _blk(surf, cx - s * 0.30, cy - s * 0.04, s * 0.60, s * 0.18,
+             (150, 158, 172), 0.6, 2)
+        _blk(surf, cx - s * 0.22, cy - s * 0.18, s * 0.44, s * 0.15,
+             (178, 186, 200), 0.6, 2)
+        pygame.draw.circle(surf, GOV_BRASS, (cx + s * 0.16, cy - s * 0.10),
+                           s * 0.06)
+        pygame.draw.circle(surf, (40, 44, 36), (cx + s * 0.16, cy - s * 0.10),
+                           s * 0.03)
+    elif k == "military":                     # a gun on the ridge
+        pygame.draw.polygon(surf, (74, 82, 64), [
+            (cx - s * 0.36, cy + s * 0.26), (cx - s * 0.10, cy + s * 0.04),
+            (cx + s * 0.36, cy + s * 0.26)])
+        _blk(surf, cx - s * 0.06, cy - s * 0.06, s * 0.22, s * 0.12,
+             (96, 106, 82), 0.6, 2)
+        rec = abs(math.sin(t * 2.2)) * s * 0.04
+        pygame.draw.line(surf, (128, 138, 110),
+                         (cx + s * 0.10 - rec, cy - s * 0.04),
+                         (cx + s * 0.34 - rec, cy - s * 0.16), 4)
+        if rec > s * 0.03:
+            blit_glow(surf, (cx + s * 0.34, cy - s * 0.17), s * 0.3,
+                      (255, 214, 150), 80)
+    elif k == "funding":                      # a form, stamped
+        _blk(surf, cx - s * 0.22, cy - s * 0.26, s * 0.44, s * 0.52,
+             (232, 230, 216), 0.8, 2)
+        for i in range(5):
+            pygame.draw.line(surf, (150, 148, 138),
+                             (cx - s * 0.16, cy - s * 0.18 + i * s * 0.09),
+                             (cx + s * (0.10 if i % 2 else 0.16),
+                              cy - s * 0.18 + i * s * 0.09), 2)
+        a = math.sin(t * 1.1) * 0.25
+        pygame.draw.circle(surf, (176, 62, 58),
+                           (cx + s * 0.10, cy + s * 0.14), s * 0.10, 3)
+        pygame.draw.line(surf, (176, 62, 58),
+                         (cx + s * 0.03, cy + s * 0.14 - a * s * 0.1),
+                         (cx + s * 0.17, cy + s * 0.14 + a * s * 0.1), 3)
+    elif k == "sabotage":                     # a fuse, going
+        pygame.draw.circle(surf, (44, 46, 52), (cx - s * 0.06, cy + s * 0.10),
+                           s * 0.18)
+        f = (math.sin(t * 3.0) * 0.5 + 0.5)
+        prev = (cx + s * 0.04, cy - s * 0.06)
+        for i in range(1, 6):
+            q = i / 5.0
+            p = (prev[0] + s * 0.05, cy - s * (0.06 + q * 0.18)
+                 + math.sin(q * 6) * s * 0.03)
+            pygame.draw.line(surf, (188, 170, 130), prev, p, 2)
+            prev = p
+        pygame.draw.circle(surf, (255, 200 - int(60 * f), 90), prev,
+                           s * (0.05 + 0.02 * f))
+        blit_glow(surf, prev, s * 0.5, (255, 190, 90), 70)
+    elif k == "decoys":                       # lights on an empty headland
+        pygame.draw.line(surf, (96, 104, 86), (cx - s * 0.34, cy + s * 0.20),
+                         (cx + s * 0.34, cy + s * 0.20), 3)
+        for i in range(5):
+            x = cx - s * 0.26 + i * s * 0.13
+            h2 = s * (0.10 + 0.06 * ((i * 7) % 3))
+            pygame.draw.rect(surf, (62, 70, 58),
+                             (x, cy + s * 0.20 - h2, s * 0.08, h2))
+            on = (int(t * 2.0) + i) % 3 != 0
+            pygame.draw.circle(surf, PAINT if on else (70, 66, 58),
+                               (x + s * 0.04, cy + s * 0.18 - h2), s * 0.035)
+    elif k == "prebomb":                      # something falling into water
+        pygame.draw.rect(surf, (74, 106, 122),
+                         (cx - s * 0.36, cy + s * 0.10, s * 0.72, s * 0.20))
+        for i in range(3):
+            f = ((t * 0.7 + i * 0.33) % 1.0)
+            y = cy - s * 0.30 + f * s * 0.40
+            pygame.draw.ellipse(surf, (188, 192, 200),
+                                (cx - s * 0.20 + i * s * 0.18, y,
+                                 s * 0.07, s * 0.13))
+        for i in range(2):
+            rr = s * (0.10 + 0.14 * ((t * 0.9 + i * 0.5) % 1.0))
+            pygame.draw.ellipse(surf, (150, 190, 205),
+                                (cx - rr, cy + s * 0.14 - rr * 0.3,
+                                 rr * 2, rr * 0.6), 2)
+    elif k == "supplies":                     # crates, unmarked
+        for i, (dx, dy, w2) in enumerate(((-0.26, 0.04, 0.24),
+                                          (0.02, 0.04, 0.26),
+                                          (-0.14, -0.20, 0.24))):
+            r2 = pygame.Rect(cx + s * dx, cy + s * dy, s * w2, s * 0.22)
+            pygame.draw.rect(surf, (146, 118, 78), r2)
+            pygame.draw.rect(surf, (96, 76, 50), r2, 2)
+            pygame.draw.line(surf, (96, 76, 50), r2.topleft, r2.bottomright, 2)
+    elif k == "shipping":                     # a hull, and it keeps coming
+        pygame.draw.polygon(surf, (72, 80, 96), [
+            (cx - s * 0.32, cy + s * 0.02), (cx + s * 0.32, cy + s * 0.02),
+            (cx + s * 0.22, cy + s * 0.18), (cx - s * 0.22, cy + s * 0.18)])
+        _blk(surf, cx - s * 0.10, cy - s * 0.16, s * 0.20, s * 0.18,
+             (110, 120, 138), 0.6, 2)
+        pygame.draw.rect(surf, ALLOY_C,
+                         (cx - s * 0.05, cy - s * 0.10, s * 0.10, s * 0.07))
+        for i in range(3):
+            f = ((t * 0.8 + i * 0.33) % 1.0)
+            pygame.draw.line(surf, (108, 140, 160),
+                             (cx - s * 0.36 + f * s * 0.12, cy + s * 0.24),
+                             (cx - s * 0.24 + f * s * 0.12, cy + s * 0.24), 2)
+    elif k == "mercs":                        # a chute and a small person
+        f = (t * 0.5) % 1.0
+        top2 = cy - s * 0.30 + f * s * 0.14
+        pygame.draw.arc(surf, (206, 210, 196),
+                        (cx - s * 0.22, top2, s * 0.44, s * 0.30),
+                        0.1, math.pi - 0.1, max(2, int(s * 0.05)))
+        for sgn in (-1, 1):
+            pygame.draw.line(surf, (170, 176, 162),
+                             (cx + sgn * s * 0.20, top2 + s * 0.14),
+                             (cx + sgn * s * 0.04, top2 + s * 0.26), 1)
+        pygame.draw.rect(surf, (58, 68, 50),
+                         (cx - s * 0.04, top2 + s * 0.26, s * 0.08, s * 0.14))
+        pygame.draw.rect(surf, (214, 190, 164),
+                         (cx - s * 0.03, top2 + s * 0.21, s * 0.06, s * 0.06))
+    else:                                     # studies: a skull on a board
+        pygame.draw.rect(surf, (40, 52, 44),
+                         (cx - s * 0.32, cy - s * 0.28, s * 0.64, s * 0.56))
+        pygame.draw.rect(surf, (96, 108, 92),
+                         (cx - s * 0.32, cy - s * 0.28, s * 0.64, s * 0.56), 2)
+        pygame.draw.polygon(surf, (206, 210, 196), [
+            (cx - s * 0.16, cy - s * 0.14), (cx + s * 0.16, cy - s * 0.14),
+            (cx + s * 0.12, cy + s * 0.08), (cx, cy + s * 0.18),
+            (cx - s * 0.12, cy + s * 0.08)])
+        for sgn in (-1, 1):
+            pygame.draw.circle(surf, (40, 52, 44),
+                               (cx + sgn * s * 0.07, cy - s * 0.04),
+                               s * 0.045)
+        a = (t * 0.8) % 1.0
+        pygame.draw.line(surf, (226, 92, 76),
+                         (cx - s * 0.20, cy - s * 0.22 + a * s * 0.40),
+                         (cx + s * 0.20, cy - s * 0.22 + a * s * 0.40), 1)
 
 
 def draw_market_night(surf, t):
@@ -8134,6 +8767,83 @@ def draw_counter(surf, r, tone, t, seller):
                                              14))
 
 
+def draw_gov_office(surf, t):
+    """Inside, for once. Not a street and not a plaza - a long room with a
+    seal on the wall, blinds half down, and the particular green that only
+    ministries paint things.
+
+    The market is night and the Capital is noon, so this one is neither:
+    strip light, no weather, and no idea what time it is."""
+    for i in range(0, H, 4):
+        f = i / float(H)
+        surf.fill(mix((58, 66, 56), (38, 42, 38), f ** 0.8), (0, i, W, 4))
+    pygame.draw.rect(surf, (74, 84, 68), (0, 0, W, 120))       # upper wall
+    pygame.draw.rect(surf, (46, 52, 42), (0, 118, W, 6))       # the dado rail
+    for x in range(-30, W + 60, 274):                          # blinds
+        b = pygame.Rect(x, 132, 196, 156)
+        pygame.draw.rect(surf, (40, 46, 38), b.inflate(10, 10), border_radius=3)
+        pygame.draw.rect(surf, (168, 176, 150), b)
+        for y in range(b.y + 5, b.bottom, 9):
+            pygame.draw.rect(surf, (128, 138, 112), (b.x, y, b.w, 4))
+        pygame.draw.rect(surf, (96, 104, 84), (b.x, b.y, b.w, 8))
+    for x in range(100, W, 274):                               # strip lights
+        pygame.draw.rect(surf, (62, 70, 58), (x - 58, 22, 116, 12),
+                         border_radius=3)
+        pygame.draw.rect(surf, (232, 238, 214), (x - 52, 25, 104, 6))
+        blit_glow(surf, (x, 34), 140, (226, 234, 200), 30)
+    draw_gov_seal(surf, W // 2, 214, 62, t)                    # and the seal
+    for i in range(5):                                         # cabinets
+        c = pygame.Rect(-40 + i * 300, 300, 180, 118)
+        pygame.draw.rect(surf, (72, 80, 64), c)
+        pygame.draw.rect(surf, (48, 54, 42), c, 2)
+        for d in range(3):
+            dr = pygame.Rect(c.x + 8, c.y + 8 + d * 36, c.w - 16, 30)
+            pygame.draw.rect(surf, (88, 96, 76), dr)
+            pygame.draw.rect(surf, GOV_BRASS,
+                             (dr.centerx - 11, dr.centery - 2, 22, 4))
+        if i % 2:                                              # a sad plant
+            pygame.draw.rect(surf, (120, 92, 66), (c.right - 46, c.y - 26,
+                                                   26, 26))
+            for k in range(5):
+                a = -math.pi / 2 + (k - 2) * 0.42
+                pygame.draw.line(surf, (96, 130, 84),
+                                 (c.right - 33, c.y - 24),
+                                 (c.right - 33 + math.cos(a) * 22,
+                                  c.y - 24 + math.sin(a) * 22), 3)
+    pygame.draw.rect(surf, (40, 44, 36), (0, H - 74, W, 74))   # lino
+    for x in range(0, W, 62):
+        pygame.draw.line(surf, (48, 52, 44), (x, H - 74), (x, H), 1)
+
+
+def draw_desk(surf, r, tone, t, seller):
+    """A government counter: a wooden desk, a glass screen with a gap cut
+    in it, a queue number and a sign nobody reads."""
+    panel(surf, r, (62, 70, 56), (40, 46, 36), 8)
+    head = pygame.Rect(r.x + 4, r.y + 4, r.w - 8, 44)
+    pygame.draw.rect(surf, (44, 50, 40), head, border_radius=6)
+    pygame.draw.rect(surf, shade(tone, 0.9), (head.x + 8, head.bottom - 5,
+                                              head.w - 16, 3))
+    draw_gov_seal(surf, r.x + 30, r.y + 26, 13, t)
+    n = int(t * 0.4) % 90 + 10
+    text(surf, "NOW SERVING %d" % n, 13, (r.right - 16, r.y + 20),
+         GOV_BRASS, right=True)
+    blit_glow(surf, (r.centerx, r.y + 110), 200, (226, 234, 200), 22)
+    scr = pygame.Rect(r.x + 16, r.y + 58, r.w - 32, 216)       # the screen
+    pygame.draw.rect(surf, (96, 112, 96), scr, border_radius=4)
+    pygame.draw.rect(surf, (54, 62, 48), scr, 2, border_radius=4)
+    gap = pygame.Rect(scr.centerx - 74, scr.bottom - 52, 148, 52)
+    pygame.draw.rect(surf, (30, 34, 28), gap)                  # cut in it
+    for i in range(1, 3):
+        gx = scr.x + i * scr.w / 3.0
+        pygame.draw.line(surf, (128, 146, 124), (gx, scr.y + 6),
+                         (gx, scr.bottom - 6), 2)
+    seller(surf, r.centerx, r.y + 272, 176, t)
+    top = pygame.Rect(r.x + 10, r.y + 272, r.w - 20, 16)
+    pygame.draw.rect(surf, (116, 92, 62), top, border_radius=3)
+    pygame.draw.rect(surf, (74, 58, 38), top, 1, border_radius=3)
+    pygame.draw.rect(surf, (58, 46, 32), (r.x + 10, top.bottom, r.w - 20, 14))
+
+
 class Bazaar:
     """The only screen in the game where nothing is trying to kill you.
 
@@ -8158,6 +8868,13 @@ class Bazaar:
            "draw_mike_front"),
           ("zoe", "ZOE ABRANTES", "she signs for it", ZOE_TONE,
            "draw_zoe_front"))),
+        ("gov", "THE GOVERNMENT OFFICE",
+         "neither of them works for KEAL. Both of them will help KEAL",
+         "draw_gov_office", "draw_desk", (238, 242, 228), (168, 178, 150),
+         (("genk", "GENERAL K", "he moves the date", GENK_TONE,
+           "draw_genk_front"),
+          ("zach", "AGENT ZACH", "he does not say how", ZACH_TONE,
+           "draw_zach_front"))),
     )
     HEAD = 84                       # the dark strip the header sits on
 
@@ -8201,7 +8918,9 @@ class Bazaar:
         return pygame.Rect(W // 2 - 330, H // 2 - 200, 660, 400)
 
     def tab_rect(self, i):
-        return pygame.Rect(W - 372 + i * 174, 44, 168, 32)
+        n = len(self.SECTIONS)
+        w = min(168, (W - 300) // n)
+        return pygame.Rect(W - 24 - n * (w + 6) + i * (w + 6), 44, w, 32)
 
     # -- frame -------------------------------------------------------------
     def draw(self, surf, mouse):
@@ -8680,7 +9399,7 @@ class App:
             ending = "unfinished"
         else:
             lines.append("NEXT LANDFALL: DAY %d"
-                         % SCHEDULE[self.run.kaiju_index])
+                         % self.run.landfall(self.run.kaiju_index))
         self.after = After(self.run, None, lines, ending)
         self.ending = ending
         self.state = "after"
