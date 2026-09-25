@@ -971,6 +971,36 @@ WARE_LIST = [
          "There is a queue. There has been a queue since the first one.",
          house="keal"),
 
+    # -- Dr Ilse Novak: whole machines, and what they cost -------------------
+    # These are not upgrades. A chassis decides which sockets exist at all,
+    # what every part in them is worth and which guns will bolt to it, so
+    # buying one is buying a different game rather than a better number.
+    # They are priced like it.
+    Ware("ch_tank", "novak", "TITAN TANK", 210, "chassis",
+         "a frame with no sensors on it whatsoever",
+         "She took the head off and the range went up. Nobody has "
+         "satisfactorily explained why.", house="keal"),
+    Ware("ch_turret", "novak", "TITAN TURRET", 230, "chassis",
+         "a frame with no legs on it whatsoever",
+         "It is bolted to the seawall. She says that is not a limitation, "
+         "it is a decision.", house="keal"),
+    Ware("ch_cyclops", "novak", "CYCLOPS THUNDER", 320, "chassis",
+         "light, quick, one eye, and only its own guns",
+         "Everything that was not a gun or a leg has been taken off it.",
+         house="keal"),
+    Ware("ch_warmachine", "novak", "WAR MACHINE", 360, "chassis",
+         "enormous plate, and a shield charge nothing survives",
+         "It was not designed. It was welded over something older until "
+         "nothing could get through.", house="keal"),
+    Ware("ch_sovereign", "novak", "SOVEREIGN", 520, "chassis",
+         "better at everything, and it mends itself",
+         "The one she built after they stopped asking what it cost. There "
+         "is not another and there will not be.", house="keal"),
+    Ware("ch_robo", "novak", "LITTLE ROBO", -1, "chassis",
+         "a tin toy with a key in its back",
+         "Take it. Please take it. She will pay you to take it.",
+         house="keal"),
+
     # -- General K: the state, which does not work for KEAL ------------------
     # It does not work AGAINST it either. The company builds the machine and
     # the government owns the coastline, so everything on this counter is
@@ -1130,8 +1160,8 @@ def buy_ware(key):
         return False
     w = WARES[key]
     m = dict(meta())
-    m["marks"] -= w.cost
-    m["spent"] = m.get("spent", 0) + w.cost
+    m["marks"] = max(0, m["marks"] - w.cost)
+    m["spent"] = max(0, m.get("spent", 0) + w.cost)
     if w.kind == "specimen":
         st = dict(m["stock"])
         st[key] = st.get(key, 0) + 1
@@ -1502,26 +1532,180 @@ def music_stop():
 # in the whole game and twenty-four pieces' worth of things to spend it on,
 # so no machine is ever finished - only finished enough.
 # ---------------------------------------------------------------------------
+# The last two exist on the TITAN TURRET and nowhere else. They are in the
+# global tuple rather than bolted on per chassis because the save file, the
+# hit table and the job list all key off this, and a socket that only some
+# machines HAVE is a much smaller idea than a socket table that changes
+# shape underneath them. `Mech.usable` is what decides who gets to fit one.
 SOCKETS = ("legs", "torso", "head", "l_arm", "l_wpn", "r_arm", "r_wpn",
-           "reactor", "armour")
+           "reactor", "armour", "l_aux", "r_aux")
 
 SOCKET_LABEL = {"legs": "LEGS", "torso": "TORSO", "head": "HEAD",
                 "l_arm": "LEFT ARM", "r_arm": "RIGHT ARM",
                 "l_wpn": "LEFT HARDPOINT", "r_wpn": "RIGHT HARDPOINT",
-                "reactor": "REACTOR", "armour": "PLATE"}
+                "reactor": "REACTOR", "armour": "PLATE",
+                "l_aux": "LEFT AUX MOUNT", "r_aux": "RIGHT AUX MOUNT"}
 
 # the fight HUD is narrower than the yard's, so it gets its own labels
 HUD_LABEL = {"legs": "LEGS", "torso": "CORE", "head": "HEAD",
              "l_arm": "L ARM", "r_arm": "R ARM", "l_wpn": "L GUN",
-             "r_wpn": "R GUN", "reactor": "REACTOR", "armour": "PLATE"}
+             "r_wpn": "R GUN", "reactor": "REACTOR", "armour": "PLATE",
+             "l_aux": "L AUX", "r_aux": "R AUX"}
 
 # a hardpoint is dead weight without the arm it hangs off
 NEEDS = {"l_wpn": "l_arm", "r_wpn": "r_arm"}
+HARDPOINTS = ("l_wpn", "r_wpn", "l_aux", "r_aux")
+# a firing side, and the two sockets it reads. The aux mounts hang off the
+# trunk rather than an arm, which is why theirs is None - losing an arm on
+# a TITAN TURRET does not silence the pod above it.
+SIDE_SOCK = {"l": "l_wpn", "r": "r_wpn", "la": "l_aux", "ra": "r_aux"}
+SIDE_ARM = {"l": "l_arm", "r": "r_arm", "la": None, "ra": None}
+SIDES = ("l", "r", "la", "ra")
 
 # where the damage goes. An empty socket cannot be hit - that damage
 # rolls onto the torso instead, which is why a stripped machine dies fast.
 HIT_WEIGHT = {"torso": 32, "legs": 20, "l_arm": 11, "r_arm": 11,
-              "l_wpn": 4, "r_wpn": 4, "head": 8, "reactor": 8}
+              "l_wpn": 4, "r_wpn": 4, "head": 8, "reactor": 8,
+              "l_aux": 3, "r_aux": 3}
+
+
+# ---------------------------------------------------------------------------
+# WHAT THE MACHINE IS
+#
+# Everything up to here assumed one frame: nine sockets, a ladder of tiers
+# in each, and the whole of the build was WHICH RUNG you were on. A chassis
+# changes the question. It decides which sockets exist at all, what every
+# part in them is worth, and which weapons the yard will even offer.
+#
+# The stock frame is a chassis too - `standard`, with no multipliers and
+# nothing locked - so there is exactly one code path and the thing the
+# player has been building for three commits is not a special case.
+#
+# A chassis is bought once out of the ledger, like a blueprint, and then
+# chosen at the start of a run. It cannot be changed mid-campaign: the
+# frame is the one decision in this game you are stuck with.
+# ---------------------------------------------------------------------------
+AUX_SOCKETS = ("l_aux", "r_aux")     # small mounts only some frames have
+
+
+class Chassis:
+    __slots__ = ("key", "name", "ware", "blurb", "effect", "sockets",
+                 "mult", "guns", "own_only", "flags", "tones", "style")
+
+    def __init__(self, key, name, ware, blurb, effect, sockets=None,
+                 mult=None, guns=(), own_only=False, flags=(), tones=None,
+                 style=None):
+        self.key = key
+        self.name = name
+        self.ware = ware             # None for the frame everybody starts on
+        self.blurb = blurb
+        self.effect = effect
+        self.sockets = tuple(sockets) if sockets else SOCKETS[:9]
+        self.mult = dict(mult or {})
+        self.guns = tuple(guns)      # weapons only this frame can mount
+        self.own_only = own_only     # ...and whether it mounts ANYTHING else
+        self.flags = frozenset(flags)
+        self.tones = tones           # a repaint, passed to draw_mech_side
+        self.style = style or {}     # silhouette bits laid over the base
+
+    def has(self, flag):
+        return flag in self.flags
+
+    def of(self, key, default=1.0):
+        return self.mult.get(key, default)
+
+
+CHASSIS_LIST = [
+    Chassis("standard", "THE GREAT WORK", None,
+            "The frame in the gantry. Nine sockets and a long winter.",
+            "no bonus and nothing locked - every part, every weapon"),
+
+    Chassis("cyclops", "CYCLOPS THUNDER", "ch_cyclops",
+            "One eye, two horns, and a gun that does not stop turning. "
+            "Built light so it can be somewhere else.",
+            "fast and accurate, thin plate; mounts only its own guns",
+            mult={"speed": 1.28, "hp": 0.86, "dr": 0.75, "vent": 1.15,
+                  "spread": 0.72, "crit": 1.5},
+            guns=("gatling", "heatrod", "stormbolt"), own_only=True,
+            flags=("horned",),
+            tones={"main": (96, 128, 160), "dark": (54, 74, 98),
+                   "light": (152, 180, 206), "trim": (196, 84, 72)},
+            style={"head": "cyclops", "shoulder": "spike"}),
+
+    Chassis("warmachine", "WAR MACHINE", "ch_warmachine",
+            "It was not designed. It was welded over something older until "
+            "nothing could get through it.",
+            "enormous plate, very slow; SHIFT + BRACE is a shield charge",
+            mult={"speed": 0.68, "hp": 1.62, "dr": 1.9, "heat": 1.25,
+                  "vent": 1.05, "melee": 1.30, "spread": 1.5},
+            guns=("crusher", "rendclaw"), flags=("charge", "slab"),
+            tones={"main": (150, 52, 44), "dark": (78, 26, 26),
+                   "light": (206, 96, 72), "trim": (255, 176, 96)},
+            style={"head": "slab", "shoulder": "pauldron"}),
+
+    Chassis("sovereign", "SOVEREIGN", "ch_sovereign",
+            "The one they built after they stopped asking what it cost. "
+            "There is not another.",
+            "better at everything, mends itself between landfalls",
+            mult={"speed": 1.12, "hp": 1.35, "dr": 1.35, "heat": 1.30,
+                  "vent": 1.25, "dmg": 1.15, "crit": 1.4, "melee": 1.12},
+            guns=("judgement",), flags=("mends",),
+            tones={"main": (198, 186, 150), "dark": (108, 98, 74),
+                   "light": (238, 228, 196), "trim": (110, 190, 220)},
+            style={"head": "crown", "shoulder": "pauldron"}),
+
+    Chassis("tank", "TITAN TANK", "ch_tank",
+            "No head, no eyes, no argument. Whatever it is pointed at "
+            "stops being there.",
+            "no sensors - no health bar, no warning, half the sight; "
+            "huge guns",
+            sockets=("legs", "torso", "l_arm", "l_wpn", "r_arm", "r_wpn",
+                     "reactor", "armour"),
+            mult={"speed": 0.82, "hp": 1.30, "dr": 1.45, "heat": 1.20,
+                  "spread": 1.9},
+            guns=("titancannon", "gauntlet", "titanmg"), own_only=True,
+            flags=("blind", "slab"),
+            tones={"main": (126, 132, 140), "dark": (66, 70, 78),
+                   "light": (172, 178, 186), "trim": (188, 62, 52)},
+            style={"head": None, "shoulder": "box"}),
+
+    Chassis("turret", "TITAN TURRET", "ch_turret",
+            "They took the legs off and bolted it to the seawall. It is "
+            "not going anywhere and neither is anything in front of it.",
+            "no legs at all - four mounts instead, and the heaviest of them",
+            sockets=("torso", "head", "l_arm", "l_wpn", "r_arm", "r_wpn",
+                     "reactor", "armour", "l_aux", "r_aux"),
+            mult={"hp": 1.55, "dr": 1.6, "heat": 1.45, "vent": 1.35},
+            guns=("titanauto", "titanmortar"), own_only=True,
+            flags=("rooted",),
+            tones={"main": (110, 118, 126), "dark": (58, 64, 70),
+                   "light": (158, 166, 174), "trim": (214, 168, 64)},
+            style={"head": "box", "shoulder": "box"}),
+
+    Chassis("robo", "LITTLE ROBO", "ch_robo",
+            "Tin, a key in its back, and two feet that go one after the "
+            "other. Somebody thought this was funny.",
+            "it is a toy. It has nothing. They pay YOU to take it away",
+            mult={"speed": 1.4, "hp": 0.16, "dr": 0.0, "heat": 0.4,
+                  "vent": 1.0, "dmg": 0.35, "spread": 2.2},
+            flags=("toy",),
+            tones={"main": (86, 168, 200), "dark": (44, 104, 136),
+                   "light": (150, 214, 236), "trim": (226, 96, 56)},
+            style={"head": "tin", "shoulder": "tin"}),
+]
+CHASSIS = {c.key: c for c in CHASSIS_LIST}
+CHASSIS_WARE = {c.ware: c.key for c in CHASSIS_LIST if c.ware}
+
+
+def chassis_of(key):
+    return CHASSIS.get(key or "standard", CHASSIS["standard"])
+
+
+def owned_chassis():
+    """Every frame this slot can start a run on, stock one first."""
+    return [c for c in CHASSIS_LIST
+            if c.ware is None or has_ware(c.ware)]
+
 
 
 class Part:
@@ -1637,12 +1821,12 @@ class Weapon:
     __slots__ = ("key", "name", "kind", "scrap", "alloy", "days", "hp",
                  "dmg", "cd", "heat", "reach", "blurb", "base", "shots",
                  "splash", "stagger", "speed", "pierce", "slow", "slow_t",
-                 "rot", "rot_t", "rot_cap", "throw")
+                 "rot", "rot_t", "rot_cap", "throw", "knock")
 
     def __init__(self, key, name, kind, scrap, alloy, days, hp, dmg, cd,
                  heat, reach, blurb, base=None, shots=1, splash=0,
                  stagger=0.0, speed=0.0, pierce=0, slow=0.0, slow_t=0.0,
-                 rot=0.0, rot_t=0.0, rot_cap=0.0, throw=0.0):
+                 rot=0.0, rot_t=0.0, rot_cap=0.0, throw=0.0, knock=0.0):
         self.slow = slow            # fraction taken off its walk
         self.slow_t = slow_t        # for how long
         self.key = key
@@ -1667,6 +1851,7 @@ class Weapon:
         self.rot_t = rot_t          # for how long, per hit
         self.rot_cap = rot_cap      # ...and the most that can be stacked up
         self.throw = throw          # melee that also has a way to reach
+        self.knock = knock          # world units it shoves what it hits
 
     @property
     def dph(self):
@@ -1771,6 +1956,67 @@ WEAPON_LIST = [
            "It keeps working after it lands. That is the whole idea.",
            speed=1150, stagger=0.03, rot=21.0, rot_t=1.3, rot_cap=9.0),
 
+    # -- CYCLOPS THUNDER, and nothing else mounts these ----------------------
+    Weapon("gatling", "THUNDER GATLING", "gun", 340, 1, 4, 180,
+           14, 0.07, 2.2, 1150,
+           "It is already turning before you decide. Feed it or drop it.",
+           speed=1600, stagger=0.02),
+    Weapon("heatrod", "HEAT ROD", "gun", 320, 1, 4, 170,
+           30, 0.55, 6.0, 900,
+           "A wire thrown out and pulled back through whatever it touched.",
+           speed=1250, stagger=0.08, slow=0.42, slow_t=2.8),
+    Weapon("stormbolt", "STORM BOLT", "gun", 420, 2, 5, 190,
+           58, 0.58, 10.5, 1400,
+           "One bolt at a time, and it does not miss twice.",
+           speed=2000, stagger=0.10, pierce=1),
+
+    # -- WAR MACHINE ---------------------------------------------------------
+    Weapon("crusher", "CRUSHER", "melee", 420, 2, 5, 260,
+           126, 1.30, 12.5, 205,
+           "Not swung. Dropped, with the whole frame behind it.",
+           stagger=0.42),
+    Weapon("rendclaw", "REND CLAW", "melee", 380, 1, 5, 230,
+           46, 0.32, 4.6, 190,
+           "Four of them, and it does not let go between strokes.",
+           stagger=0.10),
+
+    # -- SOVEREIGN -----------------------------------------------------------
+    Weapon("judgement", "JUDGEMENT", "beam", 620, 3, 6, 270,
+           146, 0.0, 33.0, 1250,
+           "It holds the line until the line is not there any more.",
+           pierce=1, rot=22.0, rot_t=2.2, rot_cap=2.2),
+
+    # -- TITAN TANK ----------------------------------------------------------
+    Weapon("titancannon", "TITAN CANNON", "salvo", 560, 3, 6, 240,
+           210, 3.60, 40.0, 3000,
+           "The barrel is longer than the arm it is bolted to.",
+           shots=1, splash=300, speed=900, stagger=0.30),
+    Weapon("gauntlet", "TITAN GAUNTLET", "melee", 360, 1, 5, 250,
+           76, 0.90, 10.5, 200,
+           "A fist the size of a bus. Things go backwards when it lands.",
+           stagger=0.30, knock=170.0),
+    Weapon("titanmg", "TITAN MG", "gun", 300, 1, 4, 190,
+           19, 0.11, 3.0, 1000,
+           "Belt fed from the hip and nobody is counting.",
+           speed=1400, stagger=0.02),
+
+    # -- TITAN TURRET --------------------------------------------------------
+    Weapon("titanauto", "TITAN AUTO GUN", "gun", 480, 2, 5, 210,
+           26, 0.09, 4.0, 1250,
+           "It is bolted to a wall, so it never has to stop to walk.",
+           speed=1500, stagger=0.03),
+    Weapon("titanmortar", "TITAN MORTAR", "salvo", 520, 3, 6, 230,
+           240, 4.40, 46.0, 3200,
+           "Up, over, and a long wait. Then the street is gone.",
+           shots=1, splash=380, speed=560, stagger=0.34),
+    Weapon("auxpod", "AUX POD", "gun", 180, 0, 3, 90,
+           11, 0.22, 1.8, 900,
+           "Two of them, tucked in where the shoulders used to be.",
+           speed=1300, stagger=0.01),
+    Weapon("auxflare", "AUX FLARE POD", "salvo", 220, 1, 3, 90,
+           34, 1.60, 7.0, 1400,
+           "Not aimed so much as scattered. It still counts.",
+           shots=3, splash=140, speed=760, stagger=0.06),
     Weapon("sun", "SUN LANCE", "beam", 560, 3, 6, 250,
            170, 0.0, 40.0, 1150,
            "Goes through the first one and into whatever is behind it.",
@@ -1811,7 +2057,7 @@ def part_of(socket, fit):
         return RELIEF
     if socket == YARD_SLOT:
         return YARD[fit - 1] if isinstance(fit, int) and 1 <= fit <= len(YARD)             else None
-    if socket in ("l_wpn", "r_wpn"):
+    if socket in HARDPOINTS:
         return WEAPONS.get(fit)
     table = CATALOGUE.get(socket)
     if not table or not 1 <= fit <= len(table):
@@ -1819,7 +2065,10 @@ def part_of(socket, fit):
     return table[fit - 1]
 
 
-def options_for(socket, fit):
+AUX_GUNS = ("auxpod", "auxflare")    # what will fit on a small mount
+
+
+def options_for(socket, fit, frame=None):
     """What the yard could put in this socket next, given what is in it.
 
     A body socket offers only the tier above what it holds. A hardpoint
@@ -1829,19 +2078,33 @@ def options_for(socket, fit):
     you did. It costs the whole ladder either way (see `Run.price`), so
     nothing is saved by skipping except the week.
 
+    `frame` is the chassis asking. A frame that is `own_only` does not get
+    the stock families at all - a CYCLOPS THUNDER has three guns of its own
+    and whatever the market has drawn for you, and nothing else will bolt
+    to it. That is the point of buying one.
+
     Nothing here checks whether you can afford it - the shop does that, so
     the player can see what they are saving for."""
+    frame = frame or CHASSIS["standard"]
     if socket == YARD_SLOT:
         nxt = (fit or 0) + 1
         return [YARD[nxt - 1]] if nxt <= len(YARD) else []
+    if socket not in frame.sockets:
+        return []
+    if socket in AUX_SOCKETS:
+        return [WEAPONS[k] for k in AUX_GUNS if fit != k]
     if socket in ("l_wpn", "r_wpn"):
         out = []
-        for base, up in WEAPON_FAMILIES:
-            if fit == base:
-                out.append(WEAPONS[up])        # the refit of what is mounted
-            elif fit != up:
-                out.append(WEAPONS[base])      # swap to a different family
-                out.append(WEAPONS[up])        # or go straight to the good one
+        if not frame.own_only:
+            for base, up in WEAPON_FAMILIES:
+                if fit == base:
+                    out.append(WEAPONS[up])    # the refit of what is mounted
+                elif fit != up:
+                    out.append(WEAPONS[base])  # swap to a different family
+                    out.append(WEAPONS[up])    # or go straight to the best
+        for key in frame.guns:                 # what this frame came with
+            if fit != key:
+                out.append(WEAPONS[key])
         for key, ware in BLUEPRINT_WEAPONS.items():
             if fit != key and has_ware(ware):
                 out.append(WEAPONS[key])
@@ -1980,6 +2243,9 @@ YARD = [
 ]
 YARD_SLOT = "yard"
 RELIEF_GAIN = 8.0                    # city points one relief job puts back
+CHARGE_T = 0.85                      # seconds a shield charge lasts
+CHARGE_DMG = 340.0                   # what it does to what it runs into
+CHARGE_KNOCK = 420.0                 # and how far back that goes
 PLASMA_C = (150, 220, 255)           # Mike's arc
 FLAME_C = (255, 150, 60)             # and his cone
 BLIGHT_C = (168, 226, 96)            # and the thing he borrowed from Jack
@@ -2072,7 +2338,8 @@ REFINE_RYEZ_BLURB = ("Slow, wasteful, and it works. It is still better than "
 # and it keeps that limp until somebody in the yard fixes it.
 # ---------------------------------------------------------------------------
 class Mech:
-    def __init__(self):
+    def __init__(self, chassis="standard"):
+        self.chassis = chassis if chassis in CHASSIS else "standard"
         self.fit = {s: None for s in SOCKETS}
         self.hp = {s: 0.0 for s in SOCKETS}
         # what the yard had standing when the money ran out
@@ -2083,8 +2350,26 @@ class Mech:
         self.heat = 0.0
         self.locked = False
 
+    # -- what frame this is ------------------------------------------------
+    @property
+    def frame(self):
+        return chassis_of(self.chassis)
+
+    def usable(self, socket):
+        """Does this frame HAVE that socket? A TITAN TURRET has no legs and
+        a TITAN TANK has no head, and neither of them is 'damaged'."""
+        return socket in self.frame.sockets
+
+    def sockets(self):
+        return [s for s in SOCKETS if self.usable(s)]
+
+    def has_flag(self, flag):
+        return self.frame.has(flag)
+
     # -- the build ---------------------------------------------------------
     def install(self, socket, fit):
+        if not self.usable(socket):
+            return
         self.fit[socket] = fit
         self.hp[socket] = self.max_hp(socket)
 
@@ -2093,7 +2378,8 @@ class Mech:
         if p is None:
             return 0.0
         hp = float(p.hp) * (1.12 if has_ware("thickblood") else 1.0)
-        return hp * (1.05 if has_ware("qscrap") else 1.0)
+        hp *= 1.05 if has_ware("qscrap") else 1.0
+        return hp * self.frame.of("hp")
 
     def held(self, socket):
         return part_of(socket, self.fit[socket])
@@ -2135,16 +2421,21 @@ class Mech:
 
     def weapon(self, side):
         """The weapon on a side, or None if the weapon or its arm is out."""
-        wsock = "l_wpn" if side == "l" else "r_wpn"
-        asock = "l_arm" if side == "l" else "r_arm"
-        if not self.alive(wsock) or not self.alive(asock):
+        wsock = SIDE_SOCK[side]
+        asock = SIDE_ARM[side]
+        if not self.alive(wsock):
+            return None
+        if asock is not None and not self.alive(asock):
             return None
         return WEAPONS.get(self.fit[wsock])
+
+    def sides(self):
+        return [s for s in SIDES if self.usable(SIDE_SOCK[s])]
 
     # -- what it adds up to ------------------------------------------------
     @property
     def speed(self):
-        v = self.stat("legs", "speed", 0.0)
+        v = self.stat("legs", "speed", 0.0) * self.frame.of("speed")
         if self.has("stride"):
             v *= 1.20
         if self.has("gyro"):
@@ -2160,29 +2451,32 @@ class Mech:
     @property
     def heat_cap(self):
         # no reactor at all is not no heat - it is a very small budget
-        v = self.stat("reactor", "heat", 60.0)
+        v = self.stat("reactor", "heat", 60.0) * self.frame.of("heat")
         if self.has("sinks"):
             v *= 0.86
         return v * 1.22 if self.has("aux") else v
 
     @property
     def vent(self):
-        v = self.stat("reactor", "vent", 5.0)
+        v = self.stat("reactor", "vent", 5.0) * self.frame.of("vent")
         if self.has("sinks"):
             v *= 1.30
         return v * 1.18 if self.has("aux") else v
 
     @property
     def dr(self):
-        return self.stat("armour", "dr", 0.0)
+        return self.stat("armour", "dr", 0.0) * self.frame.of("dr")
 
     @property
     def spread(self):
-        return self.stat("head", "spread", 1.0)
+        base = self.stat("head", "spread", 1.0)
+        if not self.usable("head"):
+            base = 1.0              # no sensors at all, not a broken set
+        return base * self.frame.of("spread")
 
     @property
     def crit(self):
-        return self.stat("head", "crit", 0.0)
+        return self.stat("head", "crit", 0.0) * self.frame.of("crit")
 
     @property
     def warn(self):
@@ -2201,7 +2495,9 @@ class Mech:
 
     @property
     def dmg_mult(self):
-        m = self.stat("head", "dmg", 1.0)
+        m = self.stat("head", "dmg", 1.0) * self.frame.of("dmg")
+        if not self.usable("head"):
+            m = self.frame.of("dmg")   # a tank aims by pointing the tank
         return m * (1.08 if has_ware("studies") else 1.0)
 
     @property
@@ -2211,7 +2507,13 @@ class Mech:
         return 0.34 if has_ware("studies") else 0.0
 
     def arm_stat(self, side, key, default=1.0):
-        return self.stat("l_arm" if side == "l" else "r_arm", key, default)
+        """A pod on the trunk has no arm to be helped or hindered by."""
+        asock = SIDE_ARM.get(side)
+        if asock is None:
+            return default * (self.frame.of("melee") if key == "melee"
+                              else 1.0)
+        v = self.stat(asock, key, default)
+        return v * (self.frame.of("melee") if key == "melee" else 1.0)
 
     @property
     def down(self):
@@ -2227,18 +2529,33 @@ class Mech:
         return self.alive("legs") and self.armed
 
     def completion(self):
-        """How much of the great work is done, 0..1, by value not by count."""
+        """How much of the great work is done, 0..1, by value not by count.
+
+        Measured against THIS frame rather than the stock nine, or a TITAN
+        TURRET could never finish (no legs to fit) and a TITAN TANK would
+        cap out at ninety-odd per cent with nothing left to buy."""
         have = worth = 0.0
-        for s in SOCKETS:
-            if s in ("l_wpn", "r_wpn"):
-                best = max(WEAPONS[u].scrap + WEAPONS[b].scrap
-                           for b, u in WEAPON_FAMILIES)
-                worth += best
+        for s in self.sockets():
+            if s in HARDPOINTS:
+                # the ceiling is the dearest thing this frame will ACCEPT,
+                # not the dearest thing in the book - an own_only frame is
+                # never offered the stock families, so measuring it against
+                # a SUN LANCE it cannot mount would cap it below 100%
+                pool = [WEAPONS[k].scrap for k in self.frame.guns]
+                if not self.frame.own_only:
+                    pool += [WEAPONS[u].scrap + WEAPONS[b].scrap
+                             for b, u in WEAPON_FAMILIES]
+                pool += [WEAPONS[k].scrap for k, wr in
+                         BLUEPRINT_WEAPONS.items() if has_ware(wr)]
+                if s in AUX_SOCKETS:
+                    pool = [WEAPONS[k].scrap for k in AUX_GUNS]
+                worth += max(pool) if pool else 1.0
                 w = self.held(s)
                 if w:
-                    have += w.scrap + (WEAPONS[w.base].scrap if w.base else 0)
+                    have += w.scrap + (WEAPONS[w.base].scrap
+                                       if w.base else 0)
             else:
-                table = CATALOGUE[s]
+                table = CATALOGUE.get(s, ())
                 worth += sum(p.scrap for p in table) or 1.0
                 fitted = self.fit[s] or 0
                 have += sum(p.scrap for p in table[:fitted])
@@ -2333,13 +2650,16 @@ class Mech:
                 "hp": {k: round(v, 1) for k, v in self.hp.items()}}
 
     @classmethod
-    def from_json(cls, data):
-        m = cls()
+    def from_json(cls, data, chassis="standard"):
+        m = cls(chassis)
         fit = (data or {}).get("fit", {})
         hp = (data or {}).get("hp", {})
         for s in SOCKETS:
             v = fit.get(s)
-            if s in ("l_wpn", "r_wpn"):
+            if not m.usable(s):
+                m.fit[s] = None
+                continue
+            if s in HARDPOINTS:
                 m.fit[s] = v if v in WEAPONS else None
             else:
                 m.fit[s] = v if isinstance(v, int) and 1 <= v <= 3 else None
@@ -2813,7 +3133,7 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
         if job is not None and mech.fit[socket] != job[0]:
             return ("job", job[0], job[1])
         if mech.fit[socket] is None:
-            nxt = options_for(socket, None)
+            nxt = options_for(socket, None, mech.frame)
             if not nxt:
                 return (None, None, 0.0)
             first = nxt[0]
@@ -2821,8 +3141,9 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
             return ("ghost", key, 0.0)
         return ("on", mech.fit[socket], 0.0)
 
-    order = ("legs", "l_arm", "r_arm", "torso", "armour", "head",
-             "reactor", "l_wpn", "r_wpn")
+    order = [s for s in ("legs", "l_arm", "r_arm", "torso", "armour",
+                         "head", "reactor", "l_wpn", "r_wpn",
+                         "l_aux", "r_aux") if mech.usable(s)]
     for socket in order:
         mode, fit, prog = state(socket)
         if mode is None or fit is None:
@@ -3422,10 +3743,13 @@ class Pose:
         self.walk = 0.0            # gait phase
         self.moving = 0.0          # 0..1, how much of the gait to apply
         self.face = 1              # +1 looking out to sea, -1 looking home
-        self.swing = {"l": 0.0, "r": 0.0}     # melee arc, 0..1
-        self.recoil = {"l": 0.0, "r": 0.0}    # gun kick, 0..1
-        self.beam = {"l": 0.0, "r": 0.0}      # beam held, 0..1
-        self.aim = {"l": 0.06, "r": 0.06}     # where each hardpoint points
+        # four of each, because a TITAN TURRET has two pods on the trunk
+        # as well as its two arms. Every other frame leaves the aux pair at
+        # rest and nothing ever reads them.
+        self.swing = {s: 0.0 for s in SIDES}      # melee arc, 0..1
+        self.recoil = {s: 0.0 for s in SIDES}     # gun kick, 0..1
+        self.beam = {s: 0.0 for s in SIDES}       # beam held, 0..1
+        self.aim = {s: 0.06 for s in SIDES}       # where each one points
         self.brace = False
         self.flash = 0.0
         self.lean = 0.0
@@ -3499,6 +3823,10 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                    tones=None, bio=None):
     """`tones` repaints the whole machine - that is how a KEAL model is
     drawn by the same routine that draws yours, in its own livery."""
+    if tones is None and getattr(mech, "chassis", "standard") != "standard":
+        # a frame is painted in its own colours by the same routine that
+        # paints yours, which is what `tones` was always for
+        tones = mech.frame.tones
     if bio is None:
         bio = tones is None and CURRENT["house"] == "ryez"
     if bio:
@@ -3687,6 +4015,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                                         "main") or ac, depth),
                              pose, side)
 
+    chassis_overlay(rig, mech, t, lean, hip_y)
     if pose.brace and mech.alive("l_arm") or pose.brace and mech.alive("r_arm"):
         # the guard: whatever arms are left, held across the front
         gx = front + 18 + lean
@@ -3699,6 +4028,124 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
         blit_glow(surf, (sx, gy - 230 * scale), 150 * scale,
                   (255, 236, 220), int(150 * f))
 
+
+def chassis_overlay(rig, mech, t, lean, hip_y):
+    """The bits that make a frame recognisable from across the street.
+
+    The renderer underneath is the same one for every machine in the game,
+    and it should be - the fight reads a silhouette, a livery and a couple
+    of hard shapes, and rewriting six of it would mean six places for the
+    same bug. So a chassis adds SHAPES on top: horns, a visor, pauldrons,
+    a crown, a winding key. That is enough to tell them apart at speed and
+    it costs about forty lines instead of two thousand."""
+    st = mech.frame.style
+    if not st:
+        return
+    tones = mech.frame.tones or {}
+    main = tones.get("main", (150, 156, 170))
+    dark = tones.get("dark", (70, 74, 88))
+    light = tones.get("light", (198, 204, 216))
+    trim = tones.get("trim", (220, 160, 90))
+    tt = mech.fit["torso"] or 1
+    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
+    hy = body_top - 4 + lean * 1.6          # roughly where a head sits
+    sh_y = body_top + 46                    # and where the shoulders are
+
+    head = st.get("head")
+    if head == "cyclops":                   # two horns and one eye
+        for sgn, sweep in ((-1, -30), (1, 34)):
+            rig.poly([(lean - 4, hy - 4), (lean + sgn * 10, hy - 10),
+                      (lean + sweep * 0.55, hy - 40),
+                      (lean + sweep * 0.30, hy - 16)], dark)
+            rig.poly([(lean - 4, hy - 4), (lean + sgn * 10, hy - 10),
+                      (lean + sweep * 0.55, hy - 40),
+                      (lean + sweep * 0.30, hy - 16)], shade(dark, 0.7), 1)
+        rig.poly([(lean - 18, hy + 2), (lean + 20, hy - 2),
+                  (lean + 22, hy + 14), (lean - 18, hy + 16)], dark)
+        eye = (lean + 8, hy + 8)
+        rig.circle(eye, 7.5, (40, 10, 12))
+        rig.circle(eye, 5.0, (250, 96, 84))
+        rig.circle(eye, 2.0, (255, 220, 210))
+        rig.light(eye, 26, (255, 90, 78), 90)
+    elif head == "slab":                    # no face, just a visor slot
+        rig.poly([(lean - 20, hy - 12), (lean + 24, hy - 16),
+                  (lean + 26, hy + 16), (lean - 20, hy + 18)], dark)
+        rig.poly([(lean + 2, hy - 6), (lean + 25, hy - 8),
+                  (lean + 25, hy + 2), (lean + 2, hy + 3)], trim)
+        rig.light((lean + 14, hy - 3), 26, trim, 80)
+    elif head == "crown":                   # a low circlet and a lens
+        rig.poly([(lean - 20, hy + 2), (lean + 22, hy - 2),
+                  (lean + 24, hy + 16), (lean - 20, hy + 18)], dark)
+        for i in range(5):
+            f = (i - 2) / 2.0
+            rig.poly([(lean + f * 11 - 3, hy + 2), (lean + f * 11 + 3, hy + 2),
+                      (lean + f * 11, hy - 16 - abs(f) * -6)], light)
+        rig.circle((lean + 12, hy + 8), 5.0, trim)
+        rig.light((lean + 12, hy + 8), 24, trim, 80)
+    elif head == "box":                     # a sensor box bolted on top
+        rig.poly([(lean - 16, hy - 2), (lean + 20, hy - 2),
+                  (lean + 20, hy + 18), (lean - 16, hy + 18)], dark)
+        rig.poly([(lean + 4, hy + 2), (lean + 18, hy + 2),
+                  (lean + 18, hy + 9), (lean + 4, hy + 9)], trim)
+        rig.bar((lean + 2, hy - 2), (lean + 6, hy - 34), 2, light)
+    elif head == "tin":                     # a can, two dials and an aerial
+        rig.poly([(lean - 17, hy - 6), (lean + 19, hy - 6),
+                  (lean + 19, hy + 18), (lean - 17, hy + 18)], main)
+        rig.poly([(lean - 17, hy - 6), (lean + 19, hy - 6),
+                  (lean + 19, hy + 18), (lean - 17, hy + 18)], dark, 1)
+        for dx in (-4, 9):
+            rig.circle((lean + dx, hy + 4), 4.0, (246, 246, 240))
+            rig.circle((lean + dx, hy + 4), 1.6, (30, 30, 34))
+        rig.poly([(lean - 10, hy + 12), (lean + 14, hy + 12),
+                  (lean + 14, hy + 15), (lean - 10, hy + 15)], trim)
+        wob = math.sin(t * 3.0) * 5
+        rig.bar((lean + 2, hy - 6), (lean + 2 + wob, hy - 44), 1.6, (210, 210, 214))
+        rig.circle((lean + 2 + wob, hy - 44), 3.0, trim)
+
+    sh = st.get("shoulder")
+    if sh == "spike":                       # a shoulder that is mostly spike
+        for dx, sc in ((-16, 0.8), (14, 1.0)):
+            rig.poly([(dx + lean - 12, sh_y - 6), (dx + lean + 14, sh_y - 10),
+                      (dx + lean + 6, sh_y + 26), (dx + lean - 14, sh_y + 22)],
+                     shade(main, sc))
+            rig.poly([(dx + lean + 2, sh_y - 8), (dx + lean + 10, sh_y - 9),
+                      (dx + lean + 30, sh_y - 44)], light, 3)
+    elif sh == "pauldron":                  # slabs you could park a car on
+        for dx, sc in ((-20, 0.72), (16, 1.0)):
+            rig.poly([(dx + lean - 20, sh_y - 14), (dx + lean + 22, sh_y - 8),
+                      (dx + lean + 24, sh_y + 30), (dx + lean - 22, sh_y + 24)],
+                     shade(main, sc))
+            rig.poly([(dx + lean - 20, sh_y - 14), (dx + lean + 22, sh_y - 8),
+                      (dx + lean + 24, sh_y + 30), (dx + lean - 22, sh_y + 24)],
+                     shade(dark, sc), 2)
+            for i in range(3):
+                rig.circle((dx + lean - 12 + i * 12, sh_y + 2), 2.2,
+                           shade(trim, sc))
+    elif sh == "box":                       # crates, welded where arms meet
+        for dx, sc in ((-18, 0.74), (15, 1.0)):
+            rig.poly([(dx + lean - 16, sh_y - 8), (dx + lean + 18, sh_y - 8),
+                      (dx + lean + 18, sh_y + 22), (dx + lean - 16, sh_y + 22)],
+                     shade(main, sc))
+            rig.poly([(dx + lean - 16, sh_y - 8), (dx + lean + 18, sh_y - 8),
+                      (dx + lean + 18, sh_y + 22), (dx + lean - 16, sh_y + 22)],
+                     shade(dark, sc), 2)
+            rig.poly([(dx + lean - 10, sh_y - 2), (dx + lean + 12, sh_y - 2),
+                      (dx + lean + 12, sh_y + 4), (dx + lean - 10, sh_y + 4)],
+                     shade(trim, sc))
+    elif sh == "tin":                       # a wind-up key, turning
+        a = t * 2.2
+        kx, ky = lean - 26, sh_y + 10
+        rig.bar((kx, ky), (kx - 10, ky), 2.5, (210, 210, 214))
+        for i in range(2):
+            b = a + i * math.pi
+            rig.poly([(kx - 10, ky), (kx - 10 + math.cos(b) * 13,
+                                      ky + math.sin(b) * 13),
+                      (kx - 14 + math.cos(b) * 13,
+                       ky + math.sin(b) * 13 - 4)], (226, 226, 230))
+        for dx in (-14, 12):                # stubby tin arms
+            rig.poly([(dx + lean - 8, sh_y - 2), (dx + lean + 12, sh_y - 2),
+                      (dx + lean + 12, sh_y + 14), (dx + lean - 8, sh_y + 14)],
+                     light)
 
 def weapon_muzzle(mech, pose, side, sx, gy, scale):
     """Where a shot comes out, in screen coordinates. The fight needs this
@@ -4590,8 +5037,8 @@ class Fight:
         self.shots = []
         self.bits = []
         self.numbers = []
-        self.cd = {"l": 0.0, "r": 0.0}
-        self.beam_on = {"l": False, "r": False}
+        self.cd = {s: 0.0 for s in SIDES}
+        self.beam_on = {s: False for s in SIDES}
         self.boost = 0.0
         self.boost_cd = 0.0
         self.cam = self.mx
@@ -4608,6 +5055,8 @@ class Fight:
         self.spared = False          # redundant linkage, one part per landfall
         self.flushed = False         # coolant flush, one tank per landfall
         self.emped = False           # EMP lance, one shot per landfall
+        self.charge = 0.0            # shield charge, while it lasts
+        self.charged = []            # ...and what it has already run into
         self.mercs = []              # Zach's, when any are on the ground
         self.merc_t = 6.0            # ...and how long until the next drop
         self.venom = 0.0             # Jack's sac, while it lasts
@@ -4727,6 +5176,9 @@ class Fight:
                     e.stagger += wpn.stagger / e.kind.poise
                     if wpn.slow > 0:
                         e.tether(wpn.slow, wpn.slow_t)
+                    if wpn.knock and e.y >= 0:
+                        e.x += math.copysign(wpn.knock, e.x - self.mx)
+                        self.shake = max(self.shake, 5)
                     if wpn.key == "hook" and e.y >= 0:
                         # it does not ask whether the thing wanted to come
                         pull = min(110.0, max(0.0, abs(e.x - self.mx) - 150.0))
@@ -4779,6 +5231,38 @@ class Fight:
                                    slow=wpn.slow, slow_t=wpn.slow_t,
                                    rot=wpn.rot, rot_t=wpn.rot_t,
                                    rot_cap=wpn.rot_cap))
+
+    def charge_tick(self, dt):
+        """Forward at speed, through anything, and nothing touches you.
+
+        Damage lands ONCE per animal per charge - that is what `charged`
+        is for - because otherwise holding one against a wall would be the
+        entire fight."""
+        self.mx = clamp(self.mx + self.pose.face * self.mech.speed * 3.4 * dt,
+                        60.0, WORLD_W - 60.0)
+        self.pose.moving = 1.0
+        self.pose.lean = 9.0 * self.pose.face
+        self.shake = max(self.shake, 3)
+        trim = (self.mech.frame.tones or {}).get("trim", (255, 190, 120))
+        if random.random() < dt * 30:
+            self.spark(self.mx - self.pose.face * 60,
+                       -120 - random.uniform(0, 180), trim, 2, 120)
+        for e in self.enemies:
+            if not e.alive or e in self.charged:
+                continue
+            if abs(e.x - self.mx) > e.span + 210:
+                continue
+            self.charged.append(e)
+            dealt = e.hurtby(CHARGE_DMG * self.mech.dmg_mult,
+                             cut=self.mech.hide_cut)
+            self.dealt += dealt
+            e.x += math.copysign(CHARGE_KNOCK, e.x - self.mx)
+            e.stagger = 1.0
+            e.state, e.timer, e.attack = "stagger", 1.3, None
+            self.number(e.x, -200, int(dealt), True)
+            self.shake = max(self.shake, 11)
+            self.say(e.kind.name + " WENT BACKWARDS")
+            SFX.play("wreck", 0.8)
 
     def merc_tick(self, dt):
         """Drop a squad now and then, walk them up, and let them chip."""
@@ -5145,6 +5629,11 @@ class Fight:
             self.say("THE ROAR - SYSTEMS SCRAMBLED")
 
     def mech_hit(self, e, dmg, silent=False, beam=False):
+        if self.charge > 0:
+            if not silent:
+                self.say("THE PLATES TOOK IT")
+                self.spark(self.mx, -200, (255, 226, 170), 8, 150)
+            return
         m = self.merc_screen(e) if self.mercs else None
         if m is not None:
             m.hp = 0.0
@@ -5252,7 +5741,7 @@ class Fight:
         # -- the pilot -----------------------------------------------------
         down = self.mech.down
         move = 0.0
-        if not down and self.stun <= 0:
+        if not down and self.stun <= 0 and not self.mech.has_flag("rooted"):
             move = (1.0 if inp.get("right") else 0.0) - \
                    (1.0 if inp.get("left") else 0.0)
         self.pose.brace = bool(inp.get("brace")) and not down and \
@@ -5278,14 +5767,27 @@ class Fight:
             self.pose.face = 1 if near.x >= self.mx else -1
         self.boost = max(0.0, self.boost - dt)
         self.boost_cd = max(0.0, self.boost_cd - dt)
+        self.charge = max(0.0, self.charge - dt)
+        if self.charge > 0:
+            self.charge_tick(dt)
+        elif (inp.get("boost") and inp.get("brace") and not down
+              and self.mech.has_flag("charge") and self.boost_cd <= 0):
+            # The WAR MACHINE's one trick, and it is two keys you already
+            # have rather than a third: the thrusters fire while the plates
+            # are down, which is a very stupid thing to do in anything else
+            # and the only thing this frame is for.
+            self.charge, self.boost_cd = CHARGE_T, 6.0
+            self.charged = []
+            self.say("SHIELD CHARGE")
+            SFX.play("rivet", 0.8)
         if inp.get("boost") and self.mech.can_boost and self.boost_cd <= 0 \
                 and not down:
             self.boost, self.boost_cd = 0.32, 1.5
             SFX.play("rivet", 0.3)
 
         # -- weapons -------------------------------------------------------
-        self.beam_on = {"l": False, "r": False}
-        for side in ("l", "r"):
+        self.beam_on = {s: False for s in SIDES}
+        for side in self.mech.sides():
             self.cd[side] = max(0.0, self.cd[side] - dt)
             self.pose.recoil[side] = approach(self.pose.recoil[side], 0.0,
                                               dt * 5.5)
@@ -5296,7 +5798,8 @@ class Fight:
             self.pose.beam[side] = approach(self.pose.beam[side], 0.0, dt * 6)
             self.pose.aim[side] = approach(self.pose.aim[side],
                                            self.aim_angle(side), dt * 5.0)
-            if inp.get("fire_" + side) and not down:
+            trig = "fire_l" if side in ("l", "la") else "fire_r"
+            if inp.get(trig) and not down:
                 self.fire(side, dt)
         self.mech.cool(dt)
         if self.pose.brace and self.mech.has("shutters"):
@@ -5467,7 +5970,7 @@ class Fight:
                           40, (90, 74, 66), 34)
         else:
             draw_mech_side(surf, self.mech, mx, gy, FSCALE, self.t, self.pose)
-            for side in ("l", "r"):
+            for side in self.mech.sides():
                 w = self.mech.weapon(side)
                 if w and w.kind == "beam" and self.beam_on[side]:
                     self.draw_mech_beam(surf, side, w, mx, gy, sh)
@@ -5488,7 +5991,38 @@ class Fight:
             text(surf, nb.s, 22, (self.sx(nb.pos.x) + sh[0],
                                   gy + nb.pos.y * FSCALE), nb.colour,
                  center=True, alpha=a)
+        if self.mech.has_flag("blind"):
+            self.blind_veil(surf, sh)
         self.hud(surf)
+
+    def blind_veil(self, surf, sh):
+        """What a frame with no head can see: a lit circle around itself
+        and a smear of night past it.
+
+        Cached by radius, because this is a full-screen alpha surface and
+        building one every frame is exactly the leak that took the game
+        down at minute four. One surface, blitted, and the mech's position
+        moves the blit rather than rebuilding it."""
+        r = 430
+        key = ("veil", r)
+        v = _glows.get(key)
+        if v is None:
+            if len(_glows) >= GLOW_CAP:
+                _glows.clear()
+            v = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            for i in range(30, 0, -1):
+                f = i / 30.0
+                # the middle stays clear - you can see your own machine and
+                # about a body-length past it, and nothing else
+                a = int(216 * (clamp((f - 0.40) / 0.60, 0, 1) ** 1.6))
+                pygame.draw.circle(v, (4, 5, 9, a), (r, r), int(r * f))
+            _glows[key] = v
+        mx = int(self.sx(self.mx) + sh[0])
+        veil = pygame.Surface((W, H), pygame.SRCALPHA)
+        veil.fill((4, 5, 9, 216))
+        veil.blit(v, (mx - r, GROUND_Y - 150 - r),
+                  special_flags=pygame.BLEND_RGBA_MIN)
+        surf.blit(veil, (0, 0))
 
     def telegraph(self, surf, e, gy, sh):
         """The wind-up, drawn as a bracket on the ground where it lands.
@@ -5594,9 +6128,11 @@ class Fight:
                 bar(surf, pygame.Rect(jr.x + 8, jr.bottom - 13, jr.w - 16, 6),
                     self.venom / 10.0, RYEZ_ACID)
 
-        # the animal
+        # the animal. A TITAN TANK has nowhere to put a sensor, so it does
+        # not get a greyed-out bar saying NO SENSORS - it gets no bar. The
+        # only way to know how the fight is going is to watch the fight.
         boss = self.boss()
-        if boss is not None:
+        if boss is not None and not m.has_flag("blind"):
             know = m.sensors
             bw = 520
             r = pygame.Rect(W // 2 - bw // 2, 16, bw, 34)
@@ -5787,7 +6323,7 @@ class Job:
 
 
 class Run:
-    def __init__(self, house_key="keal"):
+    def __init__(self, house_key="keal", chassis="standard"):
         self.house = house_key if house_key in HOUSES else "keal"
         set_house(self.house)
         self.day = 1
@@ -5798,7 +6334,9 @@ class Run:
         self.kaiju_index = 0
         self.killed = 0
         self.yard = 0                # SECOND CRANE / NIGHT SHIFT / FOUNDRY
-        self.mech = Mech()
+        self.mech = Mech(chassis if has_ware(
+            (CHASSIS.get(chassis) or CHASSIS["standard"]).ware or "")
+            or chassis == "standard" else "standard")
         self.jobs = []
         if self.house == "ryez":
             self.news = ["THE SKELETON AND ONE FORELIMB TOOK LAST WINTER.",
@@ -6226,6 +6764,14 @@ class Run:
             lines.append("+%d %s, +%d %s, +%d MARKS"
                          % (salv, word("scrap", "SCRAP"), salv_a,
                             word("alloy", "ALLOY"), salv_m))
+        if self.mech.has_flag("mends"):
+            hurt = [s for s in self.mech.sockets()
+                    if self.mech.damage_frac(s) > 0.01]
+            for s in hurt:
+                self.mech.hp[s] = self.mech.max_hp(s)
+            if hurt:
+                lines.append("IT CLOSED ITSELF. %d %s WHOLE AGAIN."
+                             % (len(hurt), word("sockets", "SOCKETS")))
         if has_ware("shipping"):
             # the one line on either counter that does not care how it went
             self.alloy += 1
@@ -6251,12 +6797,14 @@ class Run:
                 "mech": self.mech.to_json(),
                 "jobs": [j.to_json() for j in self.jobs],
                 "spent": self.spent, "rushes": self.rushes,
+                "chassis": self.mech.chassis,
                 "ejected": self.ejected,
                 "furnace": round(self.furnace, 2), "queue": self.queue}
 
     @classmethod
     def from_json(cls, d):
-        r = cls((d or {}).get("house", "keal"))
+        d = d or {}
+        r = cls(d.get("house", "keal"), d.get("chassis", "standard"))
         try:
             r.day = max(1, int(d.get("day", 1)))
             r.scrap = max(0, int(d.get("scrap", 0)))
@@ -6269,7 +6817,7 @@ class Run:
             r.kaiju_index = int(clamp(int(d.get("kaiju_index", 0)), 0,
                                       len(roster_for(r.house))))
             r.killed = max(0, int(d.get("killed", 0)))
-            r.mech = Mech.from_json(d.get("mech"))
+            r.mech = Mech.from_json(d.get("mech"), r.mech.chassis)
             r.jobs = [Job.from_json(j) for j in d.get("jobs", [])
                       if j.get("socket") in SOCKETS + (MOD_SLOT, YARD_SLOT,
                                                        REFINE_SLOT, CITY_SLOT)]
@@ -6555,7 +7103,13 @@ class Hangar:
     def key(self, k):
         run = self.run
         if pygame.K_1 <= k <= pygame.K_9:
-            self.sel = SOCKETS[k - pygame.K_1]
+            # the number keys walk THIS frame's sockets, so 1 is whatever
+            # the top row of the list is rather than always LEGS
+            here = run.mech.sockets()
+            i = k - pygame.K_1
+            if i >= len(here):
+                return None
+            self.sel = here[i]
             self.rack = False
             SFX.play("click", 0.5)
             return None
@@ -6802,9 +7356,13 @@ class Hangar:
         panel(surf, r, (15, 16, 22), LINE, 6)
         text(surf, word("sockets", "SOCKETS"), 15, (r.x + 12, r.y + 8), DIM)
         y = r.y + 30
-        rows = list(SOCKETS) + [MOD_SLOT, YARD_SLOT]
+        rows = run.mech.sockets() + [MOD_SLOT, YARD_SLOT]
+        # a TITAN TURRET has twelve rows where the stock frame has eleven,
+        # so the pitch is solved for the panel rather than fixed at 45
+        pitch = min(45.0, (r.h - 40) / float(len(rows)))
+        rh = int(pitch - 2)
         for i, s in enumerate(rows):
-            row = pygame.Rect(r.x + 8, y, r.w - 16, 43)
+            row = pygame.Rect(r.x + 8, int(y), r.w - 16, rh)
             sel = s == self.sel
             job = run.job_on(s)
             off = s in (MOD_SLOT, YARD_SLOT)
@@ -6856,7 +7414,7 @@ class Hangar:
                 text(surf, "%dd" % job.days_left(), 12,
                      (row.right - 8, row.y + 20), CORE, right=True)
             self.buttons.append(Button(row, "", ("sel", s)))
-            y += 45
+            y += pitch
 
     def shop(self, surf):
         run = self.run
@@ -6920,7 +7478,7 @@ class Hangar:
             text(surf, "Nothing hangs off an arm that is not there.", 14,
                  (r.x + 14, y), FAINT)
             return
-        opts = options_for(s, self.slot_fit(s))
+        opts = options_for(s, self.slot_fit(s), run.mech.frame)
         if s == YARD_SLOT:
             opts = list(opts) + [REFINE, RELIEF]
         if not opts:
@@ -7315,9 +7873,9 @@ class Hangar:
              (r.x + 26, y), PAINT)
         y += 22
         best = 0.0
-        for side in ("l", "r"):
+        for side in m.sides():
             w = m.weapon(side)
-            lab = "LEFT " if side == "l" else "RIGHT"
+            lab = {"l": "LEFT ", "r": "RIGHT", "la": "L AUX", "ra": "R AUX"}[side]
             if w is None:
                 text(surf, lab + "  -", 15, (r.x + 26, y), FAINT)
                 y += 22
@@ -7943,6 +8501,79 @@ def draw_mike_front(surf, cx, gy, h, t):
                        (cx + 10 * u, hb - 14 * u)], max(2, int(2.0 * u)))
 
 
+NOVAK_TONE = (188, 146, 206)
+NOVAK_HAIR = (156, 152, 160)
+NOVAK_SHIRT = (58, 52, 70)
+
+
+def draw_novak_front(surf, cx, gy, h, t):
+    """Grey hair scraped into a knot, safety glasses pushed up onto it,
+    and a pair of gauntlets she has not taken off in some years.
+
+    Same coat and same badge as the other two - she is company - but she
+    is the one who decides what shape the machine is, and the rig says so
+    with the height of the collar and nothing else."""
+    u = h / 100.0
+    bob = math.sin(t * 1.05 + 1.7) * 0.8 * u
+    top = gy - 38 * u + bob
+    _coat(surf, cx, top, u, NOVAK_SHIRT, NOVAK_TONE)
+    for sgn in (-1, 1):                          # the gauntlets, over the cuff
+        gx = cx + sgn * 25 * u
+        _blk(surf, gx - 9 * u, top + 33 * u, 19 * u, 12 * u,
+             (96, 100, 116), 0.68, 3)
+        for i in range(3):
+            pygame.draw.line(surf, (146, 152, 170),
+                             (gx - 6 * u + i * 6 * u, top + 35 * u),
+                             (gx - 6 * u + i * 6 * u, top + 43 * u),
+                             max(1, int(1.6 * u)))
+    _blk(surf, cx - 12 * u, top - 12 * u, 24 * u, 15 * u, COAT_D, 0.78, 3)
+    hb = top - 11 * u
+    hh = 42 * u
+    br = hb - hh
+    _blk(surf, cx - 23 * u, br, 46 * u, hh, SKIN, 0.8, 4)
+    for sgn in (-1, 1):                          # brows, and a flat look
+        pygame.draw.line(surf, (140, 136, 138),
+                         (cx + sgn * 6 * u, br + 13 * u),
+                         (cx + sgn * 17 * u, br + 13 * u),
+                         max(2, int(2.2 * u)))
+        pygame.draw.circle(surf, (44, 44, 52),
+                           (cx + sgn * 11 * u, br + 20 * u), 2.3 * u)
+        pygame.draw.circle(surf, (250, 250, 252),
+                           (cx + sgn * 12.3 * u, br + 18.8 * u), 1.0 * u)
+    pygame.draw.line(surf, (150, 118, 112),      # a mouth that has said no
+                     (cx - 8 * u, br + 33 * u), (cx + 8 * u, br + 32 * u),
+                     max(1, int(1.9 * u)))
+    pygame.draw.polygon(surf, NOVAK_HAIR, [      # scraped back, no fringe
+        (cx - 25 * u, br + 10 * u), (cx - 24 * u, br - 6 * u),
+        (cx, br - 10 * u), (cx + 24 * u, br - 6 * u),
+        (cx + 25 * u, br + 10 * u), (cx + 15 * u, br + 1 * u),
+        (cx - 15 * u, br + 1 * u)])
+    for sgn in (-1, 1):
+        pygame.draw.polygon(surf, shade(NOVAK_HAIR, 0.9), [
+            (cx + sgn * 21 * u, br - 1 * u), (cx + sgn * 26 * u, br + 6 * u),
+            (cx + sgn * 23 * u, br + 18 * u), (cx + sgn * 18 * u, br + 9 * u)])
+    knot = (cx - 24 * u, br + 6 * u)             # the knot, off one side
+    pygame.draw.circle(surf, shade(NOVAK_HAIR, 0.88), knot, 8 * u)
+    pygame.draw.circle(surf, shade(NOVAK_HAIR, 0.7), knot, 8 * u, 1)
+    pygame.draw.line(surf, (110, 106, 112),      # a pencil through it
+                     (knot[0] - 9 * u, knot[1] - 6 * u),
+                     (knot[0] + 9 * u, knot[1] + 4 * u), max(1, int(2 * u)))
+    gz = br - 3 * u                              # goggles, up on the head
+    band = pygame.Rect(int(cx - 25 * u), int(gz - 5 * u), int(50 * u),
+                       int(11 * u))
+    pygame.draw.rect(surf, (54, 50, 46), band, border_radius=max(1, int(2 * u)))
+    for sgn in (-1, 1):
+        rr = pygame.Rect(int(cx + sgn * 11 * u - 9 * u), int(gz - 6 * u),
+                         int(18 * u), int(13 * u))
+        pygame.draw.rect(surf, (206, 226, 210), rr,
+                         border_radius=max(1, int(3 * u)))
+        pygame.draw.rect(surf, (72, 68, 62), rr, max(1, int(1.6 * u)),
+                         border_radius=max(1, int(3 * u)))
+    pygame.draw.line(surf, (222, 236, 226),
+                     (cx - 16 * u, gz - 3 * u), (cx - 8 * u, gz + 2 * u),
+                     max(1, int(1.6 * u)))
+
+
 def draw_zoe_front(surf, cx, gy, h, t):
     """Hair up in a tail that swings, a mask over the lower half of the
     face, and the same coat with the same badge on it."""
@@ -8179,6 +8810,28 @@ def draw_zach_front(surf, cx, gy, h, t):
         prev = p
 
 
+_CH_DEMO = {}
+
+
+def _chassis_demo(key):
+    """One fully-built example of a frame, kept, because the shop draws it
+    every frame and building a Mech is not free."""
+    m = _CH_DEMO.get(key)
+    if m is None:
+        m = Mech(key)
+        for s, v in (("legs", 3), ("torso", 3), ("l_arm", 3), ("r_arm", 3),
+                     ("head", 3), ("reactor", 3), ("armour", 3)):
+            m.install(s, v)
+        guns = CHASSIS[key].guns or ("pile", "auto")
+        m.install("l_wpn", guns[0])
+        m.install("r_wpn", guns[-1])
+        if m.usable("l_aux"):
+            m.install("l_aux", "auxpod")
+            m.install("r_aux", "auxflare")
+        _CH_DEMO[key] = m
+    return m
+
+
 def draw_ware_icon(surf, r, w, t):
     """One thing on the boards, drawn at whatever size it is asked for."""
     k = w.key
@@ -8214,6 +8867,25 @@ def draw_ware_icon(surf, r, w, t):
                 pygame.draw.line(s, shade(MIKE_TONE, 0.55),
                                  (box.x + 5, y), (box.x + box.w * 0.4, y), 1)
         _sheet(surf, r, t, lines)
+        return
+    if k in CHASSIS_WARE:
+        # the real renderer, very small. A picture of the machine that
+        # cannot drift out of date with the machine, because it IS the
+        # machine - the only thing this branch decides is the pose.
+        ch = CHASSIS[CHASSIS_WARE[k]]
+        m = _chassis_demo(ch.key)
+        pygame.draw.rect(surf, (18, 22, 28), r, border_radius=4)
+        pygame.draw.rect(surf, shade(MIKE_TONE, 0.6), r, 1, border_radius=4)
+        for i in range(4):
+            y = r.y + 5 + i * 4
+            pygame.draw.line(surf, (30, 40, 52), (r.x + 4, y),
+                             (r.x + r.w * 0.42, y), 1)
+        p = Pose()
+        p.face = 1
+        p.walk = t * 1.4
+        p.moving = 0.0 if ch.has("rooted") else 0.35
+        draw_mech_side(surf, m, r.centerx - r.w * 0.06, r.bottom - r.h * 0.06,
+                       r.h / 430.0, t, p)
         return
     if k in BLUEPRINT_MODULES.values():
         def lines(s, box):
@@ -8844,6 +9516,107 @@ def draw_desk(surf, r, tone, t, seller):
     pygame.draw.rect(surf, (58, 46, 32), (r.x + 10, top.bottom, r.w - 20, 14))
 
 
+class PickFrame:
+    """Which machine this campaign is. Only shown when there is a choice.
+
+    The frame cannot be changed once a run starts - it decides which
+    sockets exist, so changing it mid-campaign would mean throwing away
+    parts the player has spent six weeks building. That is stated on this
+    screen rather than discovered later."""
+
+    def __init__(self, house_key="keal"):
+        self.t = 0.0
+        self.house = house_key
+        self.frames = owned_chassis()
+        self.sel = 0
+        self.buttons = []
+
+    def card_rect(self, i):
+        n = max(1, len(self.frames))
+        cols = min(4, n)
+        w = min(268, (W - 60 - 14 * (cols - 1)) // cols)
+        rows = int(math.ceil(n / float(cols)))
+        gh = 232 if rows > 1 else 310
+        x0 = (W - (cols * w + 14 * (cols - 1))) // 2
+        y0 = 120 if rows > 1 else 180
+        return pygame.Rect(x0 + (i % cols) * (w + 14),
+                           y0 + (i // cols) * (gh + 12), w, gh)
+
+    def draw(self, surf, mouse):
+        surf.fill(BG)
+        sky(surf, self.t * 0.2)
+        ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        ov.fill((8, 9, 14, 176))
+        surf.blit(ov, (0, 0))
+        text(surf, "WHICH MACHINE", 34, (W // 2, 44), PAINT, center=True)
+        text(surf, "The frame decides which sockets exist. It cannot be "
+             "changed once the yard opens.", 14, (W // 2, 86), FAINT,
+             center=True)
+        self.buttons = []
+        for i, ch in enumerate(self.frames):
+            r = self.card_rect(i)
+            hot = r.collidepoint(mouse)
+            on = i == self.sel
+            tone = (ch.tones or {}).get("main", PAINT)
+            panel(surf, r, (26, 28, 38) if (on or hot) else (17, 18, 25),
+                  tone if on else (LINE if not hot else DIM), 8,
+                  3 if on else 1)
+            m = _chassis_demo(ch.key)
+            p = Pose()
+            p.face = 1
+            p.walk = self.t * 1.3
+            p.moving = 0.0 if ch.has("rooted") else 0.4
+            draw_mech_side(surf, m, r.centerx, r.y + r.h * 0.62,
+                           r.h / 700.0, self.t, p)
+            text(surf, ch.name, fit(ch.name, 19, r.w - 16),
+                 (r.centerx, r.bottom - 58), INK if on else DIM, center=True)
+            for j, ln in enumerate(wrap(ch.effect, 12, r.w - 18)[:2]):
+                text(surf, ln, 12, (r.centerx, r.bottom - 34 + j * 14),
+                     tone if on else FAINT, center=True, bold=False)
+            self.buttons.append((r, i))
+        ch = self.frames[self.sel]
+        box = pygame.Rect(W // 2 - 380, H - 158, 760, 74)
+        panel(surf, box, (16, 17, 24), LINE, 6)
+        for j, ln in enumerate(wrap(ch.blurb, 15, box.w - 28)[:3]):
+            text(surf, ln, 15, (box.x + 14, box.y + 10 + j * 20), DIM,
+                 bold=False)
+        lab = ch.name if ch.name.startswith("THE") else "THE " + ch.name
+        self.go = Button(pygame.Rect(W // 2 - 190, H - 66, 380, 44),
+                         "BUILD " + lab, ("go", None), primary=True)
+        self.go.hover(mouse)
+        self.go.draw(surf, 19)
+        text(surf, "ESC to go back", 13, (24, H - 34), FAINT)
+
+    def click(self, pos):
+        for r, i in self.buttons:
+            if r.collidepoint(pos):
+                if i != self.sel:
+                    self.sel = i
+                    SFX.play("click", 0.5)
+                return None
+        if self.go and self.go.hit(pos):
+            SFX.play("click", 0.7)
+            return self.frames[self.sel].key
+        return None
+
+    def key(self, k):
+        if pygame.K_1 <= k <= pygame.K_9:
+            i = k - pygame.K_1
+            if i < len(self.frames):
+                self.sel = i
+                SFX.play("click", 0.5)
+            return None
+        if k in (pygame.K_LEFT, pygame.K_a):
+            self.sel = (self.sel - 1) % len(self.frames)
+            return None
+        if k in (pygame.K_RIGHT, pygame.K_d):
+            self.sel = (self.sel + 1) % len(self.frames)
+            return None
+        if k in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER):
+            return self.frames[self.sel].key
+        return None
+
+
 class Bazaar:
     """The only screen in the game where nothing is trying to kill you.
 
@@ -8867,7 +9640,9 @@ class Bazaar:
          (("mike", "MIKE ODUYA", "he bolts it on", MIKE_TONE,
            "draw_mike_front"),
           ("zoe", "ZOE ABRANTES", "she signs for it", ZOE_TONE,
-           "draw_zoe_front"))),
+           "draw_zoe_front"),
+          ("novak", "DR ILSE NOVAK", "she builds the whole thing",
+           NOVAK_TONE, "draw_novak_front"))),
         ("gov", "THE GOVERNMENT OFFICE",
          "neither of them works for KEAL. Both of them will help KEAL",
          "draw_gov_office", "draw_desk", (238, 242, 228), (168, 178, 150),
@@ -8894,18 +9669,42 @@ class Bazaar:
     def section(self):
         return self.SECTIONS[self.sec]
 
-    def stall_rect(self, i):
-        w = (W - 68) // 2
-        return pygame.Rect(26 + i * (w + 16), self.HEAD + 4, w,
+    def stall_rect(self, i, n=2):
+        """Three counters fit in the Capital where two fit elsewhere, so
+        the frame measures itself rather than assuming a pair."""
+        gap = 16
+        w = (W - 52 - gap * (n - 1)) // n
+        return pygame.Rect(26 + i * (w + gap), self.HEAD + 4, w,
                            H - self.HEAD - 62)
 
     def slot_rects(self, r, n):
-        """Anchored to the BOTTOM of the stall, not the top. Mike carries
-        seven lines to Sarah's five, and a grid measured downwards from the
-        counter put his last row through the floor of the panel."""
-        cols = 3 if n <= 6 else 4
-        rows = int(math.ceil(n / float(cols)))
-        gw, gh = (r.w - 24) / float(cols), 132
+        """The boards, fitted to what is left under the counter.
+
+        Two things have broken this twice. Anchoring the grid DOWNWARDS
+        from the counter put Mike's seventh card through the floor of the
+        panel; then a third stall in the Capital made the panels narrow
+        enough that his seven needed four rows, which climbed back up over
+        his face. So neither the column count nor the card height is a
+        constant any more - both are solved for the band that is actually
+        free, and the card draws itself proportionally."""
+        top = r.y + 286                  # just under the counter top
+        avail = r.bottom - 12 - top
+        best = None
+        for cols in (2, 3, 4):
+            if (r.w - 24) / float(cols) < 96:
+                break
+            rows = int(math.ceil(n / float(cols)))
+            gh = (avail - 8 * (rows - 1)) / float(rows)
+            if gh < 72:
+                continue
+            score = min(gh, 132)         # prefer the tallest card that fits
+            if best is None or score > best[0]:
+                best = (score, cols, rows, min(gh, 132.0))
+        if best is None:
+            cols, rows, gh = 4, int(math.ceil(n / 4.0)), 72.0
+        else:
+            _, cols, rows, gh = best
+        gw = (r.w - 24) / float(cols)
         y0 = r.bottom - 12 - rows * (gh + 8) + 8
         out = []
         for i in range(n):
@@ -8948,7 +9747,7 @@ class Bazaar:
             self.tabs.append((tr, i))
         self.slots = []
         for i, (skey, name, tag, col, art) in enumerate(sellers):
-            r = self.stall_rect(i)
+            r = self.stall_rect(i, len(sellers))
             globals()[stall](surf, r, col, self.t, globals()[art])
             text(surf, name, 22, (r.centerx, r.y + 15), ink, center=True)
             text(surf, tag, 13, (r.centerx, r.y + 296), dim, center=True)
@@ -8975,20 +9774,24 @@ class Bazaar:
         b = box.move(0, -lift)
         panel(surf, b, (30, 30, 40) if hot else (22, 22, 30),
               col if hot else (GOOD if own else LINE), 6)
-        draw_ware_icon(surf, pygame.Rect(b.centerx - 34, b.y + 10, 68, 68),
+        # everything below is a fraction of the card, because the card is
+        # not one size any more - see slot_rects
+        ic = int(min(68, b.h * 0.50))
+        draw_ware_icon(surf, pygame.Rect(b.centerx - ic // 2, b.y + 8, ic, ic),
                        w, self.t)
         nm = ware_name(w)
         afford = own or have or marks() >= w.cost
-        text(surf, nm, fit(nm, 14, b.w - 12), (b.centerx, b.y + 84),
+        ny = b.y + 14 + ic
+        text(surf, nm, fit(nm, 14, b.w - 12), (b.centerx, ny),
              INK if afford else FAINT, center=True)
         if own:
-            text(surf, "BOUGHT", 13, (b.centerx, b.y + 104), GOOD,
-                 center=True)
+            text(surf, "BOUGHT", 13, (b.centerx, ny + 20), GOOD, center=True)
         else:
-            text(surf, "%d MARKS" % w.cost, 13, (b.centerx, b.y + 104),
+            lab = "FREE - TAKE IT" if w.cost <= 0 else "%d MARKS" % w.cost
+            text(surf, lab, 13, (b.centerx, ny + 20),
                  PAINT if marks() >= w.cost else BAD, center=True)
             if w.kind == "specimen" and have:
-                text(surf, "x%d held" % have, 11, (b.centerx, b.y + 118),
+                text(surf, "x%d held" % have, 11, (b.centerx, ny + 34),
                      GOOD, center=True)
         f = self.flash.get(w.key, 0.0)
         if f > 0.01:
@@ -9010,6 +9813,7 @@ class Bazaar:
         text(surf, ware_name(w), 30, (x, r.y + 40), INK)
         kind = {"blueprint": "A BLUEPRINT - yours for good, once drawn",
                 "power": "A STANDING ORDER - every run, for good",
+                "chassis": "A WHOLE MACHINE - pick it when a run begins",
                 "specimen": "A SPECIMEN - one jar, opened in the street"}
         text(surf, kind[w.kind], 13, (x, r.y + 78), col)
         if w.house is not None:
@@ -9345,8 +10149,9 @@ class App:
         music("vigil")
 
     # -- moving between screens -------------------------------------------
-    def begin_run(self, data=None, house_key="keal"):
-        self.run = Run.from_json(data) if data else Run(house_key)
+    def begin_run(self, data=None, house_key="keal", chassis="standard"):
+        self.run = (Run.from_json(data) if data
+                    else Run(house_key, chassis))
         set_house(self.run.house)
         self.hangar = Hangar(self.run)
         self.state = "hangar"
@@ -9420,6 +10225,7 @@ class App:
 
     def to_title(self):
         self.title = Title()
+        self.frames = None
         self.state = "title"
         set_house("keal")
         music("vigil")
@@ -9476,7 +10282,25 @@ class App:
                 elif ev.key in (pygame.K_2, pygame.K_KP2):
                     picked = "ryez"
             if picked:
-                self.begin_run(None, picked)
+                set_house(picked)
+                frames = owned_chassis()
+                if picked == "keal" and len(frames) > 1:
+                    self.frames = PickFrame(picked)
+                    self.state = "frame"
+                else:
+                    self.begin_run(None, picked)
+        elif self.state == "frame":
+            got = None
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                got = self.frames.click(ev.pos)
+            elif ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_ESCAPE:
+                    self.choose = Choose()
+                    self.state = "choose"
+                else:
+                    got = self.frames.key(ev.key)
+            if got:
+                self.begin_run(None, self.frames.house, got)
         elif self.state == "hangar":
             if ev.type == pygame.MOUSEWHEEL:
                 self.hangar.wheel(ev.y)
@@ -9588,6 +10412,9 @@ class App:
         elif self.state == "choose":
             self.choose.t += dt
             self.choose.draw(s, mouse)
+        elif self.state == "frame":
+            self.frames.t += dt
+            self.frames.draw(s, mouse)
         elif self.state == "shop":
             self.bazaar.update(dt)
             self.bazaar.draw(s, mouse)

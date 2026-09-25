@@ -4,6 +4,7 @@ measured.
     python gw_test.py smoke          draw every screen offscreen, save PNGs
     python gw_test.py capital        the KEAL counters, and the house gate
     python gw_test.py gov            the state's desk, the calendar, the squad
+    python gw_test.py frames         six whole machines and the rules they change
     python gw_test.py yard           the option list, the ladder, the city
     python gw_test.py slots          prove the three save slots stay apart
     python gw_test.py flow           drive the real App through a whole run
@@ -1293,6 +1294,234 @@ def _rig(tier=2):
     return r
 
 
+# ---------------------------------------------------------------------------
+# FRAMES - six whole machines, and the one thing they all have to do
+# ---------------------------------------------------------------------------
+CH_KEYS = ("ch_cyclops", "ch_warmachine", "ch_sovereign", "ch_tank",
+           "ch_turret", "ch_robo")
+
+
+def frames():
+    """A chassis is the only purchase in the game that changes the RULES
+    rather than a number, so most of what is below is a check that the
+    rest of the game still holds together underneath one - that the yard
+    offers the right sockets, the save remembers which machine it was, and
+    a frame with no legs or no head does not quietly become one that has
+    them."""
+    wipe_meta()
+    G.set_house("keal")
+    surf = pygame.Surface((G.W, G.H))
+    assert len(G.CHASSIS_LIST) == 7, len(G.CHASSIS_LIST)
+    assert [c.key for c in G.owned_chassis()] == ["standard"], "free frames"
+
+    G.add_marks(4000)
+    before = G.marks()
+    for k in CH_KEYS:
+        assert G.can_buy(k), k
+        assert G.buy_ware(k), k
+    spent = before - G.marks()
+    assert G.marks() > before - 1700, "somebody paid twice"
+    assert len(G.owned_chassis()) == 7, len(G.owned_chassis())
+    print("  seven frames, six of them bought for %d marks" % spent)
+
+    # -- LITTLE ROBO pays YOU, and cannot take you below nothing ----------
+    wipe_meta()
+    G.set_house("keal")
+    assert G.marks() == 0
+    assert G.buy_ware("ch_robo"), "could not take the free one"
+    assert G.marks() == 1, G.marks()
+    print("  the toy is free and hands you a mark for it")
+
+    G.add_marks(4000)
+    for k in CH_KEYS:
+        G.buy_ware(k)
+
+    # -- what each frame HAS ----------------------------------------------
+    for key, want in (("standard", 9), ("cyclops", 9), ("warmachine", 9),
+                      ("sovereign", 9), ("tank", 8), ("turret", 10),
+                      ("robo", 9)):
+        m = G.Mech(key)
+        assert len(m.sockets()) == want, (key, m.sockets())
+    tank = G.Mech("tank")
+    assert not tank.usable("head"), "the tank grew a head"
+    tank.install("head", 3)
+    assert tank.fit["head"] is None, "and then fitted something to it"
+    turret = G.Mech("turret")
+    assert not turret.usable("legs") and turret.usable("l_aux")
+    assert turret.sides() == ["l", "r", "la", "ra"], turret.sides()
+    assert G.Mech("standard").sides() == ["l", "r"]
+    print("  tank has no head, turret has no legs and four mounts")
+
+    # -- and what each frame will MOUNT ------------------------------------
+    stock = {w.key for w in G.options_for("l_wpn", None,
+                                          G.CHASSIS["standard"])}
+    cyc = {w.key for w in G.options_for("l_wpn", None, G.CHASSIS["cyclops"])}
+    assert set(G.CHASSIS["cyclops"].guns) <= cyc, cyc
+    assert not (stock & cyc), "own_only frame took the stock rack"
+    sov = {w.key for w in G.options_for("l_wpn", None,
+                                        G.CHASSIS["sovereign"])}
+    assert stock <= sov and "judgement" in sov, "sovereign lost the rack"
+    aux = {w.key for w in G.options_for("l_aux", None, G.CHASSIS["turret"])}
+    assert aux == set(G.AUX_GUNS), aux
+    assert G.options_for("l_aux", None, G.CHASSIS["standard"]) == []
+    assert G.options_for("legs", None, G.CHASSIS["turret"]) == []
+    print("  cyclops %d guns, sovereign %d, aux mounts %d, turret legs 0"
+          % (len(cyc), len(sov), len(aux)))
+
+    # -- the multipliers are real ------------------------------------------
+    def built(key):
+        r = G.Run("keal", key)
+        r.kaiju_index = 2
+        for s, v in (("legs", 3), ("torso", 3), ("l_arm", 3), ("r_arm", 3),
+                     ("head", 3), ("reactor", 3), ("armour", 3)):
+            r.mech.install(s, v)
+        guns = G.CHASSIS[key].guns or ("pile", "auto")
+        r.mech.install("l_wpn", guns[0])
+        r.mech.install("r_wpn", guns[-1])
+        if r.mech.usable("l_aux"):
+            r.mech.install("l_aux", "auxpod")
+            r.mech.install("r_aux", "auxflare")
+        return r
+
+    base = built("standard").mech
+    war = built("warmachine").mech
+    cyclops = built("cyclops").mech
+    robo = built("robo").mech
+    assert war.max_hp("torso") > base.max_hp("torso") * 1.4
+    assert war.speed < base.speed and war.dr > base.dr
+    assert cyclops.speed > base.speed and cyclops.max_hp("torso") < \
+        base.max_hp("torso")
+    assert robo.max_hp("torso") < base.max_hp("torso") * 0.25
+    assert built("turret").mech.completion() > 0.9, "a turret cannot finish"
+    assert built("tank").mech.completion() > 0.9, "a tank cannot finish"
+    print("  war machine %.0f torso vs %.0f stock; cyclops %.0f speed vs %.0f"
+          % (war.max_hp("torso"), base.max_hp("torso"), cyclops.speed,
+             base.speed))
+
+    # -- ROOTED: a turret does not move ------------------------------------
+    r = built("turret")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    x0 = f.mx
+    for _ in range(400):
+        f.update(1 / 40.0, {"right": True})
+    assert abs(f.mx - x0) < 0.01, "the seawall moved"
+    print("  ten seconds of holding right moved the turret %.2f units"
+          % abs(f.mx - x0))
+
+    # -- BLIND: no bar, and a veil -----------------------------------------
+    r = built("tank")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    assert f.mech.has_flag("blind") and not f.mech.sensors
+    for _ in range(120):
+        f.update(1 / 40.0, {"fire_l": True})
+    f.draw(surf)
+    print("  the tank draws with no bar and no sensors")
+
+    # -- CHARGE: boost and brace, on the one frame that has it -------------
+    r = built("warmachine")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    hit = shrug = 0
+    for _ in range(2400):
+        f.update(1 / 40.0, {"right": True, "boost": True, "brace": True,
+                            "fire_l": True, "fire_r": True})
+        for row in f.log:
+            if "WENT BACKWARDS" in row[0]:
+                hit += 1
+                row[0] = ""
+            if "PLATES TOOK IT" in row[0]:
+                shrug += 1
+                row[0] = ""
+        if f.over:
+            break
+    assert hit > 0, "the charge never connected"
+    print("  %d charges landed, %d blows shrugged off inside one" % (hit,
+                                                                    shrug))
+    # and the charge is not a bonus, it is the weapon: a pilot who only
+    # swings takes over a minute on a BULWARK, and one who charges when it
+    # is off cooldown takes about fourteen seconds
+    r = built("warmachine")
+    f = G.Fight(r, G.roster_for("keal")[2])
+    for _ in range(4800):
+        ch = f.boost_cd <= 0 and f.charge <= 0
+        f.update(1 / 40.0, {"right": True, "fire_l": not ch,
+                            "fire_r": not ch, "boost": ch, "brace": ch})
+        if f.over:
+            break
+    assert f.over == "won", "the charge cannot close a fight"
+    assert f.t < 30.0, "%.0fs with the charge" % f.t
+    print("  charging instead of swinging: %s in %.0fs" % (f.over, f.t))
+
+    plain = built("standard")
+    fp = G.Fight(plain, G.roster_for("keal")[2])
+    for _ in range(200):
+        fp.update(1 / 40.0, {"boost": True, "brace": True})
+    assert fp.charge == 0.0, "the stock frame charged"
+    print("  and the stock frame does not, however you hold the keys")
+
+    # -- MENDS: the sovereign closes itself --------------------------------
+    r = built("sovereign")
+    for s in r.mech.sockets():
+        r.mech.hp[s] *= 0.3
+
+    class _Won:
+        over = "won"
+        wrecked = 0
+        taken = 0.0
+        dealt = 0.0
+        integrity = r.integrity
+        kind = G.roster_for("keal")[r.kaiju_index]
+    r.resolve(_Won())
+    assert r.mech.hp["torso"] == r.mech.max_hp("torso"), "it stayed hurt"
+    r2 = built("standard")
+    r2.mech.hp["torso"] *= 0.3
+    hurt = r2.mech.hp["torso"]
+    r2.resolve(_Won())
+    assert abs(r2.mech.hp["torso"] - hurt) < 1e-6, "everything mends itself"
+    print("  sovereign closed itself; the stock frame did not")
+
+    # -- every frame survives a save and a whole fight ---------------------
+    for key in [c.key for c in G.CHASSIS_LIST]:
+        r = built(key)
+        back = G.Run.from_json(r.to_json())
+        assert back.mech.chassis == key, (key, back.mech.chassis)
+        assert back.mech.sockets() == r.mech.sockets(), key
+        for s in r.mech.sockets():
+            assert back.mech.fit[s] == r.mech.fit[s], (key, s)
+        f = G.Fight(back, G.roster_for("keal")[2])
+        for _ in range(4800):        # the slow frames need the room
+            f.update(1 / 40.0, {"fire_l": True, "fire_r": True,
+                                "right": True})
+            if f.over:
+                break
+        f.draw(surf)
+        print("  %-11s %-4s in %5.1fs, dealt %6.0f, took %5.0f"
+              % (key, f.over or "---", f.t, f.dealt, f.taken))
+
+    # -- and the screen that picks one draws -------------------------------
+    pf = G.PickFrame("keal")
+    pf.t = 1.0
+    pf.draw(surf, (0, 0))
+    assert len(pf.buttons) == 7
+    for r_, _ in pf.buttons:
+        assert r_.bottom <= G.H, "a frame card fell off the screen"
+    pf.click(pf.buttons[4][0].center)
+    assert pf.sel == 4, pf.sel
+    pf.draw(surf, (0, 0))
+    got = pf.click(pf.go.rect.center)
+    assert got == pf.frames[4].key, got
+    print("  the picker draws seven, and hands back the one you clicked")
+
+    # -- a frame you have not bought cannot be smuggled into a save --------
+    wipe_meta()
+    G.set_house("keal")
+    r = G.Run("keal", "sovereign")
+    assert r.mech.chassis == "standard", r.mech.chassis
+    print("  and one you have not bought is quietly the stock frame")
+    wipe_meta()
+    G.set_house("keal")
+    print("\nframes ok")
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     SLOPPY[0] = "sloppy" in sys.argv
@@ -1301,6 +1530,9 @@ def main():
     if what in ("smoke", "all"):
         print("== SMOKE ==")
         smoke()
+    if what in ("frames", "all"):
+        print("== FRAMES ==")
+        frames()
     if what in ("gov", "all"):
         print("== GOV ==")
         gov()
@@ -1321,8 +1553,8 @@ def main():
         print("\n== BALANCE ==")
         for hk in ("keal", "ryez"):
             balance(6 if what == "all" else n, hk)
-    if what not in ("smoke", "capital", "gov", "yard", "slots", "flow",
-                    "balance", "all"):
+    if what not in ("smoke", "capital", "gov", "frames", "yard", "slots",
+                    "flow", "balance", "all"):
         print(__doc__)
         return 2
     return 0
