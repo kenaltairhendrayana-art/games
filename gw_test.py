@@ -46,6 +46,7 @@ import great_work as G                                          # noqa: E402
 # never touch a real campaign
 _TMP = tempfile.mkdtemp(prefix="gwtest")
 G._save_dir = lambda: _TMP
+G.meta_forget()                  # the ledger caches, and we moved its home
 G.SFX.ok = False
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -93,6 +94,17 @@ def smoke():
     run.start_build("l_wpn", G.WEAPONS["fist"])
     h.draw(surf, (900, 300))
     snap("hangar_early")
+
+    G.meta_forget()
+    G.add_marks(400)
+    for k in ("bp_rail", "warchest", "spec_shriek", "spec_shriek",
+              "spec_venom"):
+        G.buy_ware(k)
+    for back, name in (("title", "hendras"), ("hangar", "hendras_mid")):
+        bz = G.Bazaar(back)
+        bz.t = 3.1
+        bz.draw(surf, (300, 520))
+        snap(name)
 
     ch = G.Choose()
     ch.t = 2.0
@@ -217,10 +229,18 @@ def flow(house_key="keal"):
          "fight": lambda: app.fight.draw(s),
          "after": lambda: app.after.draw(s, (0, 0)),
          "choose": lambda: app.choose.draw(s, (0, 0)),
+         "shop": lambda: app.bazaar.draw(s, (0, 0)),
          "end": lambda: app.ending_screen.draw(s, (0, 0))}[app.state]()
 
     assert app.state == "title"
     draw()
+    shop_btn = next(b for b in app.title.buttons if b.key[0] == "shop")
+    click(shop_btn.rect.center)          # the stall, and back out of it
+    assert app.state == "shop", app.state
+    draw()
+    key(pygame.K_ESCAPE)
+    assert app.state == "title", app.state
+    draw()            # to_title() rebuilds Title; its buttons exist after a draw
     new_btn = next(b for b in app.title.buttons if b.key[0] == "new")
     click(new_btn.rect.center)
     assert app.state == "choose", app.state
@@ -270,7 +290,8 @@ def flow(house_key="keal"):
             draw()
             key(pygame.K_SPACE)
     draw()
-    want = {"title", "choose", "hangar", "brief", "fight", "after", "end"}
+    want = {"title", "choose", "shop", "hangar", "brief", "fight", "after",
+            "end"}
     assert set(seen) == want, "missing %s" % (want - set(seen))
     print("%s states drawn: %s" % (G.HOUSES[house_key].name, seen))
     print("ending: %s  day %d  city %d  killed %d"
@@ -496,7 +517,21 @@ def campaign(seed, house_key="keal"):
     return run, report
 
 
+def wipe_meta():
+    """Start from a player who has never been to the market.
+
+    `smoke` buys things to draw the stall, and the ledger is a real file in
+    the same temp dir, so without this the balance phase silently measures a
+    yard with a WAR CHEST in it - which is how `all` came out five points
+    rosier than `balance` on its own."""
+    data = G.load_save()
+    data["meta"] = None
+    G.write_save(data)
+    G.meta_forget()
+
+
 def balance(n=10, house_key="keal"):
+    wipe_meta()
     G.set_house(house_key)
     roster = G.roster_for(house_key)
     per = {k.name: [] for k in roster}

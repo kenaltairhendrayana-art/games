@@ -41,6 +41,14 @@ THE SHAPE OF IT
   itself, which is the only thing in the game that buys you days rather
   than spending them.
 
+  And one thing that outlives the run. Every body you put down pays
+  MARKS, which are no use to a yard and no use to a hatchery, and THE
+  HENDRAS will take them. Sarah draws - blueprints that put new weapons
+  in your catalogue for good, and standing orders that start every run
+  better off. Jack grows - specimens in jars you open mid-fight, and
+  grafts that hold for good. None of it resets when a campaign does,
+  which makes a run that ends badly still worth having played.
+
   THE TWO HOUSES WORK DIFFERENTLY. KEAL welds: put more crew on a job and
   it lands sooner, because steel does what it is told. RYEZ splices and
   waits - a culture in a pod takes half as long again and NO number of
@@ -76,11 +84,14 @@ CONTROLS
     S / down        brace - halves what gets through, but you cannot act
     SPACE           boost (piston striders only)
     V               dump the coolant (with the flush module, once a fight)
+    1 2 3           open one of Jack's jars, if you are carrying one
   Any time
     P               pause
     M               mute - the music goes with it
     F               speed 1x / 2x / 3x
     ESC             back out one screen
+  The stall
+    click           a ware to buy it; ESC or SPACE leaves
   Everywhere        the mouse does all of it too
 """
 
@@ -663,6 +674,222 @@ HOUSES = {
         RYEZ_FLESH, draw_ryez_logo, "bio", "GROWN", "mech", RYEZ_WORDS),
 }
 
+
+# ---------------------------------------------------------------------------
+# WHERE PROGRESS GOES
+#
+# Never beside the game, which may be read-only and is certainly somewhere
+# a player does not look. One file, two things in it: the run in progress
+# and what has been finished before.
+# ---------------------------------------------------------------------------
+def _save_dir():
+    if sys.platform == "win32":
+        root = os.environ.get("APPDATA") or os.path.expanduser("~")
+        d = os.path.join(root, "TheGreatWork")
+    elif sys.platform == "darwin":
+        d = os.path.expanduser("~/Library/Application Support/TheGreatWork")
+    else:
+        root = (os.environ.get("XDG_DATA_HOME")
+                or os.path.expanduser("~/.local/share"))
+        d = os.path.join(root, "the-great-work")
+    try:
+        os.makedirs(d, exist_ok=True)
+        return d
+    except OSError:
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+SAVE_NAME = "progress.json"
+
+
+def load_save():
+    try:
+        with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
+            return json.load(fh) or {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def write_save(data):
+    try:
+        with open(os.path.join(_save_dir(), SAVE_NAME), "w",
+                  encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# THE HENDRAS
+#
+# Two dealers who do not work for either company and will sell to both.
+# Sarah draws; Jack grows. What they take is MARKS - what the city pays you
+# for a body, which is no use to a yard and no use to a hatchery and is
+# exactly the sort of thing a Hendra will take.
+#
+# Everything bought here is PERMANENT and lives in the save file next to
+# the run, not in it. A campaign that ends badly still leaves you holding
+# what you bought, which is the whole point of the stall: it is the only
+# part of the game that does not reset.
+# ---------------------------------------------------------------------------
+class Ware:
+    __slots__ = ("key", "seller", "name", "cost", "kind", "effect", "blurb")
+
+    def __init__(self, key, seller, name, cost, kind, effect, blurb):
+        self.key = key
+        self.seller = seller        # "sarah" or "jack"
+        self.name = name
+        self.cost = cost
+        self.kind = kind            # "blueprint", "power" or "specimen"
+        self.effect = effect
+        self.blurb = blurb
+
+
+WARE_LIST = [
+    # -- Sarah: the drawing office ------------------------------------------
+    Ware("bp_rail", "sarah", "RAIL LANCE", 120, "blueprint",
+         "a hardpoint gun that ignores hide entirely",
+         "She drew it in an afternoon and spent a year on the rails."),
+    Ware("bp_hook", "sarah", "GRAVE HOOK", 110, "blueprint",
+         "melee that drags what it hits back into reach",
+         "For the ones that would rather be somewhere else."),
+    Ware("warchest", "sarah", "WAR CHEST", 70, "power",
+         "every run starts with 200 more in the bank",
+         "She knows somebody. She always knows somebody."),
+    Ware("earlyshift", "sarah", "EARLY SHIFT", 90, "power",
+         "every run starts with a third pair of hands",
+         "Signed on before you got there and already working."),
+    Ware("sharptools", "sarah", "SHARP TOOLS", 80, "power",
+         "mending costs 30% less, for good",
+         "A proper set, indexed, and nobody is allowed to borrow them."),
+    # -- Jack: the menagerie ------------------------------------------------
+    Ware("spec_shriek", "jack", "SHRIEKER", 35, "specimen",
+         "one jar: staggers whatever is in front of you",
+         "Do not open it indoors. He is not joking about that."),
+    Ware("spec_leech", "jack", "LEECH BLOOM", 40, "specimen",
+         "one jar: mends the worst-hurt part by a third, mid-fight",
+         "It eats the damage. Nobody has asked what it does afterwards."),
+    Ware("spec_venom", "jack", "VENOM SAC", 45, "specimen",
+         "one jar: ten seconds where nothing's hide counts",
+         "Green, and it moves on its own when the lid is off."),
+    Ware("thickblood", "jack", "THICK BLOOD", 100, "power",
+         "every part carries 12% more, for good",
+         "A graft that takes on steel as happily as on meat."),
+    Ware("quicknerve", "jack", "QUICK NERVE", 85, "power",
+         "10% faster on its feet, for good",
+         "Shorter path from deciding to moving. That is all it is."),
+    Ware("deepgut", "jack", "DEEP GUT", 130, "power",
+         "one more bay in the rack, for good",
+         "Room made where there was not room. Do not ask for what."),
+]
+WARES = {w.key: w for w in WARE_LIST}
+SPECIMENS = [w for w in WARE_LIST if w.kind == "specimen"]
+
+RYEZ_WARE_NAME = {"bp_rail": "BARB LAUNCHER", "bp_hook": "TONGUE HOOK",
+                  "warchest": "FULL LARDER", "earlyshift": "EARLY SHIFT",
+                  "sharptools": "CLEAN HANDS", "thickblood": "THICK BLOOD",
+                  "quicknerve": "QUICK NERVE", "deepgut": "DEEP GUT"}
+
+# what a body is worth to the city, by which landfall it was
+MARKS_FOR = (14, 20, 28, 36, 46, 60)
+
+
+# -- the ledger -------------------------------------------------------------
+# Cached, because `has_ware` is asked inside draw loops and a disk read per
+# call would be felt. Every write goes through _meta_put, which re-reads the
+# whole save first so it can never clobber the run sitting beside it.
+_META = [None]
+
+
+def meta():
+    if _META[0] is None:
+        m = (load_save().get("meta") or {})
+        _META[0] = {
+            "marks": max(0, int(m.get("marks", 0) or 0)),
+            "owned": [k for k in (m.get("owned") or []) if k in WARES],
+            "stock": {k: max(0, int(v)) for k, v in
+                      (m.get("stock") or {}).items()
+                      if k in WARES and int(v) > 0},
+            "spent": max(0, int(m.get("spent", 0) or 0)),
+        }
+    return _META[0]
+
+
+def _meta_put(m):
+    _META[0] = m
+    data = load_save()
+    data["meta"] = m
+    write_save(data)
+
+
+def meta_forget():
+    """Drop the cache - the tests point _save_dir somewhere else."""
+    _META[0] = None
+
+
+def marks():
+    return meta()["marks"]
+
+
+def add_marks(n):
+    m = dict(meta())
+    m["marks"] = max(0, m["marks"] + int(n))
+    _meta_put(m)
+
+
+def has_ware(key):
+    return key in meta()["owned"]
+
+
+def stock_of(key):
+    return meta()["stock"].get(key, 0)
+
+
+def can_buy(key):
+    w = WARES.get(key)
+    if w is None:
+        return False
+    if w.kind != "specimen" and has_ware(key):
+        return False               # a blueprint is bought once
+    return marks() >= w.cost
+
+
+def buy_ware(key):
+    if not can_buy(key):
+        return False
+    w = WARES[key]
+    m = dict(meta())
+    m["marks"] -= w.cost
+    m["spent"] = m.get("spent", 0) + w.cost
+    if w.kind == "specimen":
+        st = dict(m["stock"])
+        st[key] = st.get(key, 0) + 1
+        m["stock"] = st
+    else:
+        m["owned"] = list(m["owned"]) + [key]
+    _meta_put(m)
+    return True
+
+
+def use_specimen(key):
+    """Take one out of the cupboard. Jars do not come back."""
+    if stock_of(key) <= 0:
+        return False
+    m = dict(meta())
+    st = dict(m["stock"])
+    st[key] = st[key] - 1
+    if st[key] <= 0:
+        del st[key]
+    m["stock"] = st
+    _meta_put(m)
+    return True
+
+
+def ware_name(w):
+    if CURRENT["house"] == "ryez":
+        return RYEZ_WARE_NAME.get(w.key, w.name)
+    return w.name
+
 # ---------------------------------------------------------------------------
 # NOISE
 #
@@ -1211,6 +1438,16 @@ WEAPON_LIST = [
            110, 0.0, 34.0, 1000,
            "Billed by the second. Bring a reactor or do not bring this.",
            stagger=0.0),
+    # Sarah's, and locked until she has been paid for the drawing
+    Weapon("rail", "RAIL LANCE", "gun", 340, 2, 5, 190,
+           46, 0.52, 9.4, 1500,
+           "Ignores hide outright. She spent a year on the rails.",
+           speed=2100, stagger=0.09, pierce=1),
+    Weapon("hook", "GRAVE HOOK", "melee", 300, 1, 5, 190,
+           40, 0.85, 7.0, 320,
+           "Drags what it catches back into reach, whatever it wanted.",
+           stagger=0.16),
+
     Weapon("sun", "SUN LANCE", "beam", 560, 3, 6, 250,
            170, 0.0, 40.0, 1150,
            "Goes through the first one and into whatever is behind it.",
@@ -1220,6 +1457,8 @@ WEAPONS = {w.key: w for w in WEAPON_LIST}
 # families laid out for the shop: the base, then its refit
 WEAPON_FAMILIES = (("fist", "pile"), ("saw", "ripper"), ("auto", "revolver"),
                    ("missile", "swarm"), ("lance", "sun"))
+# families that are not in the book until a Hendra sells you the book
+BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook"}
 
 
 def part_of(socket, fit):
@@ -1257,6 +1496,9 @@ def options_for(socket, fit):
                 out.append(WEAPONS[up])        # the refit of what is mounted
             elif fit != up:
                 out.append(WEAPONS[base])      # swap to a different family
+        for key, ware in BLUEPRINT_WEAPONS.items():
+            if fit != key and has_ware(ware):
+                out.append(WEAPONS[key])
         return out
     table = CATALOGUE.get(socket, ())
     nxt = (fit or 0) + 1
@@ -1445,7 +1687,9 @@ class Mech:
 
     def max_hp(self, socket):
         p = part_of(socket, self.fit[socket])
-        return float(p.hp) if p else 0.0
+        if p is None:
+            return 0.0
+        return float(p.hp) * (1.12 if has_ware("thickblood") else 1.0)
 
     def held(self, socket):
         return part_of(socket, self.fit[socket])
@@ -1456,7 +1700,7 @@ class Mech:
         """How many modules fit. A girder frame has room for one; you buy
         the room by buying the torso, which is what makes the torso worth
         more than its health number says."""
-        return self.fit["torso"] or 1
+        return (self.fit["torso"] or 1) + (1 if has_ware("deepgut") else 0)
 
     def has(self, key):
         return key in self.mods
@@ -1501,6 +1745,8 @@ class Mech:
             v *= 1.20
         if self.has("gyro"):
             v *= 0.92
+        if has_ware("quicknerve"):
+            v *= 1.10
         return v
 
     @property
@@ -1637,7 +1883,10 @@ class Mech:
             return (0, 0)
         base = max(p.scrap, 120)
         days = max(1, int(round(f * max(p.days, 3) * 0.6)))
-        return (int(round(f * base * 0.45)) + 8, days)
+        cost = int(round(f * base * 0.45)) + 8
+        if has_ware("sharptools"):
+            cost = int(round(cost * 0.70))
+        return (cost, days)
 
     def needs_repair(self):
         return [s for s in SOCKETS if self.damage_frac(s) > 0.001]
@@ -3607,10 +3856,11 @@ def draw_city(surf, city, cam, t, shake=(0, 0)):
 # ---------------------------------------------------------------------------
 class Shot:
     __slots__ = ("pos", "vel", "dmg", "splash", "owner", "life", "colour",
-                 "size", "arc", "trail")
+                 "size", "arc", "trail", "pierce")
 
     def __init__(self, pos, vel, dmg, owner, colour, splash=0, life=3.0,
-                 size=5, arc=0.0):
+                 size=5, arc=0.0, pierce=0):
+        self.pierce = pierce
         self.pos = Vector2(pos)
         self.vel = Vector2(vel)
         self.dmg = dmg
@@ -3735,6 +3985,8 @@ class Fight:
         self.stun = 0.0
         self.spared = False          # redundant linkage, one part per landfall
         self.flushed = False         # coolant flush, one tank per landfall
+        self.venom = 0.0             # Jack's sac, while it lasts
+        self.jars = []               # what came out in the log
         self.tutorial = 4.0 if run.kaiju_index == 0 else 0.0
 
     # -- geometry ---------------------------------------------------------
@@ -3806,7 +4058,8 @@ class Fight:
                 if 0 < d < wpn.reach and (wpn.pierce or e is tgt):
                     hit.append(e)
             for e in hit:
-                dealt = e.hurtby(wpn.dmg * dt * self.mech.dmg_mult * gun_mult)
+                dealt = e.hurtby(wpn.dmg * dt * self.mech.dmg_mult * gun_mult,
+                                 pierce=self.pierce_now(wpn))
                 self.dealt += dealt
                 if random.random() < dt * 8:
                     self.spark(e.x, -80 - random.uniform(0, 90), (180, 230, 255))
@@ -3831,9 +4084,14 @@ class Fight:
                     continue
                 if abs(e.x - self.mx) <= reach + e.span * 0.55:
                     dealt = e.hurtby(wpn.dmg * mult * (1.0 if not struck
-                                                       else 0.55))
+                                                       else 0.55),
+                                     pierce=self.pierce_now(wpn))
                     self.dealt += dealt
                     e.stagger += wpn.stagger / e.kind.poise
+                    if wpn.key == "hook" and e.y >= 0:
+                        # it does not ask whether the thing wanted to come
+                        pull = min(110.0, max(0.0, abs(e.x - self.mx) - 150.0))
+                        e.x -= math.copysign(pull, e.x - self.mx)
                     self.number(e.x, -140, int(dealt), crit)
                     self.spark(e.x - self.pose.face * e.span * 0.4, -130,
                                (255, 200, 130), 9)
@@ -3877,7 +4135,40 @@ class Fight:
                                    else (255, 168, 96),
                                    splash=wpn.splash,
                                    size=5 if wpn.kind == "gun" else 7,
-                                   arc=520.0 if wpn.kind == "salvo" else 0.0))
+                                   arc=520.0 if wpn.kind == "salvo" else 0.0,
+                                   pierce=1 if self.pierce_now(wpn) else 0))
+
+    def pierce_now(self, wpn):
+        """Whether this hit ignores hide: the rail always does, and a venom
+        sac makes everything do it for ten seconds."""
+        return bool(wpn.pierce) or self.venom > 0
+
+    def open_jar(self, key):
+        """One of Jack's, out of the cupboard and into the street."""
+        if self.mech.down or stock_of(key) <= 0 or not use_specimen(key):
+            return False
+        w = WARES[key]
+        self.say(ware_name(w).upper() + " - OUT OF THE JAR")
+        SFX.play("beam", 0.6)
+        if key == "spec_shriek":
+            e = self.nearest(self.mx)
+            if e is not None and e.alive:
+                e.state, e.timer, e.attack = "stagger", 1.5, None
+                e.stagger = 0.0
+                self.spark(e.x, -160, (220, 240, 255), 16, 220)
+        elif key == "spec_leech":
+            hurt = [s for s in SOCKETS if self.mech.fit[s] is not None
+                    and self.mech.damage_frac(s) > 0.01]
+            if hurt:
+                s = max(hurt, key=self.mech.damage_frac)
+                mx = self.mech.max_hp(s)
+                self.mech.hp[s] = min(mx, self.mech.hp[s] + mx * 0.33)
+                self.say(sock_label(s) + " KNITTING")
+                self.spark(self.mx, -220, (150, 240, 170), 14, 150)
+        else:
+            self.venom = 10.0
+            self.spark(self.mx, -240, RYEZ_ACID, 18, 180)
+        return True
 
     def spark(self, wx, wy, colour, n=6, spread=140):
         for _ in range(n):
@@ -4131,6 +4422,10 @@ class Fight:
         """`inp` is a plain dict, not a pygame state, so the whole fight
         runs under a test harness with no window and no keyboard."""
         self.t += dt
+        self.venom = max(0.0, self.venom - dt)
+        for i, w in enumerate(SPECIMENS):
+            if inp.get("jar%d" % (i + 1)):
+                self.open_jar(w.key)
         self.tutorial = max(0.0, self.tutorial - dt)
         self.stun = max(0.0, self.stun - dt)
         for row in self.log:
@@ -4226,7 +4521,7 @@ class Fight:
                         continue
                     if abs(e.x - s.pos.x) < e.span * 0.9 and \
                             e.top < s.pos.y < -8:
-                        dealt = e.hurtby(s.dmg)
+                        dealt = e.hurtby(s.dmg, pierce=bool(s.pierce))
                         self.dealt += dealt
                         self.number(e.x, s.pos.y, int(dealt))
                         e.stagger += 0.05 / e.kind.poise
@@ -4442,6 +4737,26 @@ class Fight:
                 if k == "flush":
                     text(surf, "V" if live else "-", 12, (cx + 100, cy),
                          GOOD if live else FAINT, right=True)
+        # Jack's cupboard, and how long the sac has left in it
+        jy = 240 + ((22 * ((len(m.mods) + 1) // 2) + 8 + 6) if m.mods else 0)
+        held = [w for w in SPECIMENS if stock_of(w.key) > 0]
+        if held or self.venom > 0:
+            jr = pygame.Rect(14, jy, 236, 18 * len(held) + 8
+                             + (16 if self.venom > 0 else 0))
+            panel(surf, jr, (16, 18, 26), LINE, 5)
+            for i, w in enumerate(SPECIMENS):
+                if stock_of(w.key) <= 0:
+                    continue
+                row = jr.y + 4 + held.index(w) * 18
+                text(surf, str(SPECIMENS.index(w) + 1), 12, (jr.x + 8, row),
+                     PAINT)
+                nm = ware_name(w)
+                text(surf, nm, fit(nm, 12, 150), (jr.x + 22, row), ALLOY_C)
+                text(surf, "x%d" % stock_of(w.key), 12, (jr.right - 8, row),
+                     DIM, right=True)
+            if self.venom > 0:
+                bar(surf, pygame.Rect(jr.x + 8, jr.bottom - 13, jr.w - 16, 6),
+                    self.venom / 10.0, RYEZ_ACID)
 
         # the animal
         boss = self.boss()
@@ -4628,6 +4943,10 @@ class Run:
                          "RYEZ PUTS ONE ASHORE ON DAY %d." % SCHEDULE[0]]
         self.spent = 0
         self.rushes = 0
+        if has_ware("warchest"):
+            self.scrap += 200
+        if has_ware("earlyshift"):
+            self.crew += 1
 
     # -- the calendar -----------------------------------------------------
     @property
@@ -4861,7 +5180,10 @@ class Run:
             got_a = kind.alloy + (1 if self.yard >= 3 else 0)
             self.scrap += got_s
             self.alloy += got_a
+            got_m = MARKS_FOR[min(self.kaiju_index, len(MARKS_FOR) - 1)]
+            add_marks(got_m)
             lines.append("%s DOWN." % kind.name)
+            lines.append("+%d MARKS FOR THE BODY" % got_m)
             lines.append("HARVEST: %d %s, %d %s"
                          % (got_s, word("scrap", "SCRAP"),
                             got_a, word("alloy", "ALLOY")))
@@ -4920,50 +5242,6 @@ class Run:
         except (ValueError, TypeError, AttributeError, KeyError):
             return cls()
         return r
-
-
-# ---------------------------------------------------------------------------
-# WHERE PROGRESS GOES
-#
-# Never beside the game, which may be read-only and is certainly somewhere
-# a player does not look. One file, two things in it: the run in progress
-# and what has been finished before.
-# ---------------------------------------------------------------------------
-def _save_dir():
-    if sys.platform == "win32":
-        root = os.environ.get("APPDATA") or os.path.expanduser("~")
-        d = os.path.join(root, "TheGreatWork")
-    elif sys.platform == "darwin":
-        d = os.path.expanduser("~/Library/Application Support/TheGreatWork")
-    else:
-        root = (os.environ.get("XDG_DATA_HOME")
-                or os.path.expanduser("~/.local/share"))
-        d = os.path.join(root, "the-great-work")
-    try:
-        os.makedirs(d, exist_ok=True)
-        return d
-    except OSError:
-        return os.path.dirname(os.path.abspath(__file__))
-
-
-SAVE_NAME = "progress.json"
-
-
-def load_save():
-    try:
-        with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
-            return json.load(fh) or {}
-    except (OSError, ValueError, TypeError):
-        return {}
-
-
-def write_save(data):
-    try:
-        with open(os.path.join(_save_dir(), SAVE_NAME), "w",
-                  encoding="utf-8") as fh:
-            json.dump(data, fh, indent=1)
-    except OSError:
-        pass
 
 
 def save_run(run):
@@ -6053,8 +6331,19 @@ class After:
                           else "BACK TO THE YARD")
         self.btn.hover(mouse)
         self.btn.draw(surf, 24)
+        if not self.ending and marks() > 0:
+            self.shop_btn = Button(pygame.Rect(W // 2 - 170, H - 54, 340, 38),
+                                   "THE HENDRAS ARE HERE - %d MARKS"
+                                   % marks(), ("shop", None), tone=ALLOY_C)
+            self.shop_btn.hover(mouse)
+            self.shop_btn.draw(surf, 17)
+        else:
+            self.shop_btn = None
 
     def click(self, pos):
+        if getattr(self, "shop_btn", None) and self.shop_btn.hit(pos):
+            SFX.play("click", 0.6)
+            return "shop"
         if self.btn.hit(pos):
             SFX.play("click", 0.6)
             return "go"
@@ -6175,6 +6464,555 @@ class Choose:
                 return key
         return None
 
+
+# ---------------------------------------------------------------------------
+# THE NIGHT MARKET
+#
+# Two stalls under bulbs on a wire, the Hendras behind their counters facing
+# out, and their stock laid out on the boards in front of them where you can
+# pick a thing up and turn it over before you pay for it.
+#
+# Everybody here is drawn blocky and straight on, which is both the easiest
+# thing to read at this size and the right look for two people who build
+# things out of rectangles for a living.
+# ---------------------------------------------------------------------------
+SARAH_INK = (118, 176, 220)
+JACK_GLASS = (128, 206, 176)
+
+SKIN = (240, 226, 212)
+SKIN_D = (206, 188, 174)
+BULB = (255, 206, 132)
+
+SARAH_HAIR = (48, 42, 56)
+SARAH_SCARF = (128, 74, 172)
+SARAH_WHITE = (238, 240, 245)
+SARAH_BLACK = (34, 34, 41)
+
+JACK_SUIT = (40, 40, 48)
+JACK_LAPEL = (74, 76, 86)
+JACK_SHIRT = (228, 231, 238)
+JACK_BRASS = (172, 122, 64)
+JACK_HAIR = (112, 78, 54)
+
+
+def _blk(surf, x, y, w, h, col, edge=0.62, r=2):
+    """A block with a darker edge. Everything here is made of these."""
+    rect = pygame.Rect(int(x), int(y), int(w), int(h))
+    pygame.draw.rect(surf, col, rect, border_radius=r)
+    pygame.draw.rect(surf, shade(col, edge), rect, 1, border_radius=r)
+    return rect
+
+
+def draw_sarah_front(surf, cx, gy, h, t):
+    """Black bob with the fringe across one eye, dark rectangular glasses, a
+    purple scarf, and a jacket panelled white over black.
+
+    Proportioned like the avatars they came from: the head is about as tall
+    as the whole of the body you can see, which is what makes them read as
+    two short people behind a counter rather than two tall ones."""
+    u = h / 100.0
+    bob = math.sin(t * 1.4) * 1.0 * u
+    top = gy - 38 * u + bob                       # shoulders
+    _blk(surf, cx - 32 * u, top, 64 * u, 50 * u, SARAH_BLACK, 0.7, 4)
+    _blk(surf, cx - 32 * u, top, 64 * u, 12 * u, SARAH_WHITE, 0.7, 4)
+    for sgn in (-1, 1):                           # arms, forward on the boards
+        ax = cx + sgn * 38 * u
+        _blk(surf, ax - 12 * u, top + 2 * u, 25 * u, 22 * u, SARAH_WHITE,
+             0.7, 3)
+        _blk(surf, ax - 12 * u, top + 12 * u, 25 * u, 7 * u, SARAH_BLACK,
+             0.7, 2)
+        _blk(surf, ax - 11 * u, top + 22 * u, 23 * u, 18 * u, SARAH_BLACK,
+             0.7, 3)
+        _blk(surf, cx + sgn * 25 * u - 8 * u, top + 35 * u, 17 * u, 10 * u,
+             SKIN_D, 0.8, 3)
+    for i in range(3):
+        pygame.draw.circle(surf, (96, 96, 110), (cx, top + (22 + i * 9) * u),
+                           1.8 * u)
+    _blk(surf, cx - 10 * u, top - 9 * u, 20 * u, 12 * u, SKIN_D, 0.8, 2)
+    sc = top - 1 * u                              # the scarf
+    _blk(surf, cx - 25 * u, sc - 11 * u, 50 * u, 16 * u, SARAH_SCARF, 0.68, 5)
+    _blk(surf, cx + 8 * u, sc + 2 * u, 13 * u, 20 * u,
+         shade(SARAH_SCARF, 0.82), 0.68, 3)
+    hb = sc - 11 * u                              # head sits on the scarf
+    hh = 42 * u
+    _blk(surf, cx - 23 * u, hb - hh, 46 * u, hh, SKIN, 0.8, 4)
+    for sgn in (-1, 1):                           # brows, before the hair, so
+        pygame.draw.line(surf, (58, 46, 46),      # the fringe covers one
+                         (cx + sgn * 5 * u, hb - 31 * u),
+                         (cx + sgn * 16 * u, hb - 33 * u),
+                         max(2, int(2.3 * u)))
+    for sgn in (-1, 1):                           # a bit of warmth in the face
+        pygame.draw.circle(surf, (246, 206, 196),
+                           (cx + sgn * 15 * u, hb - 11 * u), 3.2 * u)
+    hair = SARAH_HAIR
+    _blk(surf, cx - 26 * u, hb - hh - 5 * u, 52 * u, 12 * u, hair, 0.7, 5)
+    pygame.draw.line(surf, (86, 78, 96),          # the stall lamp is overhead
+                     (cx - 17 * u, hb - hh - 3 * u),
+                     (cx + 15 * u, hb - hh - 4 * u), max(2, int(2.4 * u)))
+    for sgn in (-1, 1):                           # the bob, flaring at the jaw
+        pygame.draw.polygon(surf, hair, [
+            (cx + sgn * 21 * u, hb - hh - 3 * u),
+            (cx + sgn * 27 * u, hb - hh + 1 * u),
+            (cx + sgn * 29 * u, hb + 2 * u),
+            (cx + sgn * 19 * u, hb),
+            (cx + sgn * 19 * u, hb - hh + 4 * u)])
+    pygame.draw.polygon(surf, hair, [             # one eye, and only one
+        (cx - 26 * u, hb - hh + 3 * u), (cx + 5 * u, hb - hh + 3 * u),
+        (cx - 9 * u, hb - hh + 21 * u), (cx - 26 * u, hb - hh + 16 * u)])
+    gl = hb - 23 * u                              # glasses
+    pygame.draw.line(surf, (44, 44, 52), (cx - 18 * u, gl), (cx + 18 * u, gl),
+                     max(1, int(2.0 * u)))
+    for sgn in (-1, 1):
+        r = pygame.Rect(cx + sgn * 10 * u - 8.5 * u, gl - 5 * u, 17 * u,
+                        11 * u)
+        pygame.draw.rect(surf, (176, 202, 224), r, border_radius=2)
+        pygame.draw.rect(surf, (44, 44, 52), r, max(1, int(1.6 * u)),
+                         border_radius=2)
+    pygame.draw.circle(surf, (38, 34, 40), (cx + 10 * u, gl), 2.1 * u)
+    pygame.draw.lines(surf, (88, 66, 70), False,  # and she is glad you came
+                      [(cx - 11 * u, hb - 12 * u), (cx - 4 * u, hb - 6 * u),
+                       (cx + 4 * u, hb - 6 * u), (cx + 11 * u, hb - 12 * u)],
+                      max(2, int(2.1 * u)))
+
+
+def draw_jack_front(surf, cx, gy, h, t):
+    """Goggles pushed up on the forehead, a black suit over a white shirt,
+    and a face somebody drew on in two strokes and a smile. Same short
+    proportions as his sister."""
+    u = h / 100.0
+    bob = math.sin(t * 1.25 + 1.1) * 1.0 * u
+    top = gy - 38 * u + bob
+    _blk(surf, cx - 34 * u, top, 68 * u, 50 * u, JACK_SUIT, 0.7, 4)
+    pygame.draw.polygon(surf, JACK_SHIRT, [       # shirt in the gap
+        (cx - 10 * u, top), (cx + 10 * u, top),
+        (cx + 7 * u, top + 30 * u), (cx - 7 * u, top + 30 * u)])
+    for sgn in (-1, 1):                           # lapels
+        pygame.draw.polygon(surf, JACK_LAPEL, [
+            (cx + sgn * 11 * u, top), (cx + sgn * 29 * u, top),
+            (cx + sgn * 22 * u, top + 26 * u),
+            (cx + sgn * 8 * u, top + 14 * u)])
+    _blk(surf, cx - 4 * u, top + 1 * u, 8 * u, 13 * u,
+         shade(SARAH_SCARF, 0.5), 0.7, 2)         # the tie, his sister's colour
+    for sgn in (-1, 1):
+        ax = cx + sgn * 40 * u
+        _blk(surf, ax - 12 * u, top + 2 * u, 25 * u, 23 * u, JACK_SUIT, 0.7, 3)
+        _blk(surf, ax - 11 * u, top + 23 * u, 23 * u, 17 * u,
+             shade(JACK_SUIT, 0.86), 0.7, 3)
+        _blk(surf, cx + sgn * 26 * u - 8 * u, top + 35 * u, 17 * u, 10 * u,
+             SKIN_D, 0.8, 3)
+    _blk(surf, cx - 10 * u, top - 10 * u, 20 * u, 13 * u, SKIN_D, 0.8, 2)
+    hb = top - 8 * u
+    hh = 44 * u
+    _blk(surf, cx - 23 * u, hb - hh, 46 * u, hh, SKIN, 0.8, 4)
+    hair = JACK_HAIR                              # short, and it needs cutting
+    _blk(surf, cx - 25 * u, hb - hh - 6 * u, 50 * u, 13 * u, hair, 0.6, 5)
+    pygame.draw.line(surf, shade(hair, 1.30),     # the stall lamp is overhead
+                     (cx - 18 * u, hb - hh - 4 * u),
+                     (cx + 14 * u, hb - hh - 5 * u), max(2, int(2.6 * u)))
+    pygame.draw.polygon(surf, hair, [             # swept over from his parting
+        (cx - 25 * u, hb - hh + 2 * u), (cx + 6 * u, hb - hh - 3 * u),
+        (cx + 23 * u, hb - hh + 3 * u), (cx + 23 * u, hb - hh + 8 * u),
+        (cx - 25 * u, hb - hh + 7 * u)])
+    for sgn in (-1, 1):                           # and short at the sides
+        _blk(surf, cx + sgn * 23 * u - 4 * u, hb - hh + 2 * u, 8 * u, 11 * u,
+             hair, 0.7, 2)
+    gg = hb - hh + 11 * u                         # goggles, up on the brow
+    _blk(surf, cx - 26 * u, gg - 5 * u, 52 * u, 13 * u, (50, 42, 37), 0.7, 3)
+    for sgn in (-1, 1):
+        c = (cx + sgn * 12 * u, gg + 1 * u)
+        pygame.draw.circle(surf, (60, 51, 45), c, 9 * u)
+        pygame.draw.circle(surf, JACK_BRASS, c, 7.2 * u)
+        pygame.draw.circle(surf, shade(JACK_BRASS, 0.6), c, 4.1 * u)
+        pygame.draw.circle(surf, (240, 216, 172),
+                           (c[0] - 2 * u, c[1] - 2 * u), 1.8 * u)
+    for sgn in (-1, 1):                           # two strokes, well clear
+        pygame.draw.line(surf, (46, 40, 42), (cx + sgn * 4 * u, hb - 20 * u),
+                         (cx + sgn * 16 * u, hb - 23 * u),
+                         max(2, int(2.6 * u)))
+        pygame.draw.circle(surf, (42, 38, 42),
+                           (cx + sgn * 9 * u, hb - 15 * u), 2.4 * u)
+    pygame.draw.lines(surf, (50, 42, 44), False,   # and a wide one
+                      [(cx - 14 * u, hb - 12 * u), (cx - 5 * u, hb - 6 * u),
+                       (cx + 5 * u, hb - 6 * u), (cx + 14 * u, hb - 12 * u)],
+                      max(2, int(2.3 * u)))
+
+
+# -- the goods --------------------------------------------------------------
+def _sheet(surf, r, t, draw_lines):
+    """A blueprint: dark blue paper, a border, and line work on it."""
+    pygame.draw.rect(surf, (20, 40, 62), r, border_radius=3)
+    pygame.draw.rect(surf, shade(SARAH_INK, 0.5), r, 1, border_radius=3)
+    inner = r.inflate(-8, -8)
+    pygame.draw.rect(surf, shade(SARAH_INK, 0.34), inner, 1)
+    draw_lines(surf, inner)
+
+
+def _jar(surf, box, t, col, body):
+    """A specimen jar: glass, fluid, something in it, bubbles. Whatever box
+    it is given, it keeps its own shape inside it."""
+    w = min(box.w, int(box.h * 0.66))
+    r = pygame.Rect(box.centerx - w // 2, box.y + 6, w, box.h - 12)
+    pygame.draw.rect(surf, (22, 42, 42), r, border_radius=int(r.w * 0.22))
+    fluid = r.inflate(-6, -10)
+    fluid.y += 4
+    pygame.draw.rect(surf, shade(col, 0.30), fluid,
+                     border_radius=int(r.w * 0.18))
+    body(surf, fluid, t)
+    for i in range(5):
+        bx = fluid.x + 4 + (i * 29) % max(6, fluid.w - 8)
+        by = fluid.bottom - ((t * (18 + i * 7) + i * 23) % max(8, fluid.h))
+        pygame.draw.circle(surf, shade(col, 1.25), (bx, by), 1.4)
+    _blk(surf, r.x - 2, r.y - 5, r.w + 4, 8, (74, 92, 88), 0.7, 2)
+    g = pygame.Surface(r.size, pygame.SRCALPHA)
+    pygame.draw.rect(g, (200, 240, 235, 30), g.get_rect(),
+                     border_radius=int(r.w * 0.22))
+    pygame.draw.rect(g, (230, 250, 248, 46), (4, 6, 4, r.h - 18),
+                     border_radius=2)
+    surf.blit(g, r.topleft)
+
+
+def draw_ware_icon(surf, r, w, t):
+    """One thing on the boards, drawn at whatever size it is asked for."""
+    k = w.key
+    if k in ("bp_rail", "bp_hook"):
+        wep = WEAPONS["rail" if k == "bp_rail" else "hook"]
+
+        def lines(s, box):
+            rig = Rig(s, box.centerx, box.bottom - box.h * 0.18,
+                      box.h / 260.0)
+            for pts, _ in shape_weapon(wep.key, "r", 3):
+                rig.poly(pts, SARAH_INK, 1)
+            for pts, _ in shape_arm(3, "r"):
+                rig.poly(pts, shade(SARAH_INK, 0.62), 1)
+            for i in range(3):
+                y = box.y + 6 + i * 5
+                pygame.draw.line(s, shade(SARAH_INK, 0.55),
+                                 (box.x + 5, y), (box.x + box.w * 0.4, y), 1)
+        _sheet(surf, r, t, lines)
+        return
+    if k == "spec_shriek":
+        def body(s, f, tt):
+            cx, cy = f.centerx, f.centery
+            rr = f.w * 0.26 * (1.0 + 0.16 * math.sin(tt * 5.0))
+            pygame.draw.circle(s, (206, 226, 250), (cx, cy), rr)
+            for i in range(7):
+                a = i * TAU / 7 + tt * 0.9
+                pygame.draw.line(s, (170, 200, 240), (cx, cy),
+                                 (cx + math.cos(a) * rr * 2.1,
+                                  cy + math.sin(a) * rr * 1.7), 2)
+        _jar(surf, r, t, (150, 190, 235), body)
+        return
+    if k == "spec_leech":
+        def body(s, f, tt):
+            cx, cy = f.centerx, f.centery + math.sin(tt * 1.3) * f.h * 0.06
+            for i in range(4):
+                a = tt * 0.8 + i * 1.57
+                pygame.draw.circle(s, (238, 140, 150),
+                                   (cx + math.cos(a) * f.w * 0.20,
+                                    cy + math.sin(a) * f.h * 0.14),
+                                   f.w * 0.13)
+            pygame.draw.circle(s, (250, 186, 190), (cx, cy), f.w * 0.17)
+        _jar(surf, r, t, (226, 120, 136), body)
+        return
+    if k == "spec_venom":
+        def body(s, f, tt):
+            cx, cy = f.centerx, f.centery
+            pts = [(cx + f.w * 0.26 * math.cos(a) * (1 + 0.2 * math.sin(a * 3
+                                                                       + tt)),
+                    cy + f.h * 0.20 * math.sin(a))
+                   for a in (i * TAU / 11 for i in range(11))]
+            pygame.draw.polygon(s, RYEZ_ACID, pts)
+            pygame.draw.polygon(s, shade(RYEZ_ACID, 0.6), pts, 2)
+            pygame.draw.circle(s, (250, 250, 200),
+                               (cx + f.w * 0.07, cy - f.h * 0.04), 2.4)
+        _jar(surf, r, t, RYEZ_ACID, body)
+        return
+    # the standing orders: a small object apiece, all bought off a counter
+    pygame.draw.rect(surf, (28, 30, 38), r, border_radius=4)
+    pygame.draw.rect(surf, (60, 64, 78), r, 1, border_radius=4)
+    cx, cy = r.centerx, r.centery
+    s = r.h
+    if k == "warchest":
+        _blk(surf, cx - s * 0.32, cy - s * 0.16, s * 0.64, s * 0.36,
+             (108, 84, 52), 0.6, 3)
+        _blk(surf, cx - s * 0.34, cy - s * 0.26, s * 0.68, s * 0.14,
+             (132, 104, 64), 0.6, 3)
+        _blk(surf, cx - s * 0.06, cy - s * 0.12, s * 0.12, s * 0.16, PAINT,
+             0.6, 2)
+    elif k == "earlyshift":
+        pygame.draw.circle(surf, (96, 102, 118), (cx, cy), s * 0.28)
+        pygame.draw.circle(surf, (24, 26, 32), (cx, cy), s * 0.22)
+        a = t * 1.6
+        pygame.draw.line(surf, PAINT, (cx, cy),
+                         (cx + math.cos(a) * s * 0.16,
+                          cy + math.sin(a) * s * 0.16), 2)
+        pygame.draw.line(surf, (200, 206, 220), (cx, cy),
+                         (cx, cy - s * 0.19), 2)
+    elif k == "sharptools":
+        _blk(surf, cx - s * 0.34, cy - s * 0.12, s * 0.68, s * 0.30,
+             (96, 74, 50), 0.6, 3)
+        for i in range(4):
+            x = cx - s * 0.24 + i * s * 0.16
+            pygame.draw.line(surf, (188, 196, 210), (x, cy - s * 0.24),
+                             (x, cy + s * 0.06), 2)
+    elif k == "thickblood":
+        _blk(surf, cx - s * 0.12, cy - s * 0.28, s * 0.24, s * 0.52,
+             (36, 46, 46), 0.7, 3)
+        _blk(surf, cx - s * 0.08, cy - s * 0.06, s * 0.16, s * 0.27,
+             (214, 96, 108), 0.7, 2)
+        _blk(surf, cx - s * 0.15, cy - s * 0.32, s * 0.30, s * 0.07,
+             (78, 92, 90), 0.7, 2)
+    elif k == "quicknerve":
+        prev = None
+        for i in range(14):
+            f = i / 13.0
+            p = (cx - s * 0.32 + f * s * 0.64,
+                 cy + math.sin(f * 9.0 + t * 3.0) * s * 0.16)
+            if prev:
+                pygame.draw.line(surf, RYEZ_ACID, prev, p, 2)
+            prev = p
+    else:                                     # deepgut
+        pygame.draw.circle(surf, (78, 54, 78), (cx, cy), s * 0.30)
+        pygame.draw.circle(surf, (32, 22, 32), (cx, cy), s * 0.19)
+        pygame.draw.circle(surf, HEART, (cx, cy),
+                           s * 0.09 * (1 + 0.2 * math.sin(t * 2.6)))
+
+
+def draw_market_night(surf, t):
+    """The street the stalls are on: dark, wet, and lit by a wire of bulbs."""
+    for i in range(0, H, 4):
+        f = i / float(H)
+        surf.fill(mix((14, 14, 26), (30, 22, 30), f ** 1.3), (0, i, W, 4))
+    rnd = random.Random(11)
+    for col, top, step in (((20, 20, 34), 210, 132), ((26, 25, 42), 300, 168)):
+        for x in range(-40, W + 120, step):
+            hgt = rnd.randint(90, 210)
+            wdt = step - rnd.randint(18, 44)
+            pygame.draw.rect(surf, col, (x, top - hgt, wdt, hgt + 60))
+            for wy in range(top - hgt + 14, top + 20, 26):
+                for wx in range(x + 10, x + wdt - 8, 20):
+                    if (wx * 7 + wy * 3) % 5 < 2:
+                        pygame.draw.rect(surf, (96, 82, 62), (wx, wy, 5, 7))
+    sag = 26
+    px = py = None
+    for i in range(14):                              # the wire
+        f = i / 13.0
+        x = 20 + f * (W - 40)
+        y = 34 + math.sin(f * math.pi) * sag
+        if px is not None:
+            pygame.draw.line(surf, (44, 42, 48), (px, py), (x, y), 2)
+        px, py = x, y
+    for i in range(13):                              # and the bulbs on it
+        f = (i + 0.5) / 13.0
+        x = 20 + f * (W - 40)
+        y = 34 + math.sin(f * math.pi) * sag + 12
+        sway = math.sin(t * 0.9 + i * 0.7) * 3
+        pygame.draw.line(surf, (54, 52, 58), (x, y - 12), (x + sway, y), 1)
+        pygame.draw.circle(surf, BULB, (x + sway, y + 4), 3.4)
+        blit_glow(surf, (x + sway, y + 4), 26, BULB, 60)
+    pygame.draw.rect(surf, (17, 16, 24), (0, H - 74, W, 74))
+    for i in range(13):                              # the same bulbs, wet road
+        f = (i + 0.5) / 13.0
+        x = 20 + f * (W - 40) + math.sin(t * 0.9 + i * 0.7) * 3
+        blit_glow(surf, (x, H - 40), 40, shade(BULB, 0.5), 26)
+
+
+def draw_stall(surf, r, tone, t, seller):
+    """Awning, lamp, counter. The stall is the frame for everything else."""
+    panel(surf, r, (19, 18, 26), LINE, 8)
+    aw = pygame.Rect(r.x + 4, r.y + 4, r.w - 8, 52)
+    stripe = 34
+    for i in range(0, aw.w, stripe):
+        col = tone if (i // stripe) % 2 == 0 else shade(tone, 0.45)
+        pygame.draw.rect(surf, shade(col, 0.8),
+                         (aw.x + i, aw.y, min(stripe, aw.right - aw.x - i),
+                          aw.h - 10))
+    for i in range(0, aw.w - 10, 26):                # the scalloped hem
+        pygame.draw.circle(surf, shade(tone, 0.62) if (i // 26) % 2
+                           else shade(tone, 0.34),
+                           (aw.x + i + 13, aw.bottom - 10), 13)
+    pygame.draw.rect(surf, (40, 38, 46), (aw.x, aw.y, aw.w, 6))
+    lamp = (r.centerx, r.y + 92)                     # a lamp over the counter
+    pygame.draw.line(surf, (52, 50, 58), (lamp[0], aw.bottom - 8), lamp, 2)
+    pygame.draw.polygon(surf, (62, 60, 70),
+                        [(lamp[0] - 22, lamp[1]), (lamp[0] + 22, lamp[1]),
+                         (lamp[0] + 9, lamp[1] - 16),
+                         (lamp[0] - 9, lamp[1] - 16)])
+    pygame.draw.circle(surf, BULB, (lamp[0], lamp[1] + 3), 4)
+    blit_glow(surf, (lamp[0], lamp[1] + 14), 150, BULB, 44)
+    seller(surf, r.centerx, r.y + 272, 176, t)
+    top = pygame.Rect(r.x + 10, r.y + 272, r.w - 20, 16)
+    pygame.draw.rect(surf, (96, 78, 56), top, border_radius=3)
+    pygame.draw.rect(surf, (60, 48, 34), top, 1, border_radius=3)
+    pygame.draw.rect(surf, (44, 36, 26), (r.x + 10, top.bottom, r.w - 20, 14))
+
+
+class Bazaar:
+    """The only screen in the game where nothing is trying to kill you."""
+
+    SELLERS = (("sarah", "SARAH HENDRA", "she draws it", SARAH_INK,
+                draw_sarah_front),
+               ("jack", "JACK HENDRA", "he grows it", JACK_GLASS,
+                draw_jack_front))
+
+    def __init__(self, back="title"):
+        self.t = 0.0
+        self.back = back
+        self.slots = []
+        self.open = None            # the ware being turned over
+        self.flash = {}
+        self.btn = Button(pygame.Rect(W // 2 - 150, H - 48, 300, 36),
+                          "BACK TO THE YARD" if back == "hangar" else "BACK",
+                          ("go", None), primary=True)
+        self.buy_btn = None
+
+    def stall_rect(self, i):
+        w = (W - 68) // 2
+        return pygame.Rect(26 + i * (w + 16), 66, w, H - 136)
+
+    def slot_rects(self, r, n):
+        out = []
+        gw, gh = (r.w - 24) / 3.0, 138
+        for i in range(n):
+            out.append(pygame.Rect(int(r.x + 12 + (i % 3) * gw),
+                                   int(r.y + 318 + (i // 3) * (gh + 8)),
+                                   int(gw - 8), gh))
+        return out
+
+    def panel_rect(self):
+        return pygame.Rect(W // 2 - 330, H // 2 - 200, 660, 400)
+
+    # -- frame -------------------------------------------------------------
+    def draw(self, surf, mouse):
+        draw_market_night(surf, self.t)
+        text(surf, "THE NIGHT MARKET", 30, (24, 12), PAINT)
+        text(surf, "the Hendras do not work for either company, and they "
+             "will sell to both", 13, (24, 44), FAINT)
+        text(surf, "%d MARKS" % marks(), 27, (W - 24, 12), INK, right=True)
+        text(surf, "what the city pays for a body", 11, (W - 24, 42), FAINT,
+             right=True)
+        self.slots = []
+        for i, (key, name, tag, col, art) in enumerate(self.SELLERS):
+            r = self.stall_rect(i)
+            draw_stall(surf, r, col, self.t, art)
+            text(surf, name, 22, (r.centerx, r.y + 15), INK, center=True)
+            text(surf, tag, 13, (r.centerx, r.y + 296), DIM, center=True)
+            wares = [x for x in WARE_LIST if x.seller == key]
+            for box, w in zip(self.slot_rects(r, len(wares)), wares):
+                self.good(surf, box, w, col, mouse)
+        self.btn.hover(mouse)
+        self.btn.draw(surf, 19)
+        if self.open is not None:
+            self.inspect(surf, mouse)
+
+    def good(self, surf, box, w, col, mouse):
+        own = w.kind != "specimen" and has_ware(w.key)
+        have = stock_of(w.key)
+        hot = box.collidepoint(mouse) and self.open is None
+        lift = 4 if hot else 0
+        b = box.move(0, -lift)
+        panel(surf, b, (30, 30, 40) if hot else (22, 22, 30),
+              col if hot else (GOOD if own else LINE), 6)
+        draw_ware_icon(surf, pygame.Rect(b.centerx - 34, b.y + 10, 68, 68),
+                       w, self.t)
+        nm = ware_name(w)
+        afford = own or have or marks() >= w.cost
+        text(surf, nm, fit(nm, 14, b.w - 12), (b.centerx, b.y + 84),
+             INK if afford else FAINT, center=True)
+        if own:
+            text(surf, "BOUGHT", 13, (b.centerx, b.y + 104), GOOD,
+                 center=True)
+        else:
+            text(surf, "%d MARKS" % w.cost, 13, (b.centerx, b.y + 104),
+                 PAINT if marks() >= w.cost else BAD, center=True)
+            if w.kind == "specimen" and have:
+                text(surf, "x%d held" % have, 11, (b.centerx, b.y + 118),
+                     GOOD, center=True)
+        f = self.flash.get(w.key, 0.0)
+        if f > 0.01:
+            blit_glow(surf, b.center, b.h * 0.9, col, int(80 * f))
+        self.slots.append((b, w.key))
+
+    def inspect(self, surf, mouse):
+        """Picked up off the boards and turned over."""
+        w = WARES[self.open]
+        col = SARAH_INK if w.seller == "sarah" else JACK_GLASS
+        ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        ov.fill((6, 6, 12, 200))
+        surf.blit(ov, (0, 0))
+        r = self.panel_rect()
+        panel(surf, r, (18, 18, 26), col, 10, 2)
+        big = pygame.Rect(r.x + 26, r.y + 62, 250, 250)
+        draw_ware_icon(surf, big, w, self.t)
+        x = big.right + 26
+        text(surf, ware_name(w), 30, (x, r.y + 40), INK)
+        kind = {"blueprint": "A BLUEPRINT - yours for good, once drawn",
+                "power": "A STANDING ORDER - every run, for good",
+                "specimen": "A SPECIMEN - one jar, opened in the street"}
+        text(surf, kind[w.kind], 13, (x, r.y + 78), col)
+        y = r.y + 106
+        for line in wrap(w.effect, 17, r.right - x - 30):
+            text(surf, line, 17, (x, y), (214, 220, 234))
+            y += 22
+        y += 10
+        for line in wrap(w.blurb, 14, r.right - x - 30):
+            text(surf, line, 14, (x, y), DIM, bold=False)
+            y += 18
+        own = w.kind != "specimen" and has_ware(w.key)
+        if w.kind == "specimen":
+            have = stock_of(w.key)
+            text(surf, "%d in the cupboard" % have, 14, (x, r.bottom - 98),
+                 GOOD if have else FAINT)
+        text(surf, "%d MARKS" % w.cost, 24, (x, r.bottom - 76),
+             PAINT if marks() >= w.cost else BAD)
+        lab = ("ALREADY BOUGHT" if own else
+               "NOT ENOUGH MARKS" if marks() < w.cost else
+               "BUY ANOTHER" if w.kind == "specimen" else "BUY IT")
+        self.buy_btn = Button(pygame.Rect(x, r.bottom - 48, 230, 34), lab,
+                              ("buy", w.key), enabled=can_buy(w.key),
+                              tone=col, primary=can_buy(w.key))
+        self.buy_btn.hover(mouse)
+        self.buy_btn.draw(surf, 17)
+        text(surf, "ESC to put it back", 13, (r.x + 26, r.bottom - 30), FAINT)
+
+    def update(self, dt):
+        self.t += dt
+        for k in list(self.flash):
+            self.flash[k] -= dt * 1.6
+            if self.flash[k] <= 0:
+                del self.flash[k]
+
+    def click(self, pos):
+        if self.open is not None:
+            if self.buy_btn and self.buy_btn.hit(pos):
+                if buy_ware(self.open):
+                    self.flash[self.open] = 1.0
+                    SFX.play("done", 0.7)
+                else:
+                    SFX.play("deny", 0.5)
+                return None
+            if not self.panel_rect().collidepoint(pos):
+                self.open = None
+                SFX.play("click", 0.4)
+            return None
+        if self.btn.hit(pos):
+            SFX.play("click", 0.6)
+            return "go"
+        for box, key in self.slots:
+            if box.collidepoint(pos):
+                self.open = key
+                SFX.play("click", 0.5)
+                return None
+        return None
+
+    def back_out(self):
+        """ESC puts the thing down first, and leaves the market second."""
+        if self.open is not None:
+            self.open = None
+            return None
+        return "go"
+
+
 # ---------------------------------------------------------------------------
 # THE FRONT DOOR
 # ---------------------------------------------------------------------------
@@ -6214,6 +7052,10 @@ class Title:
         self.buttons.append(Button(pygame.Rect(74, y, 330, 60),
                                    "A NEW MACHINE" if has else "BEGIN",
                                    ("new", None), primary=not has))
+        y += 74
+        self.buttons.append(Button(pygame.Rect(74, y, 330, 60),
+                                   "THE HENDRAS - %d MARKS" % marks(),
+                                   ("shop", None), tone=ALLOY_C))
         y += 74
         self.buttons.append(Button(pygame.Rect(74, y, 330, 60), "QUIT",
                                    ("quit", None), tone=BAD))
@@ -6318,6 +7160,7 @@ class App:
         self.state = "title"
         self.title = Title(load_save())
         self.choose = None
+        self.bazaar = None
         self.run = None
         self.hangar = None
         self.fight = None
@@ -6434,6 +7277,21 @@ class App:
                 self.pick("continue" if self.title.save.get("run") else "new")
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 self.running = False
+        elif self.state == "shop":
+            act = None
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                act = self.bazaar.click(ev.pos)
+            elif ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE,
+                                                          pygame.K_SPACE,
+                                                          pygame.K_RETURN):
+                act = self.bazaar.back_out()
+            if act == "go":
+                if self.bazaar.back == "hangar" and self.run is not None:
+                    self.hangar = Hangar(self.run)
+                    self.state = "hangar"
+                    music("yard")
+                else:
+                    self.to_title()
         elif self.state == "choose":
             picked = None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -6494,7 +7352,9 @@ class App:
             elif ev.type == pygame.KEYDOWN and ev.key in (pygame.K_SPACE,
                                                           pygame.K_RETURN):
                 act = "go"
-            if act:
+            if act == "shop":
+                self.to_shop("hangar")
+            elif act:
                 self.after_done()
         elif self.state == "end":
             act = None
@@ -6508,8 +7368,15 @@ class App:
                 self.run = None
                 self.to_title()
 
+    def to_shop(self, back):
+        self.bazaar = Bazaar(back)
+        self.state = "shop"
+        music("vigil")
+
     def pick(self, act):
-        if act == "new":
+        if act == "shop":
+            self.to_shop("title")
+        elif act == "new":
             self.choose = Choose()
             self.state = "choose"
         elif act == "continue":
@@ -6528,6 +7395,8 @@ class App:
             "fire_l": k[pygame.K_j] or mb[0],
             "fire_r": k[pygame.K_k] or mb[2],
             "flush": k[pygame.K_v],
+            "jar1": k[pygame.K_1], "jar2": k[pygame.K_2],
+            "jar3": k[pygame.K_3],
         }
 
     # -- the frame --------------------------------------------------------
@@ -6543,6 +7412,9 @@ class App:
         elif self.state == "choose":
             self.choose.t += dt
             self.choose.draw(s, mouse)
+        elif self.state == "shop":
+            self.bazaar.update(dt)
+            self.bazaar.draw(s, mouse)
         elif self.state == "hangar":
             self.hangar.update(dt)
             self.hangar.draw(s, mouse)
