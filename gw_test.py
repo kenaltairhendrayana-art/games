@@ -913,6 +913,233 @@ def yard():
     assert back.integrity > 50.0, back.integrity
     print("  a half-finished relief job survives a save")
 
+    # -- nothing you paid for vanishes out of the rack -------------------
+    # THE GREAT SAC needs a spare organ site on a grown body, and the
+    # first pass expressed that by dropping the card. So a player who
+    # bought it for 210 marks and was not standing in a GRAVID MOTHER
+    # saw no card, no reason and no mention of it anywhere - which is
+    # the same mistake as hiding a shop counter, made a third time.
+    wipe_meta()
+    G.set_house("ryez")
+    G.add_marks(30000)
+    for k in ("g_scalehide", "g_embryo", "g_lungs", "g_scream",
+              "st_gravid", "g_greatsac"):
+        assert G.buy_ware(k), k
+    stock = G.Mech("standard")
+    mother = G.Mech("gravid")
+    for frame in (stock.frame, mother.frame):
+        keys = [m.key for m in G.module_list(frame)]
+        assert "greatsac" in keys, (frame.key, "the card disappeared")
+    assert not G.module_fits(G.MODULES["greatsac"], stock.frame)
+    assert G.module_fits(G.MODULES["greatsac"], mother.frame)
+    assert G.module_why(G.MODULES["greatsac"], stock.frame)
+    assert G.module_why(G.MODULES["greatsac"], mother.frame) is None
+    # ...and it still cannot be PRESSED on a body with nowhere to put it
+    for chassis, want in (("standard", False), ("gravid", True)):
+        run = G.Run("ryez", chassis)
+        run.mech.fit_module("greatsac")
+        f = G.Fight(run, run.next_kind())
+        assert f.can_greatsac() is want, (chassis, want)
+        assert f.great_sac() is (True if want else False), chassis
+    print("  the great sac shows on every rack and only works on hers")
+
+    # -- and the rack says how many more there are to buy ----------------
+    # "15 of them" is whatever you happen to own, so a player has no way
+    # to know there are three more on a counter somewhere
+    assert G.locked_modules() == 0, G.locked_modules()
+    wipe_meta()
+    G.set_house("ryez")
+    G.add_marks(30000)
+    for k in ("g_scalehide", "g_embryo"):
+        G.buy_ware(k)
+    n = G.locked_modules()
+    assert n == 3, ("scalehide and embryo bought, so lungs, scream and "
+                    "the great sac are left: %d" % n)
+    # the four KEAL ones are NOT counted - a gene rack will never hold
+    # one, and counting them sends a RYEZ player looking for nothing
+    keal_only = [m for m in G.MODULE_LIST
+                 if m.key in G.BLUEPRINT_MODULES
+                 and G.WARES[G.BLUEPRINT_MODULES[m.key]].house == "keal"]
+    assert len(keal_only) == 4, len(keal_only)
+    G.set_house("keal")
+    assert G.locked_modules() == 4, G.locked_modules()
+    print("  and it counts the %d this house can still be sold, not the "
+          "%d in the table" % (n, len(keal_only) + n))
+
+    # the overlay itself draws, with the card greyed on the wrong body
+    G.set_house("ryez")
+    G.add_marks(30000)
+    G.buy_ware("st_gravid")
+    G.buy_ware("g_greatsac")
+    for chassis in ("standard", "gravid"):
+        run = G.Run("ryez", chassis)
+        run.scrap, run.alloy = 20000, 200
+        h = G.Hangar(run)
+        h.sel = G.MOD_SLOT
+        h.rack = True
+        sf = pygame.Surface((G.W, G.H))
+        h.draw(sf, (0, 0))
+        got = [b for b in h.rack_buttons if b.key[0] == "build"
+               and getattr(b.key[1], "key", None) == "greatsac"]
+        assert len(got) == 1, (chassis, "no card for it at all")
+        assert got[0].enabled is (chassis == "gravid"), chassis
+    print("  and the card is on the screen either way, greyed on the "
+          "body that cannot carry it")
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- every socket has a name in every house --------------------------
+    # The GRAVID MOTHER's two extra organ sites are the whole point of
+    # her, they were missing from RYEZ_HUD, and the fight HUD looked a
+    # socket up with a bare [] - so fitting anything at all to the one
+    # grown body that HAS them closed the game the moment the fight
+    # drew. She shipped like that.
+    for s in G.SOCKETS:
+        assert s in G.HUD_LABEL, s
+        assert s in G.RYEZ_HUD, s
+        assert s in G.SOCKET_LABEL, s
+        assert s in G.RYEZ_SOCKETS, s
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        seen = {}
+        for s in G.SOCKETS:
+            lab = G.sock_label(s)
+            assert lab and lab not in seen, (house, s, lab, seen.get(lab))
+            seen[lab] = s
+    print("  all %d sockets are named in both houses, twice over"
+          % len(G.SOCKETS))
+
+    # ...and the fight actually draws for a body that uses all of them
+    for house, chassis, wares in (("ryez", "gravid", ("st_gravid",)),
+                                  ("keal", "turret", ("ch_turret",)),
+                                  ("keal", "tank", ("ch_tank",))):
+        wipe_meta()
+        G.set_house(house)
+        G.add_marks(20000)
+        for k in wares:
+            assert G.buy_ware(k), k
+        run = G.Run(house, chassis)
+        assert run.mech.chassis == chassis, run.mech.chassis
+        run.scrap, run.alloy = 20000, 200
+        for s in run.mech.sockets():
+            if s not in G.HARDPOINTS:
+                run.mech.install(s, 3)
+        mounted = 0
+        for s in G.HARDPOINTS:
+            if s not in run.mech.sockets():
+                continue
+            opts = G.options_for(s, None, run.mech.frame)
+            if opts:
+                run.mech.install(s, opts[0].key)
+                mounted += 1
+        assert mounted >= 2, (chassis, mounted)
+        f = G.Fight(run, run.next_kind())
+        sf = pygame.Surface((G.W, G.H))
+        for i in range(90):
+            f.update(1 / 60.0, {})
+        f.draw(sf)                    # the line that used to take it down
+        assert sf.get_bounding_rect().w > 0
+    print("  and a fight draws for every frame with a mount on every "
+          "socket it has")
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- THE LADDER: seven rungs, and the top ones are not duels ---------
+    # One body at a time is a duel and a duel is a thing a finished
+    # machine wins outright - measured, a plain animal took the top rung
+    # eight times out of eight. Company fixes the fight rather than
+    # inflating the boss, and the company is drawn from rungs already
+    # beaten so nothing new has to be balanced.
+    wipe_meta()
+    assert len(G.SCHEDULE) == 7, G.SCHEDULE
+    assert len(G.MARKS_FOR) == len(G.SCHEDULE), (len(G.MARKS_FOR),
+                                                 len(G.SCHEDULE))
+    assert len(G.ESCORTS) == len(G.SCHEDULE), len(G.ESCORTS)
+    for i in range(3):
+        assert not G.escorts_at(i), "landfall %d is not a duel" % (i + 1)
+    for i in range(3, 7):
+        assert G.escorts_at(i), "landfall %d comes alone" % (i + 1)
+
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        last = G.roster_for(house)[-1]
+        assert G.kind_at(house, 6) is last, (
+            "the seventh rung has no body on it")
+        bodies = {}
+        for i in range(len(G.SCHEDULE)):
+            run = G.Run(house)
+            run.kaiju_index = i
+            f = G.Fight(run, run.next_kind())
+            bodies[i] = sum(e.max_hp for e in f.enemies)
+            assert f.boss() is f.enemies[0], i
+        assert bodies[6] > bodies[5], (
+            "%s: the last landfall is lighter than the one before it: "
+            "%d against %d" % (house, bodies[6], bodies[5]))
+        assert bodies[6] > bodies[0] * 8, bodies
+    print("  seven landfalls; the first three are duels and the last "
+          "carries %.1fx the body of the sixth"
+          % (bodies[6] / float(bodies[5])))
+
+    # -- the seventh one actually happens --------------------------------
+    # It did not. `resolve` ended the campaign on the length of the
+    # ROSTER, which was six, so the seventh was scheduled, printed on
+    # the brief and then quietly never arrived.
+    G.set_house("keal")
+    run = G.Run("keal")
+    run.kaiju_index = 5
+    seen = []
+    for _ in range(3):
+        nl = run.next_landfall
+        if nl is None:
+            break
+        seen.append(nl)
+        f = G.Fight(run, run.next_kind())
+        for e in f.enemies:
+            e.hp = 0.0
+        f.over = "won"
+        ending, _ = run.resolve(f)
+        if ending:
+            seen.append(ending)
+            break
+    assert seen[:2] == [G.SCHEDULE[5], G.SCHEDULE[6]], seen
+    assert seen[-1] == "victory", seen
+    print("  and the ladder, not the roster, is what ends a campaign")
+
+    # -- an escort pays, because otherwise it is a tax --------------------
+    G.set_house("keal")
+    run = G.Run("keal")
+    run.kaiju_index = 5              # the sixth: a STRIDER and a SPITTER
+    f = G.Fight(run, run.next_kind())
+    extra = [e for e in f.enemies if getattr(e, "escort", False)]
+    assert len(extra) == 2, len(extra)
+    for e in extra:
+        e.hp = 0.0
+    f.update(1 / 60.0, {})
+    assert f.escort_scrap > 0, "killing the others paid nothing"
+    was = run.scrap
+    f.over = "won"
+    f.enemies[0].hp = 0.0
+    run.resolve(f)
+    assert run.scrap - was > f.kind.scrap, (
+        "the harvest did not include what came with it")
+    print("  and what comes with the sixth is worth another %d %s"
+          % (f.escort_scrap, G.word("scrap", "scrap").lower()))
+
+    # the SEVENTH pays nothing extra, and that is not an oversight: the
+    # top-rung body's own harvest is zero - "nothing left to salvage" -
+    # so a second one of it is worth exactly as much, and the campaign
+    # ends on that landfall anyway
+    run = G.Run("keal")
+    run.kaiju_index = 6
+    f = G.Fight(run, run.next_kind())
+    assert f.kind.scrap == 0, f.kind.scrap
+    for e in f.enemies:
+        e.hp = 0.0
+    f.update(1 / 60.0, {})
+    assert f.escort_scrap == 0, f.escort_scrap
+    wipe_meta()
+    G.set_house("keal")
+
     # -- nothing on the grown side is being WELDED ------------------------
     # A job in progress fills from the feet and the fill line carried a
     # torch: a hot white glow and orange sparks flying off the bead. On a
@@ -1511,7 +1738,8 @@ def gov():
     # the state moved RYEZ's calendar too, and pays RYEZ the same
     # the three delay lines are in GOV_KEYS; EARLY WAKE is a contract and
     # is not bought until later, so this is +3 rather than +2
-    assert [ryez.landfall(i) for i in range(6)] == [d + 3 for d in G.SCHEDULE]
+    assert ([ryez.landfall(i) for i in range(len(G.SCHEDULE))]
+            == [d + 3 for d in G.SCHEDULE])
     assert ryez.grace == 3 and ryez.scrap_mult > 1.0
     assert ryez.mech.hide_cut > 0.0
     assert G.Mech("standard").max_hp("torso") == G.Run("ryez").mech.max_hp(
@@ -2028,7 +2256,7 @@ def frames():
 
     # -- and every module you can press says which key ---------------------
     keyed = set(G.MOD_KEY)
-    assert keyed == {"flush", "emp", "lungs", "scream"}, keyed
+    assert keyed == {"flush", "emp", "lungs", "scream", "greatsac"}, keyed
     for k in keyed:
         assert k in G.MODULES, k
     print("  %d modules are on a key, and the HUD prints all %d"
@@ -2248,6 +2476,146 @@ def frames():
         "an animal with no sac and no colony grew one anyway")
     print("  and the sac on it swells from %dpx across to %d before it "
           "opens" % (empty.w, full.w))
+
+    # -- the GRAVID MOTHER's three, which nothing else has ---------------
+    # She is the one with organ sites going spare, so she is the one the
+    # signature kit hangs off: what she puts down is bigger, she has a
+    # hardpoint that puts down more of it and they fly, and she has one
+    # bay that spends most of the room inside her on a full-size body.
+    wipe_meta()
+    G.set_house("ryez")
+    G.add_marks(9000)
+    for k in ("st_gravid", "g_greatsac", "g_embryo"):
+        assert G.buy_ware(k), k
+
+    mother = G.CHASSIS["gravid"]
+    assert "wingbrood" in mother.guns
+    for ch in G.CHASSIS_LIST:                # and nobody else can mount it
+        got = [w.key for w in G.options_for("l_wpn", None, ch)]
+        assert ("wingbrood" in got) == (ch.key == "gravid"), (ch.key, got)
+    # the sac is LISTED everywhere once it is bought - hiding it was the
+    # bug - and CARRIED only by a grown body with a site going spare
+    for ch in G.CHASSIS_LIST:
+        assert "greatsac" in [m.key for m in G.module_list(ch)], ch.key
+        assert G.module_fits(G.MODULES["greatsac"], ch) == (
+            ch.key == "gravid"), ch.key
+    print("  the winged brood and the great sac fit her and nothing else")
+
+    def hers(*mods):
+        run = G.Run("ryez", "gravid")
+        run.scrap, run.alloy = 20000, 200
+        for s in run.mech.sockets():
+            if s not in G.HARDPOINTS:
+                run.mech.install(s, 3)
+        for m in mods:
+            run.mech.fit_module(m)
+        return run
+
+    # -- what she puts down is not what anything else puts down ----------
+    run = hers("embryo")
+    fm = G.Fight(run, G.roster_for("ryez")[2])
+    fm.brood_t = 0.01
+    for _ in range(12):
+        fm.update(1 / 60.0, {})
+    mine = [m for m in fm.mercs if m.brood]
+    plain = G.Run("ryez")
+    for s in plain.mech.sockets():
+        if s not in G.HARDPOINTS:
+            plain.mech.install(s, 3)
+    plain.mech.fit_module("embryo")
+    fp = G.Fight(plain, G.roster_for("ryez")[2])
+    fp.brood_t = 0.01
+    for _ in range(12):
+        fp.update(1 / 60.0, {})
+    theirs = [m for m in fp.mercs if m.brood]
+    assert len(mine) == len(theirs) + 1, (len(mine), len(theirs))
+    assert all(m.tier == 2 for m in mine), [m.tier for m in mine]
+    assert all(m.tier == 1 for m in theirs), [m.tier for m in theirs]
+    assert G.BROOD_TIER[2][0] > G.BROOD_TIER[1][0]
+    # hers stands up to a blow that kills an ordinary one
+    one, two = theirs[0], mine[0]
+    e = fp.boss()
+    fp.mech_hit(e, 400.0)
+    assert one.hp <= 0, "an ordinary one survived a swipe"
+    fm.mech_hit(fm.boss(), 400.0)
+    assert two.hp > 0, "hers went down to the first blow like any other"
+    fm.mech_hit(fm.boss(), 400.0)
+    assert two.hp <= 0, "hers is unkillable"
+    print("  hers come out %d at a time against %d, and each one stands "
+          "up to two blows" % (len(mine), len(theirs)))
+
+    # -- and the winged ones do not walk ---------------------------------
+    run = hers()
+    run.mech.install("l_wpn", "wingbrood")
+    fw = G.Fight(run, G.roster_for("ryez")[2])
+    for _ in range(40):
+        fw.update(1 / 60.0, {"fire_l": True})
+    fliers = [m for m in fw.mercs if m.tier == 3]
+    assert len(fliers) >= 3, len(fliers)
+    assert all(m.alt > 0 for m in fliers), [m.alt for m in fliers]
+    was = min(abs(m.x - fw.boss().x) for m in fliers)
+    for _ in range(120):
+        fw.update(1 / 60.0, {})
+    now = min(abs(m.x - fw.boss().x) for m in fw.mercs if m.tier == 3)
+    assert now < was - 200, (
+        "the winged brood closed %d in two seconds, which is a walk"
+        % (was - now))
+    print("  three of them go up and close %dm in two seconds"
+          % round(was - now))
+
+    # -- the great sac: one of her own, the size of you ------------------
+    run = hers("greatsac")
+    fs = G.Fight(run, G.roster_for("ryez")[2])
+    assert fs.can_greatsac()
+    assert fs.great_sac(), "she would not"
+    assert len(fs.allies) == 1
+    assert fs.mech.locked and fs.mech.heat >= fs.mech.heat_cap, (
+        "the strain of it is the whole cost and it did not land")
+    assert not fs.great_sac(), "twice in one landfall"
+    scion = fs.allies[0]
+    # "as big as the standard" is a claim about the PICTURE, so measure
+    # the picture rather than trusting the scale number
+    def tall(draw):
+        sf = pygame.Surface((760, 620), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        draw(sf)
+        return sf.get_bounding_rect().h
+    big = tall(lambda sf: G.draw_enemy(sf, scion, 380, 560, G.FSCALE, 2.0))
+    pz = G.Pose()
+    pz.face = 1
+    std = G.Mech("standard")
+    for s in std.sockets():
+        if s not in G.HARDPOINTS:
+            std.install(s, 3)
+    me = tall(lambda sf: G.draw_mech_side(sf, std, 380, 560, G.FSCALE, 2.0,
+                                          pz, bio=True))
+    assert abs(big - me) < me * 0.15, (
+        "a SCION is %dpx and the stock animal is %d - that is not the "
+        "same size" % (big, me))
+    # it fights, and it stands in front of you. The road is a mile
+    # long, so put the thing within walking distance rather than
+    # measuring how long a kaiju takes to cross a city
+    fs.boss().x = fs.mx + 700
+    before = fs.dealt
+    for _ in range(400):
+        fs.update(1 / 60.0, {})
+    assert fs.dealt > before, "it walked up the road and did nothing"
+    if fs.allies and fs.allies[0].hp > 0:
+        hp0 = fs.allies[0].hp
+        body = sum(fs.mech.hp[s] for s in fs.mech.sockets())
+        fs.mech_hit(fs.boss(), 300.0)
+        assert fs.allies[0].hp < hp0, "the scion did not take the blow"
+        assert sum(fs.mech.hp[s] for s in fs.mech.sockets()) == body, (
+            "it took the blow AND so did you")
+    print("  the scion draws %dpx against the stock animal's %d, and it "
+          "takes the blows" % (big, me))
+    # put the drawer back the way the rest of the strain section found
+    # it - everything after this asks for a body it has to own
+    wipe_meta()
+    G.set_house("ryez")
+    G.add_marks(9000)
+    for w in strains:
+        assert G.buy_ware(w.key), w.key
 
 
     f = G.Fight(grown("bloom"), G.roster_for("ryez")[2])

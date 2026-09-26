@@ -514,12 +514,18 @@ RYEZ_SOCKETS = {
     "l_arm": "LEFT FORELIMB", "r_arm": "RIGHT FORELIMB",
     "l_wpn": "LEFT ORGAN", "r_wpn": "RIGHT ORGAN",
     "reactor": "HEART", "armour": "CARAPACE",
+    # the two the GRAVID MOTHER has and nothing else grown does. They
+    # were missing from both of these tables, and the fight HUD looked
+    # them up with a bare [] - so putting anything at all on the one
+    # body in the house that HAS them closed the game.
+    "l_aux": "LEFT SITE", "r_aux": "RIGHT SITE",
 }
 
 # the fight HUD is narrower than the yard's, so it gets its own short set
 RYEZ_HUD = {"legs": "LIMBS", "torso": "CORE", "head": "SENSE",
             "l_arm": "L LIMB", "r_arm": "R LIMB", "l_wpn": "L ORGAN",
-            "r_wpn": "R ORGAN", "reactor": "HEART", "armour": "SHELL"}
+            "r_wpn": "R ORGAN", "reactor": "HEART", "armour": "SHELL",
+            "l_aux": "L SITE", "r_aux": "R SITE"}
 
 # Part and weapon names, keyed by (socket, tier-or-weapon-key). Same stats,
 # same costs, same everything - a different thing to call it.
@@ -1032,6 +1038,11 @@ WARE_LIST = [
          "a gene: it puts one on the animal, and what hatches is yours",
          "They do not live long. They were never going to.",
          house="ryez"),
+    Ware("g_greatsac", "hauk", "THE GREAT SAC", 210, "blueprint",
+         "Y: she puts one of her own down, full size",
+         "She will only sell it to somebody already carrying. It does "
+         "not go in anything else.",
+         house="ryez", needs="st_gravid"),
     Ware("g_lungs", "vask", "EXPANDED LUNGS", 105, "blueprint",
          "a gene: L, once a landfall, and everything goes backwards",
          "Two more of them, folded in behind the first two.",
@@ -1211,7 +1222,7 @@ RYEZ_WARE_NAME = {"bp_rail": "BARB LAUNCHER", "bp_hook": "TONGUE HOOK",
                   "quicknerve": "QUICK NERVE", "deepgut": "DEEP GUT"}
 
 # what a body is worth to the city, by which landfall it was
-MARKS_FOR = (14, 20, 28, 36, 46, 60)
+MARKS_FOR = (14, 20, 28, 36, 46, 60, 84)
 
 
 # -- the ledger -------------------------------------------------------------
@@ -2425,6 +2436,7 @@ CHASSIS_LIST = [
                      "r_wpn", "reactor", "armour", "l_aux", "r_aux"),
             mult={"speed": 0.76, "hp": 1.45, "dr": 1.15, "heat": 1.2,
                   "vent": 1.1},
+            guns=("wingbrood",), flags=("prolific",),
             style={"beast": "gravid"},
             tones={"main": (152, 96, 132), "dark": (72, 38, 62),
                    "light": (208, 142, 178), "trim": (238, 206, 120)},
@@ -2737,6 +2749,14 @@ WEAPON_LIST = [
            58, 2.90, 38.0, 2200,
            "All of them at once. There is no aiming it worth the name.",
            shots=6, splash=150, speed=760, stagger=0.10),
+    # Hers alone. A GRAVID MOTHER is the only body with the sites to
+    # carry it, and it is the only weapon in the game that does no damage
+    # of its own - everything it is worth happens after it lets go.
+    Weapon("wingbrood", "WINGED BROOD", "brood", 540, 3, 6, 250,
+           0, 4.4, 30.0, 2400,
+           "It does not fire. It lets three of them go, and they are "
+           "already in the air.",
+           shots=3),
     # Mike's, and locked until the Capital has been paid
     Weapon("claw", "PLASMA CLAW", "melee", 360, 2, 5, 190,
            42, 0.62, 8.2, 200,
@@ -2836,16 +2856,64 @@ BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook",
 BLUEPRINT_MODULES = {"emp": "mod_emp", "aux": "mod_aux",
                      "thrust": "mod_thrust", "eject": "mod_eject",
                      "scalehide": "g_scalehide", "embryo": "g_embryo",
-                     "lungs": "g_lungs", "scream": "g_scream"}
+                     "lungs": "g_lungs", "scream": "g_scream",
+                     "greatsac": "g_greatsac"}
+
+# ...and the one that also wants a body with the room for it. This is the
+# only gate of its kind in the game and it is not an exception to the
+# shop rule - you can still buy it. It simply will not fit in a rack that
+# has no spare organ site, which of the grown bodies means hers.
+MODULE_NEEDS_SITE = ("greatsac",)
 
 
-def module_list():
+def module_list(frame=None):
     """The rack, minus anything nobody has drawn for you yet. `has_ware`
     and not `bought`, so a bay full of KEAL electronics is simply not
-    offered to a house that grows its soldiers."""
+    offered to a house that grows its soldiers.
+
+    `frame` is NOT a filter, and it used to be. A GREAT SAC needs a
+    spare organ site on a grown body and the only one with them is the
+    GRAVID MOTHER, so on anything else the card simply vanished - a
+    thing bought for 210 marks that appears nowhere and explains
+    nothing. That is the same mistake as hiding a shop counter, and it
+    has now been made three times in this file. The card stays, greyed,
+    and `module_why` says what is missing."""
     return [m for m in MODULE_LIST
             if m.key not in BLUEPRINT_MODULES
             or has_ware(BLUEPRINT_MODULES[m.key])]
+
+
+def locked_modules():
+    """How many more this house could still be sold - NOT how many are
+    in the table. Four of them are Mike's, a gene rack will never hold
+    one, and counting those told a RYEZ player to go looking for
+    something that does not exist for them."""
+    n = 0
+    for m in MODULE_LIST:
+        ware = BLUEPRINT_MODULES.get(m.key)
+        if ware is None or has_ware(ware):
+            continue
+        w = WARES.get(ware)
+        if w is None or w.house in (None, CURRENT["house"]):
+            n += 1
+    return n
+
+
+def module_fits(mod, frame):
+    """Can this frame actually carry it? A TITAN TANK has two spare
+    mounts as well and it is a machine - there is nothing in it for a
+    sac to grow in."""
+    if mod.key not in MODULE_NEEDS_SITE:
+        return True
+    frame = frame or CHASSIS["standard"]
+    return bool("l_aux" in frame.sockets and (frame.style or {}).get("beast"))
+
+
+def module_why(mod, frame):
+    """Why it is greyed out, in the words of the house looking at it."""
+    if module_fits(mod, frame):
+        return None
+    return "NEEDS A SPARE %s" % sock_label("l_wpn").split()[-1]
 
 
 def part_of(socket, fit):
@@ -2994,6 +3062,9 @@ MODULE_LIST = [
     Module("embryo", "BROOD SAC", 380, 2, 5,
            "it puts one on the animal's back; what hatches fights for you",
            "They do not live long. They were never going to."),
+    Module("greatsac", "THE GREAT SAC", 560, 3, 6,
+           "Y: one of her own, full size - and the strain of it is total",
+           "It is not a bay. It is most of the room inside her."),
     Module("lungs", "EXPANDED LUNGS", 300, 1, 4,
            "L: one breath a landfall, and everything goes backwards",
            "Two more of them, folded in behind the first two."),
@@ -3019,7 +3090,8 @@ MODULE_LIST = [
 ]
 MODULES = {m.key: m for m in MODULE_LIST}
 # the ones you press, and on what
-MOD_KEY = {"flush": "V", "emp": "E", "lungs": "L", "scream": "Q"}
+MOD_KEY = {"flush": "V", "emp": "E", "lungs": "L", "scream": "Q",
+           "greatsac": "Y"}
 MOD_SLOT = "mods"                    # a job socket, but not one on the body
 
 
@@ -3107,6 +3179,27 @@ BROOD_EVERY = 21.0                   # seconds between sacs
 BROOD_N = 3                          # what comes out of one
 BROOD_DMG = 190.0                    # and what it does going off
 BROOD_SPLASH = 260.0
+# What came out of a sac was one thing however it got there. A GRAVID
+# MOTHER carries for months and has two organ sites nothing else has, so
+# what SHE puts down is a different animal: (hits it can take, how big it
+# draws, what it does going off, how far).
+#   1  the ordinary brood, out of a BROOD SAC or a HOLLOW SWARM
+#   2  hers. Twice the body, so it screens two blows instead of one
+#   3  hers, off the WINGED BROOD, and it does not walk
+BROOD_TIER = {1: (1.0, 1.00, 1.00, 1.00),
+              2: (2.0, 1.55, 1.85, 1.30),
+              3: (1.0, 1.24, 1.45, 1.15)}
+FLIER_ALT = 168.0                    # how high the winged ones sit
+FLIER_SPEED = 240.0                  # ...and they do not walk there
+FLIER_DIVE = 620.0                   # the drop, once they are over it
+# THE GREAT SAC. One of her own, full size, and the strain of it is the
+# whole cost - you cannot fire again until it has vented off.
+SCION_LIFE = 30.0
+SCION_HEAT = 1.0                     # heat goes to the ceiling, flat
+SCION_HP = 2600.0
+SCION_REACH = 250.0
+SCION_DMG = 210.0
+SCION_COOL = 2.1
 NUKE_BASE = 900.0                    # the floor, on an empty machine
 NUKE_SCALE = 0.55                    # ...and what every point of you adds
 NUKE_HEAT = 1.6                      # heat ceiling, times this, afterwards
@@ -6352,6 +6445,21 @@ BESTIARY = [
 ]
 KINDS = {k.key: k for k in BESTIARY}
 
+# THE SCION. Not a broodling and not a boss - it is the size of the
+# thing you are standing in, because that is the whole point of the
+# GREAT SAC, and it is on your side. It is an Enemy object like every
+# other animal on the field; what makes it yours is which list it is in.
+# The body is her own, one size down and a shade paler. "As big as the
+# standard" is a claim about the PICTURE, so it is measured against the
+# stock animal rather than guessed from a scale number - the first pass
+# used a CRAWLER's dimensions at 0.72 and put a dog on the road.
+SCION = Kind("scion", "SCION", "hers", (196, 126, 176), 1.22,
+             SCION_HP, 96, 0,
+             [atk("swipe", SCION_REACH, 0.45, SCION_DMG, SCION_COOL)],
+             0, 0, 0.0, 0,
+             (100, 52, -124, 3, 128, 52, -0.42, 29, 3, 2, 122, 1, 1),
+             "")
+
 BROODLING = Kind("broodling", "BROODLING", "", (176, 116, 170), 0.32,
                  230, 128, 0,
                  [atk("swipe", 150, 0.40, 26, 1.4)],
@@ -6665,16 +6773,22 @@ def roster_for(house_key):
 
 
 def kind_at(house_key, index):
+    """The body on this rung. Past the end of the roster it is the last
+    one again - the seventh landfall is the sixth one twice over, and
+    what makes it the seventh is what walks in beside it."""
     r = roster_for(house_key)
-    return r[index] if 0 <= index < len(r) else None
+    if index < 0:
+        return None
+    return r[min(index, len(r) - 1)]
 
 
-def draw_enemy(surf, e, x, gy, scale, t, windup=0.0):
-    """One opponent, whichever company made it."""
+def draw_enemy(surf, e, x, gy, scale, t, windup=0.0, face=-1):
+    """One opponent, whichever company made it - or, with `face` turned
+    round, the one animal on the field that is on your side."""
     k = e.kind
     dead = clamp(e.dead_t * 0.7, 0, 0.85) if not e.alive else 0.0
     if k.family == "bio":
-        draw_kaiju(surf, k, x, gy, scale, t, e.walk, e.moving, -1, windup,
+        draw_kaiju(surf, k, x, gy, scale, t, e.walk, e.moving, face, windup,
                    e.hurt, dead, e.maw)
         return
     pose = Pose()
@@ -6914,17 +7028,20 @@ class Merc:
     as a story. What it does is stand somewhere a swipe is about to land,
     which is worth a great deal and costs somebody their afternoon."""
 
-    __slots__ = ("x", "hp", "t", "fire", "dead", "face", "brood")
+    __slots__ = ("x", "hp", "t", "fire", "dead", "face", "brood", "tier",
+                 "alt")
 
-    __slots_extra__ = ("brood",)
+    __slots_extra__ = ("brood", "tier", "alt")
 
-    def __init__(self, x, face):
+    def __init__(self, x, face, tier=0):
         self.x = float(x)
-        self.hp = 1.0
+        self.tier = tier             # 0 hired, 1 brood, 2 hers, 3 winged
+        self.hp = BROOD_TIER.get(tier, (1.0,))[0]
         self.t = 0.0
         self.fire = random.uniform(0.2, 0.9)
         self.dead = 0.0
         self.face = face
+        self.alt = FLIER_ALT if tier == 3 else 0.0
         self.brood = False           # one of RYEZ's, which goes off
 
 
@@ -7039,9 +7156,28 @@ class Fight:
         self.pose.face = 1
         # The guns on the ridge do not stop one. They do take the edge off
         # the thing before it is anybody else's problem.
-        self.enemies = [Enemy(kind, WORLD_W - 260,
-                              hp_mult=(0.95 if has_ware("military") else 1.0)
-                              * kaiju_mult("hp"))]
+        hpm = ((0.95 if has_ware("military") else 1.0)
+               * kaiju_mult("hp"))
+        self.enemies = [Enemy(kind, WORLD_W - 260, hp_mult=hpm)]
+        # ...and whatever came with it, strung out behind
+        back = 0
+        for rung, count, frac in escorts_at(run.kaiju_index):
+            k = kind_at(run.house, rung)
+            # NOT `k is kind` - an escort of the same datasheet as the
+            # boss is the whole of the seventh landfall, and guarding
+            # against it silently spawned nothing there
+            if k is None:
+                continue
+            for _ in range(count):
+                back += 1
+                e = Enemy(k, WORLD_W - 150 + back * 190,
+                          hp_mult=hpm * frac)
+                e.escort = True
+                self.enemies.append(e)
+        self.escort_scrap = 0
+        self.escort_alloy = 0
+        self.allies = []            # hers, out of the GREAT SAC
+        self.sacced = False
         self.shots = []
         self.bits = []
         self.numbers = []
@@ -7124,6 +7260,23 @@ class Fight:
         fast = self.mech.has("autoloader") and wpn.kind in ("gun", "salvo")
         if fast:
             cycle *= 0.80
+        if wpn.kind == "brood":
+            # the one weapon that fires nothing. All of it happens after
+            if self.cd[side] > 0:
+                return
+            self.cd[side] = wpn.cd * cycle
+            self.mech.add_heat(wpn.heat)
+            self.pose.recoil[side] = 1.0
+            e = self.nearest(self.mx)
+            base = self.mx + self.pose.face * 90
+            for i in range(wpn.shots + (1 if self.mech.has("hoist") else 0)):
+                m = Merc(base + (i - 1) * 40, self.pose.face, 3)
+                m.brood = True
+                m.alt = FLIER_ALT * random.uniform(0.7, 1.05)
+                self.mercs.append(m)
+            self.say("THEY LET GO")
+            SFX.play("roar", 0.45)
+            return
         if wpn.kind == "beam":
             self.beam_on[side] = True
             self.mech.add_heat(wpn.heat * dt)
@@ -7373,6 +7526,9 @@ class Fight:
         if self.brood_t <= 0:
             self.brood_t = COLONY_EVERY if colony else BROOD_EVERY
             n_out = COLONY_N if colony else BROOD_N
+            big = self.mech.has_flag("prolific")
+            if big:
+                n_out += 1           # she is carrying more of them
             e = self.nearest(self.mx)
             if e is not None and e.alive:
                 for i in range(n_out):
@@ -7381,8 +7537,7 @@ class Fight:
                     # so every one of them stood with its back to the
                     # thing it is supposed to be standing in front of
                     bx = e.x - (i + 1) * 70 * (1 if e.x > self.mx else -1)
-                    m = Merc(bx, 1 if e.x > bx else -1)
-                    m.hp = 1.0
+                    m = Merc(bx, 1 if e.x > bx else -1, 2 if big else 1)
                     m.brood = True
                     self.mercs.append(m)
                 self.say("MORE OF THEM CAME OUT" if colony
@@ -7391,14 +7546,113 @@ class Fight:
 
     def brood_burst(self, m):
         """One of them dying, which is the half that matters."""
-        self.shake = max(self.shake, 6)
+        _, size, dmg, reach = BROOD_TIER.get(m.tier, BROOD_TIER[1])
+        self.shake = max(self.shake, 6 * size)
         SFX.play("wreck", 0.5)
         for e in self.enemies:
-            if e.alive and abs(e.x - m.x) < BROOD_SPLASH:
-                self.dealt += e.hurtby(BROOD_DMG, cut=self.mech.hide_cut)
-                e.stagger += 0.12 / e.kind.poise
-        for _ in range(16):
-            self.spark(m.x, -40 - random.uniform(0, 90), RYEZ_ACID, 1, 200)
+            if e.alive and abs(e.x - m.x) < BROOD_SPLASH * reach:
+                self.dealt += e.hurtby(BROOD_DMG * dmg,
+                                       cut=self.mech.hide_cut)
+                e.stagger += 0.12 * dmg / e.kind.poise
+        for _ in range(int(16 * size)):
+            self.spark(m.x, -40 - m.alt - random.uniform(0, 90), RYEZ_ACID,
+                       1, int(200 * size))
+
+    def can_greatsac(self):
+        """She needs the gene, the room to grow it, and one still in her."""
+        return (self.mech.has("greatsac") and not self.sacced
+                and module_fits(MODULES["greatsac"], self.mech.frame))
+
+    def great_sac(self):
+        """One of her own, full size, and the strain of it is the price.
+
+        Everything else RYEZ presses costs a resource or a slice of the
+        body. This costs the only thing a grown house cannot buy back
+        quickly: the heat goes straight to the ceiling and locks, so
+        from the moment it lands you are a body with no weapons until
+        you have vented the whole bar. Once a landfall, because the
+        thing it puts on the field is the size of you."""
+        if not self.can_greatsac() or self.mech.down:
+            return False
+        self.sacced = True
+        x = self.mx + self.pose.face * 430
+        self.allies.append(Enemy(SCION, x))
+        self.allies[-1].face = self.pose.face
+        self.mech.heat = self.mech.heat_cap * SCION_HEAT
+        self.mech.locked = True
+        self.say("SHE PUT ONE DOWN")
+        SFX.play("roar", 1.0)
+        self.shake = max(self.shake, 16)
+        for _ in range(40):
+            self.spark(x + random.uniform(-120, 120),
+                       -60 - random.uniform(0, 260), RYEZ_ACID, 1, 240)
+        return True
+
+    def ally_tick(self, dt):
+        """Hers, walking up the road at whatever is nearest.
+
+        It is the same Enemy object the other side uses, so it staggers,
+        burns and dies the same way - but it is driven from here rather
+        than from `enemy_tick`, because the thing it is walking at is on
+        the other list."""
+        for a in list(self.allies):
+            a.t = getattr(a, "t", 0.0) + dt
+            if a.hp <= 0:
+                a.dead_t += dt
+                if a.dead_t > 2.0:
+                    self.allies.remove(a)
+                continue
+            a.life = getattr(a, "life", SCION_LIFE) - dt
+            if a.life <= 0:
+                a.hp = 0.0
+                self.say("IT DID NOT HAVE LONG")
+                continue
+            e = self.nearest(a.x)
+            if e is None or not e.alive:
+                a.moving = 0.0
+                continue
+            a.face = 1 if e.x > a.x else -1
+            gap = abs(e.x - a.x) - e.span * 0.5
+            a.cool["swipe"] = a.cool.get("swipe", 0.0) - dt
+            if gap > SCION_REACH:
+                a.moving = 1.0
+                a.walk += dt * 6.0
+                # kind.speed and NOT `walk_speed` - that reads the
+                # contracts, which are things done TO kaiju, and hers is
+                # not one of theirs
+                a.x += (1 if e.x > a.x else -1) * a.kind.speed * dt
+            else:
+                a.moving = 0.0
+                if a.cool["swipe"] <= 0:
+                    a.cool["swipe"] = SCION_COOL
+                    a.maw = 1.0
+                    dealt = e.hurtby(SCION_DMG, cut=self.mech.hide_cut)
+                    self.dealt += dealt
+                    e.stagger += 0.16 / e.kind.poise
+                    self.number(e.x, -300, int(dealt), False)
+                    SFX.play("hit", 0.6)
+            a.maw = approach(a.maw, 0.0, dt * 2.0)
+
+    def ally_screen(self, e):
+        """Something the size of you, standing where the blow lands."""
+        for a in self.allies:
+            if a.hp > 0 and abs(a.x - e.x) < e.span + a.span + 120:
+                return a
+        return None
+
+    def dealt_to_ally(self, a, dmg):
+        a.hp -= dmg
+        a.hurt = 1.0
+        self.say("THE SCION TOOK THAT ONE")
+        SFX.play("thud", 0.6)
+        self.shake = max(self.shake, 5)
+        self.number(a.x, -320, int(dmg), False)
+        if a.hp <= 0:
+            a.hp = 0.0
+            self.say("HERS IS DOWN")
+            for _ in range(24):
+                self.spark(a.x, -60 - random.uniform(0, 240), RYEZ_ACID,
+                           1, 260)
 
     def flesh_nuke(self):
         """The one that costs you half of what you are.
@@ -7486,6 +7740,22 @@ class Fight:
             e = self.nearest(m.x)
             if e is None or not e.alive:
                 continue
+            if m.tier == 3:
+                # THE WINGED ONES. They do not walk up and chip at it and
+                # they do not wait to be swung at - they close, get over
+                # it, and come down. The whole weapon is the dive.
+                if abs(e.x - m.x) > e.span * 0.7:
+                    m.face = 1 if e.x > m.x else -1
+                    m.x += m.face * FLIER_SPEED * dt
+                    m.alt = approach(m.alt, FLIER_ALT, dt * 180.0)
+                else:
+                    m.alt -= FLIER_DIVE * dt
+                    if m.alt <= 0:
+                        m.alt = 0.0
+                        m.hp = 0.0   # and that is the delivery
+                if m.t > 14.0:       # they do not circle all fight
+                    m.hp = 0.0
+                continue
             gap = (e.x - m.x) * m.face
             if gap > 200:
                 m.x += m.face * 86.0 * dt
@@ -7534,10 +7804,11 @@ class Fight:
         it dies - which gets brighter the longer it has been out, so the
         one that is about to pop is the one you can see."""
         main, dark, trim = self.brood_tones()
+        sz = BROOD_TIER.get(m.tier, BROOD_TIER[1])[1]
         x = int(self.sx(m.x) + sh[0])
         if x < -40 or x > W + 40:
             return
-        g = int(gy)
+        g = int(gy - m.alt * FSCALE)
         if m.hp <= 0:
             # it does not leave a body, it leaves a wet mark and a flash
             f = clamp(m.dead / 1.2, 0, 1)
@@ -7552,28 +7823,46 @@ class Fight:
         # animal, but big enough that you can tell at a glance which of
         # the things in the road are yours and which you are paying for
         bob = 1 if math.sin(m.t * 13.0) > 0 else 0
-        by = g - 8 - bob
+        by = int(g - 8 * sz - bob)
         fc = m.face
-        for i in range(4):                    # eight legs, in two banks
-            px = x - 7 + i * 4
-            sw = math.sin(m.t * 13.0 + i * 1.9) * 3.0
-            pygame.draw.line(surf, shade(dark, 1.35), (px, by + 2),
-                             (int(px - sw), g), 1)
-            pygame.draw.line(surf, dark, (px, by + 2), (int(px + sw), g), 1)
-        pygame.draw.ellipse(surf, main, (x - 9, by - 5, 18, 11))
-        pygame.draw.ellipse(surf, shade(dark, 1.15), (x - 9, by - 5, 18, 11),
-                            1)
+        bw, bh = int(9 * sz), int(11 * sz)
+        if m.tier == 3:
+            # wings, and they are the loud part. The two beat a fraction
+            # apart so the pair never reads as one solid shape.
+            for k in (-1, 1):
+                f = math.sin(m.t * 26.0 + (0.0 if k < 0 else 0.7))
+                ty = by - 4 - f * 9 * sz
+                wing = [(x, by - 2), (x + k * 15 * sz, ty),
+                        (x + k * 19 * sz, ty + 7 * sz), (x + k * 4, by + 2)]
+                pygame.draw.polygon(surf, shade(main, 0.82), wing)
+                pygame.draw.polygon(surf, shade(dark, 1.2), wing[:3], 1)
+        else:
+            for i in range(4):                # eight legs, in two banks
+                px = int(x - 7 * sz + i * 4 * sz)
+                sw = math.sin(m.t * 13.0 + i * 1.9) * 3.0
+                pygame.draw.line(surf, shade(dark, 1.35), (px, by + 2),
+                                 (int(px - sw), g), 1)
+                pygame.draw.line(surf, dark, (px, by + 2),
+                                 (int(px + sw), g), 1)
+        pygame.draw.ellipse(surf, main, (x - bw, by - bh // 2, bw * 2, bh))
+        pygame.draw.ellipse(surf, shade(dark, 1.15),
+                            (x - bw, by - bh // 2, bw * 2, bh), 1)
         pygame.draw.ellipse(surf, shade(main, 1.22),
-                            (x - 7 + (4 if fc > 0 else 0), by - 5, 10, 6))
+                            (x - bw + (bw if fc > 0 else 0), by - bh // 2,
+                             bw, max(2, int(bh * 0.55))))
         for k in (-1, 1):                     # mandibles, out in front
-            pygame.draw.line(surf, shade(main, 1.4), (x + fc * 7, by),
-                             (x + fc * 14, by + k * 4), 2)
-        pygame.draw.line(surf, shade(dark, 1.3), (x - fc * 2, by - 5),
-                         (x - fc * 9, by - 8), 1)
-        ripe = clamp(m.t / 26.0, 0, 1)        # the charge it is carrying
+            pygame.draw.line(surf, shade(main, 1.4),
+                             (int(x + fc * bw * 0.8), by),
+                             (int(x + fc * 15 * sz), int(by + k * 4 * sz)), 2)
+        if m.tier != 3:
+            pygame.draw.line(surf, shade(dark, 1.3),
+                             (x - fc * 2, by - bh // 2),
+                             (int(x - fc * 10 * sz), int(by - 9 * sz)), 1)
+        ripe = clamp(m.t / (14.0 if m.tier == 3 else 26.0), 0, 1)
         pu = 0.55 + 0.45 * math.sin(m.t * (4.0 + ripe * 11.0))
-        pygame.draw.circle(surf, trim, (x, by), max(2, int(2 + ripe * 2.2)))
-        blit_glow(surf, (x, by), 9 + ripe * 13, trim,
+        pygame.draw.circle(surf, trim, (x, by),
+                           max(2, int((2 + ripe * 2.2) * sz)))
+        blit_glow(surf, (x, by), (9 + ripe * 13) * sz, trim,
                   int(55 + 95 * ripe * pu))
 
     def draw_brood_sac(self, surf, mx, gy):
@@ -7942,10 +8231,21 @@ class Fight:
                 self.say("THE PLATES TOOK IT")
                 self.spark(self.mx, -200, (255, 226, 170), 8, 150)
             return
+        big = self.ally_screen(e) if self.allies else None
+        if big is not None:
+            self.dealt_to_ally(big, dmg)
+            return
         m = self.merc_screen(e) if self.mercs else None
         if m is not None:
-            m.hp = 0.0
-            self.say("A MERCENARY TOOK THAT ONE")
+            m.hp -= 1.0
+            if m.hp > 0:
+                # hers are big enough to be hit and keep standing
+                self.say("IT TOOK THAT AND STAYED UP")
+                SFX.play("hit", 0.5)
+                self.spark(m.x, -50 - m.alt, RYEZ_ACID, 5, 120)
+                return
+            self.say("ONE OF THEM TOOK THAT" if m.brood
+                     else "A MERCENARY TOOK THAT ONE")
             SFX.play("wreck", 0.4)
             self.shake = max(self.shake, 4)
             for _ in range(10):
@@ -8127,11 +8427,14 @@ class Fight:
             self.shriek()
         if inp.get("nuke") and not down:
             self.flesh_nuke()
+        if inp.get("sac") and not down:
+            self.great_sac()
         self.pose.flash = approach(self.pose.flash, 0.0, dt * 3.0)
 
         self.strain_tick(dt)
         self.brood_tick(dt)
         self.merc_tick(dt)
+        self.ally_tick(dt)
         # -- the animals ---------------------------------------------------
         for e in self.enemies:
             self.rot_tick(e, dt)
@@ -8214,6 +8517,18 @@ class Fight:
         self.cam = clamp(self.cam, self.mx - edge, self.mx + edge)
         self.shake = max(0.0, self.shake - dt * 22)
 
+        # -- anything that came with it, and what it was worth -------------
+        # An escort that pays nothing is a pure tax: more to shoot, more
+        # damage taken, and the same money at the end of it.
+        for e in self.enemies:
+            if e.alive or getattr(e, "paid", False) or not getattr(
+                    e, "escort", False):
+                continue
+            e.paid = True
+            self.escort_scrap += int(e.kind.scrap * ESCORT_PAY)
+            self.escort_alloy += 1 if e.kind.alloy else 0
+            self.say(e.kind.name + " DOWN")
+
         # -- is it over? ----------------------------------------------------
         self.integrity = max(0.0, self.integrity)
         if self.over is None:
@@ -8269,6 +8584,22 @@ class Fight:
             if e.state == "strike" and e.attack and e.attack["kind"] == "beam":
                 self.draw_beam(surf, e, gy, sh)
 
+        for a in self.allies:                 # hers, and the size of you
+            ax = self.sx(a.x) + sh[0]
+            if not (-400 < ax < W + 400):
+                continue
+            draw_enemy(surf, a, ax, gy, FSCALE, self.t,
+                       face=getattr(a, "face", 1))
+            if a.hp > 0:
+                # what it has left, and how long it has left, over its
+                # own head - it is a body you are standing behind and
+                # both of those change whether you stay there
+                br = pygame.Rect(int(ax) - 70, int(gy) - 300, 140, 7)
+                panel(surf, br.inflate(4, 4), (14, 12, 18), LINE, 3)
+                bar(surf, br, clamp(a.hp / a.max_hp, 0, 1), RYEZ_ACID)
+                lf = clamp(getattr(a, "life", SCION_LIFE) / SCION_LIFE, 0, 1)
+                pygame.draw.rect(surf, shade(RYEZ_ACID, 0.55),
+                                 (br.x, br.bottom + 3, int(br.w * lf), 2))
         for m in self.mercs:                  # small, and in front of it
             self.draw_merc(surf, m, gy, sh)
         mx = self.sx(self.mx) + sh[0]
@@ -8395,8 +8726,12 @@ class Fight:
             col = GOOD if f > 0.6 else (WARN if f > 0.25 else BAD)
             if f <= 0:
                 col = (70, 64, 70)
-            lab = (RYEZ_HUD if CURRENT["house"] == "ryez"
-                   else HUD_LABEL)[s]
+            # `.get` and a fall-through, which is the rule every other
+            # house table in this file already follows: a key a house
+            # does not rename reads in the other house's words rather
+            # than taking the game down
+            lab = (RYEZ_HUD.get(s) if CURRENT["house"] == "ryez" else None)
+            lab = lab or HUD_LABEL.get(s, s.upper())
             text(surf, lab, 13, (26, y), DIM if f > 0 else FAINT)
             bar(surf, pygame.Rect(140, y + 2, 96, 8), f, col)
             y += 17
@@ -8422,6 +8757,8 @@ class Fight:
                 cy = chips.y + 4 + (i // 2) * 22
                 live = not spent.get(k, False)
                 short = pname(MOD_SLOT, mod)
+                if short.startswith("THE "):
+                    short = short[4:]        # ...or the chip reads "THE"
                 short = short.split()[0][:9] if len(short) > 11 else short
                 text(surf, short, 12, (cx, cy), CORE if live else FAINT)
                 # every module you can PRESS says so, not just the flush -
@@ -8473,10 +8810,39 @@ class Fight:
             if boss.slow > 0:
                 text(surf, "SNAGGED -%d%%" % round(boss.slow_f * 100), 13,
                      (r.x + 8, r.y + 3), CORE)
+            # ...and everything else still standing, because one bar for
+            # a road with three bodies on it is not a readout
+            rest = [e for e in self.enemies if e is not boss and e.alive]
+            if rest:
+                sr = pygame.Rect(r.x, r.bottom + 4, r.w, 14 * len(rest) + 6)
+                panel(surf, sr, (14, 16, 23), LINE, 4)
+                for i, e in enumerate(rest[:4]):
+                    ry = sr.y + 4 + i * 14
+                    text(surf, e.kind.name, 12, (sr.x + 8, ry), FAINT)
+                    bar(surf, pygame.Rect(sr.right - 150, ry + 2, 142, 7),
+                        clamp(e.hp / e.max_hp, 0, 1),
+                        shade(e.kind.hide, 1.2) if know else (100, 104, 120),
+                        back=(12, 13, 18))
 
         # where it is, when it is not on the screen. The commonest way to
         # lose the city is not being out-fought, it is losing track of the
         # thing while it walks round you.
+        for e in self.enemies:
+            # the same marker the boss gets, smaller. The commonest way
+            # to lose the city is losing track of a thing walking round
+            # you, and there is more than one of them now
+            if e is boss or not e.alive:
+                continue
+            ex_ = self.sx(e.x)
+            if not (ex_ < 40 or ex_ > W - 40):
+                continue
+            px = 44 if ex_ < 40 else W - 44
+            d = -1 if ex_ < 40 else 1
+            cy = GROUND_Y - 210
+            col = BAD if e.x < self.mx else WARN
+            pygame.draw.polygon(surf, shade(col, 0.8), [
+                (px + d * 10, cy), (px - d * 6, cy - 9),
+                (px - d * 6, cy + 9)])
         if boss is not None and boss.alive:
             bx = self.sx(boss.x)
             gap = int(abs(boss.x - self.mx))
@@ -8576,7 +8942,55 @@ class Fight:
 # The schedule is FIXED and published. You are never surprised by a
 # landfall; you are only ever short of the days between them.
 # ---------------------------------------------------------------------------
-SCHEDULE = (7, 15, 24, 34, 45, 57)
+# Six rungs, and then the one after the last one.
+#
+# The ladder used to stop at the SOVEREIGN and the SOVEREIGN was a thing
+# a finished machine beat every time. Day 70 is the same top-rung body
+# with ANOTHER top-rung body walking beside it - no new datasheet, no
+# new art, and nothing about it a player has not already seen; what is
+# new is that there are two of them and only one of you.
+SCHEDULE = (7, 15, 24, 34, 45, 57, 70)
+
+# WHAT ELSE COMES ASHORE.
+#
+# One body at a time is a duel, and a duel is a thing a good build simply
+# wins: measured at the top of the ladder, a PLAIN animal took the
+# SOVEREIGN eight times out of eight and a kitted one halved the clock.
+# A fatter boss does not fix that - a fatter boss is the same duel with
+# more hit points in it, and the duel was the problem.
+#
+# So from the third landfall the thing coming up the road brings
+# company, and the company is drawn from the RUNGS ALREADY BEATEN. That
+# is the whole design: nothing new has to be drawn or balanced, the
+# difficulty scales with the ladder on its own, and the fight changes
+# shape rather than getting longer. You cannot stand and trade with the
+# big one while two smaller ones walk past you into the city.
+# Measured, and moved twice. The first pass started at the THIRD
+# landfall and took RYEZ's win rate there from 83% to 50% with the city
+# down to 78 - which is not difficulty, it is a wall on day 24 in front
+# of a player who has one arm and a leg. Company arrives when there is
+# a machine to meet it with.
+ESCORTS = ((),                    # 1st - it comes alone, and it should
+           (),                    # 2nd - still alone
+           (),                    # 3rd - still a duel
+           ((0, 1),),             # 4th - and now it does not come alone
+           ((1, 1),),             # 5th
+           ((3, 1), (1, 1)),      # 6th
+           ((5, 1, 1.0),))        # 7th - the top rung, twice, and the
+                                  #       second one is not a lesser
+                                  #       example of anything
+ESCORT_HP = 0.78                  # an escort is a lesser example of one
+ESCORT_PAY = 0.55                 # ...and it pays like one
+
+
+def escorts_at(index):
+    """[(rung, count, hp multiplier)] for everything walking in beside
+    the boss. The multiplier is optional and defaults to ESCORT_HP."""
+    out = []
+    for row in (ESCORTS[index] if 0 <= index < len(ESCORTS) else ()):
+        rung, count = row[0], row[1]
+        out.append((rung, count, row[2] if len(row) > 2 else ESCORT_HP))
+    return out
 MAX_CREW = 6
 CREW_START = 2                       # KEAL, on a gantry
 HANDS_START = 4                      # RYEZ, over five tanks - see below
@@ -9130,6 +9544,8 @@ class Run:
             got_a = (kind.alloy + (1 if self.yard >= 3 else 0)
                      + (1 if has_ware("hazmat") else 0)
                      + (1 if has_ware("c_feed") else 0))
+            got_s += getattr(fight, "escort_scrap", 0)
+            got_a += getattr(fight, "escort_alloy", 0)
             self.scrap += got_s
             self.alloy += got_a
             got_m = int(round(MARKS_FOR[min(self.kaiju_index,
@@ -9190,7 +9606,11 @@ class Run:
         self.kaiju_index += 1
         if self.integrity <= 0:
             return "over", lines
-        if self.kaiju_index >= len(roster_for(self.house)):
+        # the LADDER ends the campaign, not the roster. They were the
+        # same length until there was a seventh landfall, and reading
+        # the roster here meant the seventh was scheduled, printed on
+        # the brief, and then never happened
+        if self.kaiju_index >= len(SCHEDULE):
             return ("victory" if fight.over == "won" else "unfinished"), lines
         lines.append("NEXT LANDFALL: DAY %d" % self.landfall(self.kaiju_index))
         return None, lines
@@ -10104,7 +10524,7 @@ class Hangar:
                 run.alloy, word("crew", "CREW"), run.free_crew), 16,
              (r.right - 22, r.y + 20), DIM, right=True)
         job = run.job_on(MOD_SLOT)
-        mods = module_list()
+        mods = module_list(m.frame)
         # Mike's four push the rack past the five rows the overlay has, so
         # it goes four across rather than growing a scrollbar for one more
         # row. Thirteen in three columns is five rows and fits; seventeen
@@ -10120,8 +10540,9 @@ class Hangar:
             building = job is not None and job.target == mod.key
             room = len(m.mods) < m.bays
             afford = run.can_afford(*run.price(mod, MOD_SLOT))
+            fits = module_fits(mod, m.frame)
             can = (not inside and not building and job is None and room
-                   and afford and not run.no_room()
+                   and afford and not run.no_room() and fits
                    and (run.bio or run.free_crew > 0))
             edge = (GOOD if inside else CORE if building
                     else PAINT if can else LINE)
@@ -10142,10 +10563,18 @@ class Hangar:
                 self.price(surf, card, mod, run, MOD_SLOT)
             for k, ln in enumerate(wrap(peffect(mod), 12, card.w - 20)[:2]):
                 text(surf, ln, 12, (card.x + 10, card.y + 28 + k * 14), CORE)
-            for k, ln in enumerate(wrap(pblurb(MOD_SLOT, mod), 12,
-                                        card.w - 20)[:2]):
-                text(surf, ln, 12, (card.x + 10, card.y + 60 + k * 14), DIM,
-                     bold=False)
+            why = module_why(mod, m.frame)
+            if why:
+                # the amber line, same as the one a shop card gets when
+                # the ware is bought and does nothing in this house
+                text(surf, why, 12, (card.x + 10, card.y + 60), WARN)
+                text(surf, "THE GRAVID MOTHER HAS TWO", 12,
+                     (card.x + 10, card.y + 74), FAINT, bold=False)
+            else:
+                for k, ln in enumerate(wrap(pblurb(MOD_SLOT, mod), 12,
+                                            card.w - 20)[:2]):
+                    text(surf, ln, 12, (card.x + 10, card.y + 60 + k * 14),
+                         DIM, bold=False)
             act = ("pull", mod.key) if inside else ("build", mod)
             b = Button(card, "", act, enabled=inside or can)
             b.hover(mouse)
@@ -10160,6 +10589,11 @@ class Hangar:
                 % sock_label("torso").lower()
                 if len(m.mods) >= m.bays else
                 "One job at a time in here." if job is not None else
+                "%d %s, %d of them, and %d more this house can still "
+                "be sold. That is the whole point."
+                % (m.bays, word("bays", "bays").lower(), len(mods),
+                   locked_modules())
+                if locked_modules() else
                 "%d %s, %d of them. That is the whole point."
                 % (m.bays, word("bays", "bays").lower(), len(mods)))
         text(surf, note, 15, (r.centerx, r.bottom - 26), FAINT, center=True)
@@ -10362,7 +10796,20 @@ class Brief:
         text(surf, "LANDFALL", 20, (60, 44), BAD)
         text(surf, k.name, 66, (60, 66), INK)
         text(surf, k.title.upper(), 20, (60, 136), PAINT)
+        with_it = []
+        for rung, count, _frac in escorts_at(run.kaiju_index):
+            ek = kind_at(run.house, rung)
+            if ek is not None:
+                with_it.append("%d x %s" % (count, ek.name) if count > 1
+                               else ek.name)
         y = 182
+        if with_it:
+            # a published schedule that leaves two bodies off it is not a
+            # published schedule. This goes under the NAME rather than at
+            # the end of the stats, where it fell in behind the machine
+            lab = "IT IS NOT COMING ALONE - WITH IT: " + ",  ".join(with_it)
+            text(surf, lab, fit(lab, 17, 560), (60, 162), BAD)
+            y = 194
         for line in wrap(k.note, 18, 560):
             text(surf, line, 18, (60, y), DIM, bold=False)
             y += 24
@@ -13412,6 +13859,7 @@ class App:
             "lungs": k[pygame.K_l],
             "scream": k[pygame.K_q],
             "nuke": k[pygame.K_u],
+            "sac": k[pygame.K_y],
             "fire_l": k[pygame.K_j] or mb[0],
             "fire_r": k[pygame.K_k] or mb[2],
             "flush": k[pygame.K_v],
