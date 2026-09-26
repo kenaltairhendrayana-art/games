@@ -1616,6 +1616,103 @@ def frames():
         print("  %-11s %-4s in %5.1fs, dealt %6.0f, took %5.0f"
               % (key, f.over or "---", f.t, f.dealt, f.taken))
 
+    # -- and it looks like itself in BOTH renderers ------------------------
+    # The yard draws the machine face-on and the fight draws it in profile,
+    # and they are two different routines. The livery reached the profile
+    # one and not the other, so a WAR MACHINE was built for six weeks in
+    # standard grey and turned red at landfall. Every frame is now rendered
+    # both ways and compared against the stock frame's pixels.
+    def shot(key, front):
+        m = built(key).mech
+        s = pygame.Surface((300, 420))
+        s.fill((0, 0, 0))
+        if front:
+            G.draw_mech_front(s, m, 150, 400, 0.34, t=2.0)
+        else:
+            pz = G.Pose()
+            pz.face = 1
+            G.draw_mech_side(s, m, 150, 400, 0.46, 2.0, pz)
+        return pygame.image.tostring(s, "RGB")
+
+    for view, name in ((True, "the yard"), (False, "the street")):
+        base = shot("standard", view)
+        seen = {}
+        for ch in G.CHASSIS_LIST:
+            px = shot(ch.key, view)
+            if ch.key != "standard":
+                assert px != base, "%s looks like the stock frame in %s" % (
+                    ch.key, name)
+            for other, opx in seen.items():
+                assert px != opx, "%s and %s are identical in %s" % (
+                    ch.key, other, name)
+            seen[ch.key] = px
+        print("  all seven are distinguishable in %s" % name)
+
+    # -- the WAR MACHINE's signature, which is the reason to own one -------
+    cl = G.WEAPONS["cleaver"]
+    assert cl.sweep == 3 and cl.knock > 0 and cl.reach > 280, cl.key
+    assert "cleaver" in G.CHASSIS["warmachine"].guns
+    for ch in G.CHASSIS_LIST:
+        if ch.key != "warmachine":
+            assert "cleaver" not in ch.guns, ch.key
+        got = {w.key for w in G.options_for("l_wpn", None, ch)}
+        assert ("cleaver" in got) == (ch.key == "warmachine"), ch.key
+    r = built("warmachine")
+    r.mech.install("l_wpn", "cleaver")
+    r.mech.install("r_wpn", "cleaver")
+    f = G.Fight(r, G.roster_for("keal")[4])
+    f.enemies.append(G.Enemy(G.BROODLING, f.boss().x - 120))
+    f.enemies.append(G.Enemy(G.BROODLING, f.boss().x - 240))
+    hit_at_once = 0
+    for _ in range(4800):
+        before = sum(1 for e in f.enemies if e.alive)
+        f.update(1 / 40.0, {"right": True, "fire_l": True, "fire_r": True})
+        hit_at_once = max(hit_at_once, before)
+        if f.over:
+            break
+    assert f.dealt > 0, "the cleaver never landed"
+    print("  RED CLEAVER: %s, %d reach, %d bodies a stroke, %s in %.0fs"
+          % (G.stat_line(cl).split("  ")[0], cl.reach, cl.sweep,
+             f.over, f.t))
+
+    # -- and they are different SHAPES, not the same one repainted --------
+    # A livery passes the test above on colour alone. This one measures
+    # the silhouette: how tall the thing is, how wide, and where the
+    # widest part of it sits.
+    def box(key):
+        m = built(key).mech
+        # SRCALPHA, or get_bounding_rect finds every opaque pixel on the
+        # surface and every frame measures exactly the size of the canvas
+        s = pygame.Surface((420, 460), pygame.SRCALPHA)
+        s.fill((0, 0, 0, 0))
+        G.draw_mech_front(s, m, 210, 440, 0.38, t=2.0)
+        r = s.get_bounding_rect()
+        return r.w, r.h
+    shapes = {c.key: box(c.key) for c in G.CHASSIS_LIST}
+    base_w, base_h = shapes["standard"]
+    for key, (w, h) in shapes.items():
+        if key == "standard":
+            continue
+        assert (abs(w - base_w) > 6 or abs(h - base_h) > 6), (
+            "%s is the stock silhouette in a different colour: %dx%d "
+            "against %dx%d" % (key, w, h, base_w, base_h))
+    # what each frame is SUPPOSED to be, rather than whatever it happened
+    # to measure the day it was written - the WAR MACHINE grew taller when
+    # its legs were thickened and broke an assertion that only ever said
+    # "the cyclops is currently the taller of those two"
+    widest = max(shapes, key=lambda k: shapes[k][0])
+    tallest = max(shapes, key=lambda k: shapes[k][1])
+    assert widest == "warmachine", (widest, shapes)
+    assert tallest == "sovereign", (tallest, shapes)
+    assert shapes["cyclops"][0] < base_w, shapes["cyclops"]
+    assert shapes["cyclops"][1] > base_h, shapes["cyclops"]
+    assert shapes["warmachine"][0] > shapes["cyclops"][0] * 1.6, shapes
+    assert shapes["tank"][1] < base_h - 20, shapes["tank"]
+    assert shapes["robo"][0] < base_w * 0.8, shapes["robo"]
+    assert shapes["robo"][1] < base_h * 0.8, shapes["robo"]
+    print("  and they are different shapes: " + ", ".join(
+        "%s %dx%d" % (k, v[0], v[1]) for k, v in shapes.items()))
+
     # -- and the screen that picks one draws -------------------------------
     pf = G.PickFrame("keal")
     pf.t = 1.0
