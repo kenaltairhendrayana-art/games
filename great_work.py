@@ -112,6 +112,7 @@ import math
 import os
 import random
 import sys
+import time
 from array import array
 
 import pygame
@@ -1034,6 +1035,36 @@ WARE_LIST = [
          "Below what you can hear, and it does not stop at the ears.",
          house="ryez"),
 
+    # -- Prof Anja Hauk: whole animals, and what they cost -----------------
+    # Novak sells frames and tells them apart by what bolts on. These are
+    # told apart by what the body DOES, which is the difference between
+    # the two houses stated in the only place it can be stated - the
+    # thing you are standing in.
+    Ware("st_bloom", "hauk", "BLIGHT BLOOM", 195, "chassis",
+         "everything near it rots, all the time",
+         "It does not appear to be doing anything. That is the point.",
+         house="ryez"),
+    Ware("st_spire", "hauk", "CHITIN SPIRE", 215, "chassis",
+         "its hide thickens the longer a landfall runs",
+         "Stand still long enough and it stops being a thing that moves.",
+         house="ryez"),
+    Ware("st_hollow", "hauk", "HOLLOW SWARM", 260, "chassis",
+         "thin, and it births brood that fight for you",
+         "It is not one animal. It never was.",
+         house="ryez"),
+    Ware("st_stalker", "hauk", "PALE STALKER", 300, "chassis",
+         "very fast, very thin, and a third of what swings at it misses",
+         "Things that swing at it tend to find it was not there.",
+         house="ryez"),
+    Ware("st_gravid", "hauk", "GRAVID MOTHER", 340, "chassis",
+         "two more organ sites than anything else has",
+         "Carrying, and it has been carrying for months.",
+         house="ryez"),
+    Ware("st_deepone", "hauk", "DEEP LEVIATHAN", 480, "chassis",
+         "vast, slow, and it closes its own wounds mid-fight",
+         "It came up once, a long way, and it has not finished.",
+         house="ryez"),
+
     Ware("v_mend", "vask", "FIELD SURGERY", 30, "service",
          "mends the animal whole, here and now",
          "He does not ask what happened and he does not write it down.",
@@ -1490,60 +1521,162 @@ class Score:
     def __init__(self, seconds):
         self.n = int(self.RATE * seconds)
         self.buf = [0.0] * self.n
+        # A loop is a few hundred thousand samples of pure-Python
+        # synthesis and the slowest takes about two seconds. That cannot
+        # happen on the frame somebody clicks a shop tab, and it cannot
+        # be moved to a thread either - this is CPU-bound Python, so a
+        # worker just holds the GIL and starves the frame instead (tried
+        # it: an 8.5 second frame). So the notes are COLLECTED here and
+        # rendered a few milliseconds at a time by `render_some`, off the
+        # back of the frame loop that already exists.
+        self.jobs = []
 
     def _put(self, i, v):
         self.buf[i % self.n] += v
 
+    CHUNK = 6000                     # samples per job, about 4ms of work
+
     def note(self, kind, midi, t, dur, vol=0.3, detune=0.0):
-        """One voice. `kind` picks the waveform and the envelope with it."""
-        hz = _hz(midi) * (1.0 + detune)
-        start = int(t * self.RATE)
+        """Queue a note, in pieces if it is a long one.
+
+        A four-beat pad at 22050 is 66,000 samples and takes 84ms to
+        render, which is five frames on its own - so the budget has to be
+        able to stop INSIDE a note, not only between them. Each piece
+        knows where it starts, so the phase and the envelope are the same
+        as if it had been rendered in one go."""
         n = int(dur * self.RATE)
         if n <= 0:
             return
-        atk = 0.006 if kind in ("saw", "square", "pluck") else 0.09
-        if kind == "bell":
-            atk = 0.002
-        ai = max(1, int(atk * self.RATE))
-        ph = 0.0
-        for i in range(n):
-            f = i / n
-            ph += TAU * hz / self.RATE
-            if kind == "saw":
-                v = ((ph / TAU) % 1.0) * 2.0 - 1.0
-                v = v * 0.7 + 0.3 * math.sin(ph * 2.0)
-            elif kind == "square":
-                v = (1.0 if math.sin(ph) >= 0 else -1.0) * 0.6
-            elif kind == "horn":
-                # odd harmonics, a slow lip - this is the voice the yard
-                # theme has not got, which is what keeps them apart
-                v = (math.sin(ph) + 0.42 * math.sin(ph * 3.0)
-                     + 0.2 * math.sin(ph * 5.0)) * 0.55
-            elif kind == "bell":
-                # the loudest partial is the tierce at 1.19x, not the
-                # fundamental - that is what makes it read as metal
-                v = (0.42 * math.sin(ph) + 1.0 * math.sin(ph * 1.19)
-                     + 0.5 * math.sin(ph * 2.0) + 0.3 * math.sin(ph * 2.99)
-                     + 0.18 * math.sin(ph * 4.2)) * 0.38
-            elif kind == "pad":
-                v = (math.sin(ph) + 0.5 * math.sin(ph * 2.002)
-                     + 0.25 * math.sin(ph * 3.0)) * 0.42
-            else:                                        # pluck
-                v = math.sin(ph) + 0.3 * math.sin(ph * 2.0)
-                v *= 0.6
-            if kind == "bell":
-                env = math.exp(-f * 4.2)
-            elif kind == "pluck":
-                env = math.exp(-f * 5.5)
-            elif kind == "pad":
-                env = math.sin(math.pi * clamp(f, 0.0, 1.0)) ** 0.7
-            else:
-                env = (1.0 - f) ** 0.6
-            if i < ai:
-                env *= i / ai
-            self._put(start + i, v * env * vol)
+        i = 0
+        while i < n:
+            j = min(n, i + self.CHUNK)
+            self.jobs.append((self._note_part,
+                              (kind, midi, t, dur, vol, detune, i, j), {}))
+            i = j
 
-    def drum(self, kind, t, vol=0.4):
+    def drum(self, *a, **k):
+        self.jobs.append((self._drum, a, k))
+
+    def render_some(self, seconds):
+        """Do up to `seconds` of work. True when there is nothing left."""
+        end = time.perf_counter() + seconds
+        jobs = self.jobs
+        while jobs:
+            fn, a, k = jobs.pop()
+            fn(*a, **k)
+            if time.perf_counter() >= end:
+                break
+        return not jobs
+
+    def finish(self):
+        while self.jobs:
+            fn, a, k = self.jobs.pop()
+            fn(*a, **k)
+
+    def _note_part(self, kind, midi, t, dur, vol, detune, i0, i1):
+        """One voice. `kind` picks the waveform and the envelope with it.
+
+        The maths here is exactly what it always was, and it has to be: a
+        bell's loudest partial is the tierce at 1.19x the fundamental and
+        the pad's second partial sits at 2.002x so it beats slowly against
+        the octave. Neither is periodic with the fundamental, so the
+        obvious optimisation - render one cycle into a table and read it
+        back - silently destroys the two voices that carry the score.
+        Tried it; the bell stopped sounding like metal.
+
+        What HAS gone is the overhead around the maths. The old loop did
+        six string comparisons on `kind`, an attribute lookup for the
+        rate, and a method call with a modulo in it, per sample, at 22050
+        samples a second of note. The waveform is now chosen once as a
+        list of (amplitude, multiplier) partials, the envelope is cached
+        by length because a bar is a bar and the same durations come round
+        again and again, and the write is a direct index with the wrap
+        case split off."""
+        hz = _hz(midi) * (1.0 + detune)
+        n = int(dur * self.RATE)
+        if n <= 0:
+            return
+        env = _env(kind)
+        ai = _attack(kind)
+        es = (ENV_N - 1) / n         # sample index -> envelope index
+        buf = self.buf
+        total = self.n
+        start = (int(t * self.RATE) + i0) % total
+        dph = TAU * hz / self.RATE
+        sin = math.sin
+        count = i1 - i0
+        wrap = start + count > total
+        base = i0
+
+        if kind == "saw":
+            ph = dph * base
+            for i in range(count):
+                ph += dph
+                v = (((ph / TAU) % 1.0) * 2.0 - 1.0) * 0.7 \
+                    + 0.3 * sin(ph * 2.0)
+                j = (start + i) % total if wrap else start + i
+                k = base + i
+                buf[j] += (v * env[int(k * es)] * vol
+                           * (k / ai if k < ai else 1.0))
+            return
+        if kind == "square":
+            ph = dph * base
+            for i in range(count):
+                ph += dph
+                v = 0.6 if sin(ph) >= 0 else -0.6
+                j = (start + i) % total if wrap else start + i
+                k = base + i
+                buf[j] += (v * env[int(k * es)] * vol
+                           * (k / ai if k < ai else 1.0))
+            return
+
+        parts, scale = _PARTIALS[kind]
+        if len(parts) == 2:                      # pluck, unrolled
+            (a0, m0), (a1, m1) = parts
+            d0, d1 = dph * m0, dph * m1
+            p0, p1 = d0 * base, d1 * base
+            for i in range(count):
+                p0 += d0
+                p1 += d1
+                v = (a0 * sin(p0) + a1 * sin(p1)) * scale
+                j = (start + i) % total if wrap else start + i
+                k = base + i
+                buf[j] += (v * env[int(k * es)] * vol
+                           * (k / ai if k < ai else 1.0))
+            return
+        if len(parts) == 3:                      # horn and pad
+            (a0, m0), (a1, m1), (a2, m2) = parts
+            d0, d1, d2 = dph * m0, dph * m1, dph * m2
+            p0, p1, p2 = d0 * base, d1 * base, d2 * base
+            for i in range(count):
+                p0 += d0
+                p1 += d1
+                p2 += d2
+                v = (a0 * sin(p0) + a1 * sin(p1) + a2 * sin(p2)) * scale
+                j = (start + i) % total if wrap else start + i
+                k = base + i
+                buf[j] += (v * env[int(k * es)] * vol
+                           * (k / ai if k < ai else 1.0))
+            return
+        (a0, m0), (a1, m1), (a2, m2), (a3, m3), (a4, m4) = parts
+        d0, d1, d2 = dph * m0, dph * m1, dph * m2
+        d3, d4 = dph * m3, dph * m4
+        p0, p1, p2 = d0 * base, d1 * base, d2 * base
+        p3, p4 = d3 * base, d4 * base
+        for i in range(count):                   # bell
+            p0 += d0
+            p1 += d1
+            p2 += d2
+            p3 += d3
+            p4 += d4
+            v = (a0 * sin(p0) + a1 * sin(p1) + a2 * sin(p2)
+                 + a3 * sin(p3) + a4 * sin(p4)) * scale
+            j = (start + i) % total if wrap else start + i
+            k = base + i
+            buf[j] += (v * env[int(k * es)] * vol
+                       * (k / ai if k < ai else 1.0))
+
+    def _drum(self, kind, t, vol=0.4):
         start = int(t * self.RATE)
         if kind == "kick":
             n = int(0.16 * self.RATE)
@@ -1576,31 +1709,114 @@ class Score:
                 self._put(start + i, (ring * math.exp(-f * 5.0) + nz) * vol)
 
     def to_bytes(self):
+        """Normalise, trim, fade and pack. Drains anything still queued
+        first, so this is safe to call on a half-rendered Score."""
+        self.finish()
+        for _ in self.pack_steps():
+            pass
+        return self.out
+
+    def pack_steps(self, budget=0.004):
+        """The same work, yielding every few milliseconds.
+
+        Packing is a pass over three quarters of a million samples and it
+        used to be one uninterruptible 330ms lump at the end of building
+        a loop - longer than every note in the loop put together and by
+        far the worst frame in the game. It is a generator now and the
+        frame loop pulls on it."""
         peak = max(1e-6, max(abs(v) for v in self.buf))
         g = 0.82 / peak
+        yield False
         # trim back in 10ms blocks to the last audible one, keep 0.1s, and
         # fade 25ms so the loop point does not click
         blk = int(self.RATE * 0.01)
         thresh = peak * 0.004
         end = self.n
         while end > blk * 8:
-            seg = self.buf[end - blk:end]
-            if max(abs(v) for v in seg) > thresh:
+            if max(abs(v) for v in self.buf[end - blk:end]) > thresh:
                 break
             end -= blk
         end = min(self.n, end + int(self.RATE * 0.1))
         fade = int(self.RATE * 0.025)
+        yield False
         out = array("h")
-        for i in range(end):
-            v = self.buf[i] * g
-            if i >= end - fade:
-                v *= (end - i) / fade
-            out.append(int(clamp(v, -1.0, 1.0) * 32767))
-        return out
+        buf = self.buf
+        i = 0
+        while i < end:
+            stop = time.perf_counter() + budget
+            while i < end:
+                v = buf[i] * g
+                if i >= end - fade:
+                    v *= (end - i) / fade
+                out.append(int(clamp(v, -1.0, 1.0) * 32767))
+                i += 1
+                if not i & 1023 and time.perf_counter() >= stop:
+                    break
+            if i < end:
+                yield False
+        self.out = out
+        yield True
 
 
 # Chords are (root midi, the three notes over it). Each piece names its own
 # progression so that nothing but the key is shared between them.
+# The voices, as (amplitude, multiplier) partials. Two of these are
+# INHARMONIC on purpose - the bell's tierce at 1.19 and the pad's 2.002
+# beating against the octave - which is why none of this can be reduced
+# to a single-cycle wavetable.
+_PARTIALS = {
+    "horn": (((1.0, 1.0), (0.42, 3.0), (0.2, 5.0)), 0.55),
+    "bell": (((0.42, 1.0), (1.0, 1.19), (0.5, 2.0), (0.3, 2.99),
+              (0.18, 4.2)), 0.38),
+    "pad": (((1.0, 1.0), (0.5, 2.002), (0.25, 3.0)), 0.42),
+    "pluck": (((1.0, 1.0), (0.3, 2.0)), 0.6),
+}
+_ENVS = {}
+
+
+ENV_N = 1024
+
+
+def _env(kind):
+    """The decay shape of a voice, at a fixed resolution.
+
+    This used to be built per NOTE LENGTH and cached by it - a better hit
+    rate, but the first note of any new duration pays for a list as long
+    as the note. A four-beat pad is 66,000 entries, built in one lump,
+    inside one frame, and that was the worst hitch left in the music.
+    A thousand points is inaudible at this rate and is built once per
+    voice for the whole program.
+
+    The attack is not in here. It is a fixed number of SAMPLES, so as a
+    fraction of the note it moves with the length; the caller applies
+    it."""
+    e = _ENVS.get(kind)
+    if e is not None:
+        return e
+    exp, sin_ = math.exp, math.sin
+    e = [0.0] * ENV_N
+    for i in range(ENV_N):
+        f = i / ENV_N
+        if kind == "bell":
+            v = exp(-f * 4.2)
+        elif kind == "pluck":
+            v = exp(-f * 5.5)
+        elif kind == "pad":
+            v = sin_(math.pi * f) ** 0.7
+        else:
+            v = (1.0 - f) ** 0.6
+        e[i] = v
+    _ENVS[kind] = e
+    return e
+
+
+def _attack(kind):
+    atk = 0.006 if kind in ("saw", "square", "pluck") else 0.09
+    if kind == "bell":
+        atk = 0.002
+    return max(1, int(atk * Score.RATE))
+
+
 def _build_yard():
     """THE YARD - slow, wide, almost nothing happening. A hammer on 1."""
     bpm, bars = 68.0, 8
@@ -1792,22 +2008,122 @@ TRACKS = {"yard": _build_yard, "landfall": _build_landfall,
           "capital": _build_capital, "office": _build_office,
           "lab": _build_lab}
 _music = {}
+_baked = {}                          # name -> rendered bytes, from a worker
 _playing = [None]
 
 
+# Synthesising all seven loops is about sixteen seconds of CPU, and no
+# amount of slicing makes that free - it just spreads it over a few
+# minutes of play. So it is paid ONCE, ever: a rendered loop is written
+# next to the save files and read straight back on every later run.
+# Bump the version when a builder changes or the old audio will be kept.
+MUSIC_CACHE_V = 1
+
+
+def _cache_path(name):
+    return os.path.join(_save_dir(), "loop_%s_v%d.raw" % (name,
+                                                          MUSIC_CACHE_V))
+
+
+def _cache_load(name):
+    try:
+        with open(_cache_path(name), "rb") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def _cache_save(name, raw):
+    try:
+        with open(_cache_path(name), "wb") as fh:
+            fh.write(bytes(raw))
+    except (OSError, TypeError):
+        pass                                     # a cache miss is not a bug
+
+
+_queue = []                          # names still to render, in order
+_job = [None]                        # [name, Score, packer] being rendered
+BAKE_BUDGET = 0.006                  # seconds of synthesis per frame
+
+
+def prebake(names):
+    """Ask for these loops. They are rendered a slice at a time by
+    `music_tick`, which the frame loop calls."""
+    if not SFX.ok:
+        return
+    for nm in names:
+        if (nm in _baked or nm not in TRACKS or nm in _queue
+                or (_job[0] and _job[0][0] == nm)):
+            continue
+        _queue.append(nm)
+
+
+def music_tick(budget=BAKE_BUDGET):
+    """A few milliseconds of synthesis, off the back of the frame.
+
+    At four milliseconds a frame and sixty frames a second, the slowest
+    loop in the game is ready in about eight seconds of play - and the
+    player is looking at a shop, with something already playing, for all
+    of it."""
+    if not SFX.ok:
+        return
+    if _job[0] is None:
+        if not _queue:
+            return
+        nm = _queue.pop(0)
+        raw = _cache_load(nm)
+        if raw:
+            _baked[nm] = raw
+            return
+        try:
+            _job[0] = [nm, TRACKS[nm](), None]
+        except Exception:
+            _baked[nm] = b""
+            return
+    job = _job[0]
+    nm, sc = job[0], job[1]
+    try:
+        if job[2] is None:
+            if sc.render_some(budget):
+                job[2] = sc.pack_steps(budget)
+            return
+        if next(job[2]):                         # packing finished
+            _baked[nm] = sc.out
+            _cache_save(nm, sc.out)
+            _job[0] = None
+    except StopIteration:
+        _baked[nm] = getattr(sc, "out", b"")
+        _job[0] = None
+    except Exception:
+        _baked[nm] = b""
+        _job[0] = None
+
+
 def music(name):
-    """Start a loop, or keep the one that is already going."""
+    """Start a loop, or keep the one that is already going.
+
+    A loop is a few hundred thousand samples of pure-Python synthesis and
+    the slowest takes about two seconds, so building one on the frame it
+    is asked for froze the game - most obviously in the shop, where every
+    counter has its own and changing tab is a single click. It is built
+    on a worker now and the previous loop keeps playing until it is
+    ready. `Bazaar.update` asks every frame, so nothing has to poll."""
     if not SFX.ok or SFX.muted:
         return
     if _playing[0] == name:
         return
+    if name not in TRACKS:
+        return
     snd = _music.get(name)
     if snd is None:
-        maker = TRACKS.get(name)
-        if maker is None:
+        raw = _baked.get(name)
+        if raw is None:
+            prebake((name,))
+            return                               # keep what is playing
+        if not raw:
             return
         try:
-            snd = pygame.mixer.Sound(buffer=maker().to_bytes())
+            snd = pygame.mixer.Sound(buffer=raw)
         except (pygame.error, MemoryError):
             return
         _music[name] = snd
@@ -2025,6 +2341,87 @@ CHASSIS_LIST = [
             style={"head": "box", "shoulder": "box", "eye": "band"},
             prop={"leg": 1.0, "legw": 1.0, "body": 1.14, "wide": 1.30,
                   "head": 0.86, "arm": 1.18}),
+
+    # -----------------------------------------------------------------------
+    # THE STRAINS. Novak sells FRAMES and they are told apart by what they
+    # can bolt on - which guns, how many mounts, whether they have a head.
+    # These are told apart by what the BODY DOES, and none of them has an
+    # equivalent on the steel side. That is deliberate: a strain that was
+    # a WAR MACHINE with scales on would be a reskin, and the whole point
+    # of two houses is that they are not each other.
+    # -----------------------------------------------------------------------
+    Chassis("hollow", "HOLLOW SWARM", "st_hollow",
+            "It is not one animal. It never was. The shell walks because "
+            "enough of them inside it agree on a direction.",
+            "thin, and it births brood that fight for you, constantly",
+            mult={"speed": 1.15, "hp": 0.70, "dr": 0.70, "heat": 0.9,
+                  "vent": 1.2},
+            flags=("colony",),
+            tones={"main": (136, 128, 96), "dark": (62, 58, 40),
+                   "light": (186, 178, 138), "trim": (206, 226, 120)},
+            prop={"leg": 1.06, "legw": 0.80, "body": 0.94, "wide": 0.86,
+                  "head": 0.84, "arm": 0.92}),
+
+    Chassis("deepone", "DEEP LEVIATHAN", "st_deepone",
+            "It came up once, a long way, and it has not finished coming "
+            "up. Everything about it is slower than it looks.",
+            "vast and slow, and it closes its own wounds MID-fight",
+            mult={"speed": 0.70, "hp": 1.85, "dr": 1.25, "heat": 1.3,
+                  "vent": 0.8},
+            flags=("regrow",),
+            tones={"main": (58, 92, 122), "dark": (22, 38, 56),
+                   "light": (108, 150, 184), "trim": (120, 226, 214)},
+            prop={"leg": 0.88, "legw": 1.50, "body": 1.26, "wide": 1.34,
+                  "head": 0.92, "arm": 1.22, "all": 1.10}),
+
+    Chassis("spire", "CHITIN SPIRE", "st_spire",
+            "Stand still long enough and it stops being a thing that "
+            "moves and starts being a thing that is there.",
+            "its hide THICKENS the longer a landfall runs",
+            mult={"speed": 0.80, "hp": 1.30, "dr": 1.10, "heat": 1.15,
+                  "vent": 1.05},
+            flags=("harden",),
+            tones={"main": (150, 138, 118), "dark": (70, 62, 50),
+                   "light": (206, 194, 168), "trim": (232, 176, 96)},
+            prop={"leg": 0.92, "legw": 1.18, "body": 1.22, "wide": 1.10,
+                  "head": 0.80, "arm": 1.05}),
+
+    Chassis("stalker", "PALE STALKER", "st_stalker",
+            "Thin, quiet, and the wrong colour for anywhere. Things that "
+            "swing at it tend to find it was not there.",
+            "very fast, very thin, and a third of what swings at it misses",
+            mult={"speed": 1.42, "hp": 0.62, "dr": 0.55, "heat": 0.85,
+                  "vent": 1.3, "crit": 1.5},
+            flags=("faint",),
+            tones={"main": (196, 196, 186), "dark": (96, 96, 92),
+                   "light": (238, 238, 230), "trim": (176, 120, 204)},
+            prop={"leg": 1.30, "legw": 0.68, "body": 0.84, "wide": 0.76,
+                  "head": 0.88, "arm": 1.10}),
+
+    Chassis("gravid", "GRAVID MOTHER", "st_gravid",
+            "Carrying, and it has been carrying for months. There is room "
+            "on it for things there is no room for on anything else.",
+            "two more organ sites than anything else has, and heavy with it",
+            sockets=("legs", "torso", "head", "l_arm", "l_wpn", "r_arm",
+                     "r_wpn", "reactor", "armour", "l_aux", "r_aux"),
+            mult={"speed": 0.76, "hp": 1.45, "dr": 1.15, "heat": 1.2,
+                  "vent": 1.1},
+            tones={"main": (152, 96, 132), "dark": (72, 38, 62),
+                   "light": (208, 142, 178), "trim": (238, 206, 120)},
+            prop={"leg": 0.86, "legw": 1.36, "body": 1.30, "wide": 1.40,
+                  "head": 0.78, "arm": 1.14, "all": 1.06}),
+
+    Chassis("bloom", "BLIGHT BLOOM", "st_bloom",
+            "Nothing it stands near stays well. It does not appear to be "
+            "doing anything, and that is the point of it.",
+            "everything near it rots, all the time, without being told to",
+            mult={"speed": 0.94, "hp": 1.10, "dr": 0.95, "heat": 1.0,
+                  "vent": 1.15},
+            flags=("miasma",),
+            tones={"main": (104, 140, 84), "dark": (44, 64, 38),
+                   "light": (158, 196, 118), "trim": (206, 240, 96)},
+            prop={"leg": 0.96, "legw": 1.08, "body": 1.06, "wide": 1.16,
+                  "head": 1.10, "arm": 0.96}),
 
     Chassis("robo", "LITTLE ROBO", "ch_robo",
             "Tin, a key in its back, and two feet that go one after the "
@@ -2685,6 +3082,17 @@ NUKE_STUN = 2.6
 NUKE_SLOW = 6.0
 NUKE_ROT = 60.0
 NUKE_ROT_T = 9.0
+# The strains. Every one of these is a thing the BODY does, which is the
+# whole difference between Novak's counter and Hauk's: a frame is told
+# apart by what bolts on to it, an animal by what it is.
+COLONY_EVERY = 11.0                  # a hollow swarm sheds this often
+COLONY_N = 2
+REGROW = 0.011                       # of max, per second, per socket
+HARDEN_RATE = 0.62                   # flat DR added per second standing
+HARDEN_CAP = 46.0
+FAINT_MISS = 0.34                    # of everything swung at a stalker
+MIASMA_DPS = 17.0                    # what standing near a bloom costs
+MIASMA_REACH = 520.0
 SCALE_DR = 30.0                      # flat, off every hit
 SCALE_THORNS = 26.0                  # and what it takes back in melee
 FLESHMOTOR_BIG = 2.5                 # one over the top instead of one flat
@@ -2798,6 +3206,7 @@ class Mech:
         self.install("torso", 1)
         self.install("l_arm", 1)
         self.mods = []               # module keys, in the order they went in
+        self.harden = 0.0            # a CHITIN SPIRE, thickening
         # fight-time state, reset by Fight
         self.heat = 0.0
         self.locked = False
@@ -2918,7 +3327,8 @@ class Mech:
     @property
     def dr(self):
         v = self.stat("armour", "dr", 0.0) * self.frame.of("dr")
-        return v + (SCALE_DR if self.has("scalehide") else 0.0)
+        v += SCALE_DR if self.has("scalehide") else 0.0
+        return v + self.harden
 
     @property
     def spread(self):
@@ -4278,7 +4688,10 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
     they were authored in profile, so the fight gets them for nothing and
     only the moving parts are computed here."""
     tones = tones or BIO_TONES
-    rig = Side(surf, sx, gy, scale, pose.face)
+    # the animal gets its strain's proportions the same way a machine
+    # gets its frame's - this was passed to the steel renderer and not
+    # to this one, so a RYEZ strain was the stock body in a new colour
+    rig = Side(surf, sx, gy, scale, pose.face, mech.frame.prop)
 
     def col(socket, base):
         if mech.fit[socket] is None:
@@ -4586,12 +4999,15 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                    tones=None, bio=None):
     """`tones` repaints the whole machine - that is how a KEAL model is
     drawn by the same routine that draws yours, in its own livery."""
-    if tones is None and getattr(mech, "chassis", "standard") != "standard":
-        # a frame is painted in its own colours by the same routine that
-        # paints yours, which is what `tones` was always for
-        tones = mech.frame.tones
+    # WHICH BODY comes first, and it is decided before any repaint. A
+    # caller passing `tones` means "this is the other house's machine,
+    # in its livery" - that is how the enemy mech is drawn in a RYEZ run
+    # - but a chassis supplying its OWN tones means nothing of the kind.
+    # Reading the two the same way drew every RYEZ strain as a mech.
     if bio is None:
         bio = tones is None and CURRENT["house"] == "ryez"
+    if tones is None and getattr(mech, "chassis", "standard") != "standard":
+        tones = mech.frame.tones
     if bio:
         draw_beast_side(surf, mech, sx, gy, scale, t, pose,
                         tones if tones is not BIO_TONES else None)
@@ -5915,6 +6331,7 @@ class Fight:
         self.kind = kind
         self.city = city or City(seed=run.day * 13 + 7)
         self.mech.reset_for_fight()
+        self.mech.harden = 0.0
         self.mx = WALL_X + 420.0
         self.mvel = 0.0
         self.pose = Pose()
@@ -6220,24 +6637,50 @@ class Fight:
                        -240 - random.uniform(0, 120), (236, 214, 255), 1, 260)
         return True
 
+    def strain_tick(self, dt):
+        """What the body is doing on its own, whatever the pilot does."""
+        m = self.mech
+        if m.has_flag("harden") and not m.down:
+            m.harden = min(HARDEN_CAP, m.harden + HARDEN_RATE * dt)
+        if m.has_flag("regrow") and not m.down:
+            # it closes as the fight runs, which is a different thing from
+            # the SOVEREIGN closing between them: this one can out-heal a
+            # slow fight and cannot out-heal a fast one
+            for s in m.sockets():
+                mx = m.max_hp(s)
+                if 0 < m.hp[s] < mx:
+                    m.hp[s] = min(mx, m.hp[s] + mx * REGROW * dt)
+        if m.has_flag("miasma"):
+            for e in self.enemies:
+                if e.alive and abs(e.x - self.mx) < MIASMA_REACH:
+                    self.dealt += e.hurtby(MIASMA_DPS * dt,
+                                           cut=m.hide_cut)
+                    if random.random() < dt * 4:
+                        self.spark(e.x + random.uniform(-60, 60),
+                                   -40 - random.uniform(0, 180),
+                                   RYEZ_ACID, 1, 110)
+
     def brood_tick(self, dt):
         """BROOD SAC. It puts one on the animal, and what hatches is
         yours: fast, brittle, and it goes off when it dies. They are bait
         with teeth - the thing they are really buying is the attack that
         lands on them instead of on you."""
-        if not self.mech.has("embryo") or self.over is not None:
+        colony = self.mech.has_flag("colony")
+        if not (self.mech.has("embryo") or colony) or self.over is not None:
             return
         self.brood_t -= dt
         if self.brood_t <= 0:
-            self.brood_t = BROOD_EVERY
+            self.brood_t = COLONY_EVERY if colony else BROOD_EVERY
+            n_out = COLONY_N if colony else BROOD_N
             e = self.nearest(self.mx)
             if e is not None and e.alive:
-                for i in range(BROOD_N):
+                for i in range(n_out):
                     m = Merc(e.x - (i + 1) * 70, -1)
                     m.hp = 1.0
                     m.brood = True
                     self.mercs.append(m)
-                self.say("THE SAC OPENED")
+                self.say("MORE OF THEM CAME OUT" if colony
+                         else "THE SAC OPENED")
                 SFX.play("roar", 0.5)
 
     def brood_burst(self, m):
@@ -6680,6 +7123,11 @@ class Fight:
             self.say("THE ROAR - SYSTEMS SCRAMBLED")
 
     def mech_hit(self, e, dmg, silent=False, beam=False):
+        if self.mech.has_flag("faint") and random.random() < FAINT_MISS:
+            if not silent:
+                self.say("IT WAS NOT THERE")
+                self.spark(self.mx, -200, (222, 214, 236), 6, 160)
+            return
         if self.charge > 0:
             if not silent:
                 self.say("THE PLATES TOOK IT")
@@ -6872,6 +7320,7 @@ class Fight:
             self.flesh_nuke()
         self.pose.flash = approach(self.pose.flash, 0.0, dt * 3.0)
 
+        self.strain_tick(dt)
         self.brood_tick(dt)
         self.merc_tick(dt)
         # -- the animals ---------------------------------------------------
@@ -10994,6 +11443,92 @@ VASK_HAIR = (214, 214, 208)
 VASK_APRON = (98, 82, 70)
 
 
+HAUK_TONE = (176, 138, 196)
+HAUK_HAIR = (46, 34, 40)
+HAUK_COAT = (198, 206, 196)
+HAUK_APRON = (86, 96, 92)
+HAUK_MASK = (128, 140, 132)
+
+
+def draw_hauk_front(surf, cx, gy, h, t):
+    """A long dark braid over one shoulder, a cartridge respirator, and
+    a rubber apron with nothing on it.
+
+    Deliberately the tidy one. Vask is all hair and enthusiasm and Novak
+    has a pencil through her knot; Hauk decides what shape the animal is
+    and does not appear to find any of it remarkable."""
+    u = h / 100.0
+    bob = math.sin(t * 1.15 + 2.6) * 0.8 * u
+    top = gy - 38 * u + bob
+    sway = math.sin(t * 0.9) * 2.4 * u
+    hb = top - 10 * u
+    hh = 42 * u
+    br = hb - hh
+    # the braid, behind everything, hanging forward over the shoulder
+    pygame.draw.polygon(surf, shade(HAUK_HAIR, 0.82), [
+        (cx - 20 * u, br + 4 * u), (cx - 30 * u - sway, br + 16 * u),
+        (cx - 33 * u - sway * 1.4, br + 44 * u),
+        (cx - 26 * u - sway, br + 58 * u),
+        (cx - 19 * u, br + 40 * u), (cx - 16 * u, br + 14 * u)])
+    for i in range(4):                           # the plait, in sections
+        q = i / 3.0
+        pygame.draw.line(surf, shade(HAUK_HAIR, 0.62),
+                         (cx - 30 * u - sway * q, br + (18 + q * 34) * u),
+                         (cx - 20 * u - sway * q, br + (22 + q * 34) * u),
+                         max(1, int(1.8 * u)))
+    _blk(surf, cx - 32 * u, top, 64 * u, 50 * u, HAUK_COAT, 0.78, 4)
+    _blk(surf, cx - 21 * u, top + 4 * u, 42 * u, 46 * u, HAUK_APRON, 0.72, 3)
+    for sgn in (-1, 1):                          # gloves, to the elbow
+        ax = cx + sgn * 38 * u
+        _blk(surf, ax - 12 * u, top + 2 * u, 25 * u, 24 * u, HAUK_COAT,
+             0.78, 3)
+        _blk(surf, ax - 12 * u, top + 22 * u, 25 * u, 22 * u,
+             (150, 158, 150), 0.7, 3)
+        _blk(surf, cx + sgn * 25 * u - 8 * u, top + 36 * u, 17 * u, 9 * u,
+             (168, 176, 168), 0.72, 3)
+    _blk(surf, cx - 8 * u, top - 11 * u, 16 * u, 14 * u, SKIN_D, 0.8, 2)
+    _blk(surf, cx - 23 * u, br, 46 * u, hh, SKIN, 0.8, 4)
+    for sgn in (-1, 1):                          # level, unimpressed brows
+        pygame.draw.line(surf, (58, 44, 48),
+                         (cx + sgn * 6 * u, br + 11 * u),
+                         (cx + sgn * 17 * u, br + 11 * u),
+                         max(2, int(2.4 * u)))
+        pygame.draw.circle(surf, (40, 34, 40),
+                           (cx + sgn * 11 * u, br + 18 * u), 2.4 * u)
+        pygame.draw.circle(surf, (250, 250, 252),
+                           (cx + sgn * 12.3 * u, br + 16.8 * u), 1.0 * u)
+    # the respirator: a moulded cup and two cartridges, not a cloth mask
+    cup = [(cx - 18 * u, br + 23 * u), (cx + 18 * u, br + 23 * u),
+           (cx + 14 * u, br + 40 * u), (cx - 14 * u, br + 40 * u)]
+    pygame.draw.polygon(surf, HAUK_MASK, cup)
+    pygame.draw.polygon(surf, shade(HAUK_MASK, 0.66), cup, 1)
+    for sgn in (-1, 1):
+        pygame.draw.circle(surf, (96, 108, 100),
+                           (cx + sgn * 21 * u, br + 31 * u), 6.5 * u)
+        pygame.draw.circle(surf, (66, 76, 70),
+                           (cx + sgn * 21 * u, br + 31 * u), 6.5 * u, 1)
+        pygame.draw.circle(surf, (44, 52, 48),
+                           (cx + sgn * 21 * u, br + 31 * u), 2.2 * u)
+        pygame.draw.line(surf, shade(HAUK_MASK, 0.6),
+                         (cx + sgn * 18 * u, br + 26 * u),
+                         (cx + sgn * 26 * u, br + 22 * u),
+                         max(1, int(1.8 * u)))
+    pygame.draw.polygon(surf, HAUK_HAIR, [       # pinned back, no fringe
+        (cx - 25 * u, br + 9 * u), (cx - 23 * u, br - 8 * u),
+        (cx, br - 12 * u), (cx + 23 * u, br - 8 * u),
+        (cx + 25 * u, br + 9 * u), (cx + 13 * u, br + 1 * u),
+        (cx - 13 * u, br + 1 * u)])
+    for sgn in (-1, 1):
+        pygame.draw.polygon(surf, shade(HAUK_HAIR, 0.9), [
+            (cx + sgn * 21 * u, br - 2 * u), (cx + sgn * 26 * u, br + 5 * u),
+            (cx + sgn * 24 * u, br + 20 * u), (cx + sgn * 19 * u, br + 10 * u)])
+    for sgn in (-1, 1):                          # two pins, holding it
+        pygame.draw.line(surf, shade(HAUK_TONE, 1.1),
+                         (cx + sgn * 6 * u, br - 9 * u),
+                         (cx + sgn * 13 * u, br - 3 * u),
+                         max(1, int(1.8 * u)))
+
+
 def draw_vask_lab(surf, t):
     """A cellar with tanks in it. Green light from below, because every
     light in the room is something in a jar."""
@@ -11159,7 +11694,9 @@ class Bazaar:
          "draw_vask_lab", "draw_slab", (222, 236, 214), (128, 158, 126),
          (("vask", "DR OSKAR VASK",
            "he grows it, and he will not say from what",
-           VASK_TONE, "draw_vask_front"),)),
+           VASK_TONE, "draw_vask_front"),
+          ("hauk", "PROF ANJA HAUK", "she decides what shape it is",
+           HAUK_TONE, "draw_hauk_front"))),
     )
     # who is open to whom: the Capital is a company and the lab is a man
     # with opinions, and neither will take the other house's money
@@ -11183,6 +11720,11 @@ class Bazaar:
         self.slots = []
         self.tabs = []
         self.sec = self.open_sections()[0]
+        # every counter this shop can show will be wanted within a click,
+        # so start rendering all of them now rather than on the click
+        prebake([self.SECTION_MUSIC[self.SECTIONS[i][0]]
+                 for i in self.open_sections()
+                 if self.SECTIONS[i][0] in self.SECTION_MUSIC])
         self.open = None            # the ware being turned over
         self.arm_btn = None
         self.say_no = ""            # why the last press did nothing
@@ -11749,6 +12291,8 @@ class App:
         self.speed = 1
         self.paused = False
         self.running = True
+        # the front door's loop, and the two the first run will want
+        prebake(("vigil", "yard", "landfall"))
         music("vigil")
 
     # -- moving between screens -------------------------------------------
@@ -11766,6 +12310,7 @@ class App:
             self.to_brief()
 
     def to_brief(self):
+        prebake(("landfall",))
         kind = self.run.next_kind()
         if kind is None:
             return
@@ -12011,6 +12556,7 @@ class App:
     # -- the frame --------------------------------------------------------
     def frame(self):
         dt = min(0.05, self.clock.tick(FPS) / 1000.0)
+        music_tick()                 # a slice of whatever loop is pending
         mouse = pygame.mouse.get_pos()
         for ev in pygame.event.get():
             self.handle(ev)

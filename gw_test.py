@@ -1542,7 +1542,11 @@ def frames():
     wipe_meta()
     G.set_house("keal")
     surf = pygame.Surface((G.W, G.H))
-    assert len(G.CHASSIS_LIST) == 7, len(G.CHASSIS_LIST)
+    # seven of steel and six grown, plus the stock body they share
+    steel_frames = [c for c in G.CHASSIS_LIST
+                    if c.ware and G.WARES[c.ware].house == "keal"]
+    assert len(G.CHASSIS_LIST) == 13, len(G.CHASSIS_LIST)
+    assert len(steel_frames) == 6, len(steel_frames)
     assert [c.key for c in G.owned_chassis()] == ["standard"], "free frames"
 
     G.add_marks(4000)
@@ -1711,7 +1715,10 @@ def frames():
     print("  sovereign closed itself; the stock frame did not")
 
     # -- every frame survives a save and a whole fight ---------------------
-    for key in [c.key for c in G.CHASSIS_LIST]:
+    # what THIS house can actually start a run on - walking the whole
+    # table here means asking a shipyard to build a GRAVID MOTHER, which
+    # it correctly refuses, and then failing the assertion about it
+    for key in [c.key for c in G.owned_chassis()]:
         r = built(key)
         back = G.Run.from_json(r.to_json())
         assert back.mech.chassis == key, (key, back.mech.chassis)
@@ -1749,7 +1756,7 @@ def frames():
     for view, name in ((True, "the yard"), (False, "the street")):
         base = shot("standard", view)
         seen = {}
-        for ch in G.CHASSIS_LIST:
+        for ch in G.owned_chassis():
             px = shot(ch.key, view)
             if ch.key != "standard":
                 assert px != base, "%s looks like the stock frame in %s" % (
@@ -1814,7 +1821,7 @@ def frames():
     # Every KEAL head used to get the same single lamp, and the overlay
     # then painted a visor or a big eye somewhere near it - so most of
     # the frames wore a cyclops dot they had no business with.
-    faces = {c.key: c.style.get("eye", "dot") for c in G.CHASSIS_LIST
+    faces = {c.key: c.style.get("eye", "dot") for c in G.owned_chassis()
              if G.Mech(c.key).usable("head")}
     assert faces["standard"] == "dot", faces
     assert faces["cyclops"] == "cyclops", faces
@@ -1836,7 +1843,7 @@ def frames():
     # so a frame that gave only main/dark/light/trim had its PLATE drawn
     # in stock blue-grey. One pale panel on a red machine, and it read as
     # a missing texture rather than a bug.
-    for ch in G.CHASSIS_LIST:
+    for ch in G.CHASSIS_LIST:                # every palette, both houses
         if not ch.tones:
             continue
         for key in ("main", "dark", "light", "trim", "plate", "hollow"):
@@ -1857,7 +1864,7 @@ def frames():
         G.draw_mech_front(s, m, 210, 440, 0.38, t=2.0)
         r = s.get_bounding_rect()
         return r.w, r.h
-    shapes = {c.key: box(c.key) for c in G.CHASSIS_LIST}
+    shapes = {c.key: box(c.key) for c in G.owned_chassis()}
     base_w, base_h = shapes["standard"]
     for key, (w, h) in shapes.items():
         if key == "standard":
@@ -1881,6 +1888,124 @@ def frames():
     assert shapes["robo"][1] < base_h * 0.8, shapes["robo"]
     print("  and they are different shapes: " + ", ".join(
         "%s %dx%d" % (k, v[0], v[1]) for k, v in shapes.items()))
+
+    # -- and RYEZ gets whole ANIMALS, which are not the frames repainted ---
+    wipe_meta()
+    G.set_house("ryez")
+    G.add_marks(9000)
+    strains = [w for w in G.WARE_LIST
+               if w.kind == "chassis" and w.house == "ryez"]
+    assert len(strains) == 6, len(strains)
+    for w in strains:
+        assert G.buy_ware(w.key), w.key
+    mine = [c.key for c in G.owned_chassis()]
+    assert "standard" in mine and "warmachine" not in mine, mine
+    assert len(mine) == 7, mine
+    G.set_house("keal")
+    assert "bloom" not in [c.key for c in G.owned_chassis()]
+    G.set_house("ryez")
+    print("  %d strains, and a shipyard is offered none of them"
+          % len(strains))
+
+    # every strain does something no FRAME does
+    flags = {}
+    for w in strains:
+        ch = G.CHASSIS[G.CHASSIS_WARE[w.key]]
+        flags[ch.key] = set(ch.flags)
+    steel = set()
+    for c in G.CHASSIS_LIST:
+        if c.ware and G.WARES[c.ware].house == "keal":
+            steel |= set(c.flags)
+    for key, fl in flags.items():
+        assert not (fl & steel), "%s shares %s with a frame" % (key,
+                                                                fl & steel)
+    print("  and none of them shares a trick with a frame")
+
+    def grown(key):
+        r = G.Run("ryez", key)
+        r.kaiju_index = 2
+        for s in r.mech.sockets():
+            if s in G.HARDPOINTS:
+                continue
+            r.mech.install(s, 3)
+        r.mech.install("l_wpn", "auto")
+        r.mech.install("r_wpn", "auto")
+        return r
+
+    # HARDEN climbs, REGROW closes, FAINT dodges, COLONY sheds, MIASMA rots
+    f = G.Fight(grown("spire"), G.roster_for("ryez")[2])
+    d0 = f.mech.dr
+    for _ in range(400):
+        f.update(1 / 40.0, {})
+    assert f.mech.dr > d0 + 4, (d0, f.mech.dr)
+    assert f.mech.harden <= G.HARDEN_CAP + 1e-6
+    print("  spire: hide %.0f -> %.0f over ten seconds" % (d0, f.mech.dr))
+
+    r = grown("deepone")
+    f = G.Fight(r, G.roster_for("ryez")[2])
+    f.mech.hp["torso"] *= 0.5
+    low = f.mech.hp["torso"]
+    for _ in range(400):
+        f.update(1 / 40.0, {})
+    assert f.mech.hp["torso"] > low, "it did not close"
+    plain = G.Fight(grown("standard"), G.roster_for("ryez")[2])
+    plain.mech.hp["torso"] *= 0.5
+    was = plain.mech.hp["torso"]
+    for _ in range(400):
+        plain.update(1 / 40.0, {})
+    assert plain.mech.hp["torso"] <= was, "everything closes itself"
+    print("  deep leviathan closed %.0f in ten seconds; the stock body 0"
+          % (f.mech.hp["torso"] - low))
+
+    f = G.Fight(grown("hollow"), G.roster_for("ryez")[2])
+    most = 0
+    for _ in range(1600):
+        f.update(1 / 40.0, {})
+        most = max(most, len(f.mercs))
+        if f.over:
+            break
+    assert most > 0, "the swarm shed nothing"
+    print("  hollow swarm put %d of them out without being asked" % most)
+
+    f = G.Fight(grown("bloom"), G.roster_for("ryez")[2])
+    f.boss().x = f.mx + 300          # a landfall starts a mile apart
+    for _ in range(200):
+        f.update(1 / 40.0, {})
+    near = f.dealt
+    p2 = G.Fight(grown("standard"), G.roster_for("ryez")[2])
+    p2.boss().x = p2.mx + 300
+    for _ in range(200):
+        p2.update(1 / 40.0, {})
+    assert near > 0, "standing next to a bloom cost nothing"
+    assert near > p2.dealt, (near, p2.dealt)
+    print("  standing near a bloom cost it %.0f in five seconds; near the "
+          "stock body, %.0f" % (near, p2.dealt))
+
+    # a hit lands on a RANDOM socket, so "the torso is still full" does
+    # not mean it was dodged - count the whole body instead
+    def dodges(key, swings=400):
+        fr = G.Fight(grown(key), G.roster_for("ryez")[2])
+        out = 0
+        for _ in range(swings):
+            whole = sum(fr.mech.hp[s] for s in fr.mech.sockets())
+            fr.mech_hit(fr.boss(), 10.0, silent=True)
+            out += sum(fr.mech.hp[s] for s in fr.mech.sockets()) >= whole
+            for s in fr.mech.sockets():
+                fr.mech.hp[s] = fr.mech.max_hp(s)
+        return out
+    miss = dodges("stalker")
+    solid = dodges("standard")
+    assert solid == 0, "the stock body dodged %d" % solid
+    assert 80 < miss < 300, "dodge rate is %d in 400" % miss
+    print("  pale stalker was not there for %d of 400 blows; the stock "
+          "body for %d" % (miss, solid))
+
+    # put the ledger back the way the rest of this test expects it
+    wipe_meta()
+    G.set_house("keal")
+    G.add_marks(4000)
+    for k in CH_KEYS:
+        G.buy_ware(k)
 
     # -- and the screen that picks one draws -------------------------------
     pf = G.PickFrame("keal")
@@ -1948,6 +2073,7 @@ def score():
     built = {}
     for nm in names:
         s = G.TRACKS[nm]()
+        s.finish()                   # a Score is lazy now; render it all
         pk = max(abs(v) for v in s.buf)
         rms = (sum(v * v for v in s.buf) / len(s.buf)) ** 0.5
         secs = len(s.buf) / float(s.RATE)
