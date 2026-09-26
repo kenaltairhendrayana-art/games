@@ -961,17 +961,58 @@ def capital():
     assert run.max_crew == G.RECRUIT_CAP, run.max_crew
     plain = G.WEAPONS["auto"].scrap
     assert run.price(G.WEAPONS["auto"], "l_wpn")[0] == int(round(plain * 0.9))
-    run.crew, run.alloy = 2, 0
-    for _ in range(4):
+    run.crew, run.alloy, run.scrap = 2, 0, 4000
+    coke = run.scrap
+    for _ in range(G.FURNACE_DAYS):
         run.capital_night()
-    assert run.alloy == 2, "the furnace: %d in four nights" % run.alloy
+    assert run.alloy == 1, "the furnace: %d in %d nights" % (
+        run.alloy, G.FURNACE_DAYS)
+    burnt = coke - run.scrap
+    assert burnt == G.FURNACE_COKE * G.FURNACE_DAYS, burnt
     assert run.crew == 4, "the office: %d in four nights" % run.crew
     run.crew = G.RECRUIT_CAP
     for _ in range(6):
         run.capital_night()
     assert run.crew == G.RECRUIT_CAP, "the office went past its cap"
-    print("  furnace 2 alloy / office 2 hands in four nights, capped at %d"
-          % G.RECRUIT_CAP)
+    print("  furnace 1 alloy per %d nights for %d scrap, office 2 hands, "
+          "capped at %d" % (G.FURNACE_DAYS, burnt, G.RECRUIT_CAP))
+
+    # -- and it is a TRADE now, not a tap ---------------------------------
+    # It used to pour half an alloy a night for nothing: 28 over a 57-day
+    # campaign against a full build's 25, which paid for the whole rare
+    # metal economy out of one 95-mark purchase.
+    rich = G.Run("keal")
+    rich.scrap, rich.alloy = 20000, 0
+    spent = rich.scrap
+    for _ in range(G.SCHEDULE[-1]):
+        rich.capital_night()
+    spent -= rich.scrap
+    # a whole machine: every rung of the body, the dearest hardpoint pair,
+    # and three bays - not just the body, which is where the first version
+    # of this assertion got its 14 and compared it against 14
+    build_needs = (sum(p.alloy for tbl in G.CATALOGUE.values() for p in tbl)
+                   + 2 * max(G.WEAPONS[u].alloy + G.WEAPONS[b].alloy
+                             for b, u in G.WEAPON_FAMILIES)
+                   + sum(sorted((m.alloy for m in G.MODULE_LIST),
+                                reverse=True)[:3]))
+    assert rich.alloy < build_needs * 0.75, (
+        "the furnace still covers most of a build on its own: %d of %d"
+        % (rich.alloy, build_needs))
+    assert spent / float(rich.alloy) < G.REFINE.scrap, "worse than smelting"
+    print("  over a campaign: %d alloy for %d scrap (%d each, crucible is "
+          "%d), against a whole machine's %d"
+          % (rich.alloy, spent, spent // rich.alloy, G.REFINE.scrap,
+             build_needs))
+
+    # -- and it goes out when the bank does -------------------------------
+    broke = G.Run("keal")
+    broke.scrap, broke.alloy = G.FURNACE_COKE - 1, 0
+    for _ in range(G.FURNACE_DAYS * 2):
+        broke.capital_night()
+    assert broke.alloy == 0 and broke.scrap == G.FURNACE_COKE - 1, (
+        broke.alloy, broke.scrap)
+    assert any("FURNACE IS COLD" in ln for ln in broke.news), broke.news
+    print("  and on an empty bank it goes out and says so")
 
     r2 = G.Run("keal")
     r2.mech.install("torso", 2)

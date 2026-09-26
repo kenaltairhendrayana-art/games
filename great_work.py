@@ -862,6 +862,18 @@ def slot_card(n):
 # what you bought, which is the whole point of the stall: it is the only
 # part of the game that does not reset.
 # ---------------------------------------------------------------------------
+# The ARC FURNACE. It used to pour half an alloy a day for nothing, which
+# over a 57-day campaign is 28 - against a full build's 25. One purchase
+# paid for the entire rare-metal economy of the game and deleted the
+# smelter, the FOUNDRY and the HAZMAT TEAM as decisions worth making. It
+# is a TRADE now, in the same family as the smelter: much the better rate
+# (about 105 scrap an alloy against the crucible's 300, with no crew and
+# no days) but it competes with the build for money, and it stops when
+# the bank does.
+FURNACE_DAYS = 4                     # days per alloy
+FURNACE_COKE = 26                    # scrap a day it eats to do it
+
+
 class Ware:
     __slots__ = ("key", "seller", "name", "cost", "kind", "effect", "blurb",
                  "house")
@@ -951,8 +963,10 @@ WARE_LIST = [
 
     # -- Zoe: the ledger, four terraces down --------------------------------
     Ware("furnace", "zoe", "ARC FURNACE", 95, "power",
-         "half an ALLOY a day, every day, for good",
-         "It runs whether you are looking at it or not.",
+         "burns %d SCRAP a day and pours one ALLOY every %d, for good"
+         % (FURNACE_COKE, FURNACE_DAYS),
+         "It runs whether you are looking at it or not. It does not run "
+         "on nothing.",
          house="keal"),
     Ware("hq", "zoe", "REGIONAL HQ", 110, "power",
          "one more pair of hands, and everything costs 10% less",
@@ -7159,12 +7173,20 @@ class Run:
         change what a long run feels like without changing what any single
         day can do."""
         if has_ware("furnace"):
-            self.furnace += 0.5
-            while self.furnace >= 1.0:
-                self.furnace -= 1.0
-                self.alloy += 1
-                self.news.append("+1 %s OUT OF THE ARC FURNACE"
-                                 % word("alloy", "ALLOY"))
+            if self.scrap >= FURNACE_COKE:
+                self.scrap -= FURNACE_COKE
+                self.furnace += 1.0 / FURNACE_DAYS
+                while self.furnace >= 1.0 - 1e-9:
+                    self.furnace -= 1.0
+                    self.alloy += 1
+                    self.news.append("+1 %s OUT OF THE ARC FURNACE"
+                                     % word("alloy", "ALLOY"))
+            else:
+                # said every night it cannot pay, not only on the night it
+                # loses banked heat: a player wondering where their alloy
+                # went should be told, and a player under 26 scrap a night
+                # has worse news on the same screen anyway
+                self.news.append("THE ARC FURNACE IS COLD - NOTHING TO BURN")
         if has_ware("recruit") and self.crew < self.max_crew:
             self.queue += 1
             if self.queue >= 2:
