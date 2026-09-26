@@ -1459,27 +1459,43 @@ def gov():
     print("  and a RYEZ player is told BIOMASS, not SCRAP")
     G.set_house("keal")
 
-    # -- and every counter is open between campaigns ----------------------
-    # `to_title` leaves CURRENT on "keal" because the labels need
-    # something, and reading that as "the player is KEAL" hid the lab from
-    # anybody who was not mid-run. Marks are per SLOT, so with no run in
-    # play you can stock up for whichever side you play next.
+    # -- no counter is ever hidden ----------------------------------------
+    # This was a house gate twice and wrong twice. You can BUY anything
+    # from anywhere - it simply does nothing in the wrong house, which is
+    # what the amber line on the card says - so hiding the counter made
+    # those wares purchasable and unreachable at the same time.
     G.set_house("keal")
     G.add_marks(2000)                # this far in, the purse is empty
-    from_title = G.Bazaar("title")
-    assert len(from_title.open_sections()) == len(G.Bazaar.SECTIONS), (
-        [G.Bazaar.SECTIONS[i][0] for i in from_title.open_sections()])
-    assert G.can_buy("g_lungs"), "a RYEZ gene cannot be bought at the title"
-    assert G.can_buy("ch_tank"), "nor a KEAL chassis"
+    every = len(G.Bazaar.SECTIONS)
+    for label, shop in (("the title", G.Bazaar("title")),
+                        ("a KEAL run", G.Bazaar("hangar", G.Run("keal")))):
+        assert len(shop.open_sections()) == every, (
+            label, [G.Bazaar.SECTIONS[i][0] for i in shop.open_sections()])
+    G.set_house("ryez")
+    ryez_shop = G.Bazaar("hangar", G.Run("ryez"))
+    assert len(ryez_shop.open_sections()) == every
+    # and what is reachable is buyable, both ways round
+    assert G.can_buy("ch_tank"), "a RYEZ run cannot buy a KEAL frame"
+    G.set_house("keal")
+    assert G.can_buy("g_lungs"), "a KEAL run cannot buy a RYEZ gene"
+    assert G.can_buy("st_bloom"), "nor a RYEZ strain"
+    print("  all %d counters open from everywhere, and everything on them "
+          "is buyable" % every)
+
+    # and a card shows the thing as what it IS, not as whatever house is
+    # looking at it - a DEEP LEVIATHAN previewed in a KEAL run was drawn
+    # as a machine, because the renderer guesses the body from CURRENT
     for h in ("keal", "ryez"):
         G.set_house(h)
-        shut = {"ryez": "capital", "keal": "vask"}[h]
-        open_now = [G.Bazaar.SECTIONS[i][0]
-                    for i in G.Bazaar("hangar", G.Run(h)).open_sections()]
-        assert shut not in open_now, (h, open_now)
+        # the stock body is whatever the house is - that is the whole
+        # point of it - but a named strain or frame is itself, always
+        assert G.chassis_grown("standard") is (h == "ryez"), h
+        for key in ("deepone", "bloom", "hollow"):
+            assert G.chassis_grown(key) is True, (h, key)
+        for key in ("warmachine", "tank", "robo"):
+            assert G.chassis_grown(key) is False, (h, key)
     G.set_house("keal")
-    print("  all four counters open between runs, and the right one shuts "
-          "inside one")
+    print("  and a strain previews as an animal even to a shipyard")
 
     # -- and the desk draws ------------------------------------------------
     G.set_house("keal")
@@ -2000,6 +2016,91 @@ def frames():
     print("  pale stalker was not there for %d of 400 blows; the stock "
           "body for %d" % (miss, solid))
 
+    # -- and they are six DESIGNS, not one design in six colours ----------
+    # Proportions and a palette are not a design, and nor is decoration:
+    # the first pass laid a fin, some sacs and a fruiting cap over the
+    # shared body and the six still read as one animal wearing six
+    # things, which is what the bar being at 0.06 was letting through.
+    # A plan has to reach the HEAD, the STANCE and one big mass, so the
+    # bar is where only that can clear it - and the stock body is in the
+    # comparison, because "different from each other" is half the job.
+    def mono(key):
+        m = G.Mech(key)
+        for s in m.sockets():
+            if s not in G.HARDPOINTS:
+                m.install(s, 3)
+        m.harden = G.HARDEN_CAP
+        sf = pygame.Surface((520, 560), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        pz = G.Pose()
+        pz.face = 1
+        G.draw_mech_side(sf, m, 260, 470, 0.62, 2.0, pz, bio=True)
+        # every drawn pixel as 1, ignoring what colour it was
+        w, h = sf.get_size()
+        return bytes(1 if sf.get_at((x, y))[3] > 40 else 0
+                     for y in range(0, h, 3) for x in range(0, w, 3))
+    shapes = {}
+    for key in ("standard", "hollow", "deepone", "spire", "stalker",
+                "gravid", "bloom"):
+        shapes[key] = mono(key)
+    worst = None
+    ks = list(shapes)
+    for i, a in enumerate(ks):
+        for b in ks[i + 1:]:
+            pa, pb = shapes[a], shapes[b]
+            diff = sum(1 for x, y in zip(pa, pb) if x != y)
+            on = sum(pa) + sum(pb)
+            score = diff / float(max(1, on))
+            if worst is None or score < worst[0]:
+                worst = (score, a, b)
+    assert worst[0] > 0.18, (
+        "%s and %s are the same animal in two colours (%.3f apart)"
+        % (worst[1], worst[2], worst[0]))
+    # and no strain is the stock body with something stuck on it
+    for key in shapes:
+        if key == "standard":
+            continue
+        pa, pb = shapes[key], shapes["standard"]
+        d = sum(1 for x, y in zip(pa, pb) if x != y)
+        score = d / float(max(1, sum(pa) + sum(pb)))
+        assert score > 0.22, (
+            "%s is the stock body with decoration on it (%.3f)"
+            % (key, score))
+    print("  and in pure silhouette the closest two, %s and %s, still "
+          "differ by %.0f%%" % (worst[1], worst[2], worst[0] * 100))
+
+    # -- the head, the stance, and the head is the loud one ---------------
+    # Five of the six kept the stock snout on the stock neck for a while
+    # and it undid everything else: a wing loses an argument with a face.
+    for key in ("hollow", "deepone", "spire", "stalker", "gravid", "bloom"):
+        assert G.strain_hides(G.Mech(key), "head"), (
+            "%s still wears the stock skull" % key)
+        assert key in G.LEG_PLAN, "%s stands like everything else" % key
+    assert not G.strain_hides(G.Mech("standard"), "head")
+    assert "standard" not in G.LEG_PLAN
+    print("  all six replace the stock head and none of them stands the "
+          "same way")
+
+    # -- and the SPIRE's trick is a thing you can see happening ----------
+    # its hide thickening is a number in the HUD and a tower on its back;
+    # if the tower is already full at landfall the mechanic is invisible
+    def spire_at(hard):
+        m = G.Mech("spire")
+        for s in m.sockets():
+            if s not in G.HARDPOINTS:
+                m.install(s, 3)
+        m.harden = hard
+        sf = pygame.Surface((520, 560), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        pz = G.Pose()
+        pz.face = 1
+        G.draw_mech_side(sf, m, 260, 470, 0.62, 2.0, pz, bio=True)
+        return sf.get_bounding_rect().h
+    lo, hi = spire_at(0.0), spire_at(G.HARDEN_CAP)
+    assert hi - lo > 40, "the spire builds nothing: %d -> %d" % (lo, hi)
+    print("  and the spire is %d tall at landfall and %d by the end of "
+          "one" % (lo, hi))
+
     # put the ledger back the way the rest of this test expects it
     wipe_meta()
     G.set_house("keal")
@@ -2020,6 +2121,54 @@ def frames():
     got = pf.click(pf.go.rect.center)
     assert got == pf.frames[4].key, got
     print("  the picker draws seven, and hands back the one you clicked")
+
+    # -- ...and RYEZ gets the same screen, which it did not ---------------
+    # The picker was gated on `picked == "keal"` for as long as only
+    # Novak sold frames and it stayed that way after Hauk started
+    # selling whole animals. You could buy all six strains out of the
+    # cellar and be put in the stock body every run, with no screen
+    # anywhere that mentioned them.
+    wipe_meta()
+    G.set_house("ryez")
+    G.add_marks(4000)
+    for k in ("st_hollow", "st_deepone", "st_bloom"):
+        G.buy_ware(k)
+    grown = [c.key for c in G.owned_chassis()]
+    assert grown == ["standard", "hollow", "deepone", "bloom"], grown
+    pf = G.PickFrame("ryez")
+    pf.t = 1.0
+    pf.draw(surf, (0, 0))
+    assert len(pf.buttons) == 4, len(pf.buttons)
+    assert pf.grown and pf.go.label.startswith("GROW"), pf.go.label
+    pf.click(pf.buttons[2][0].center)
+    pf.draw(surf, (0, 0))
+    assert pf.click(pf.go.rect.center) == "deepone"
+    print("  and a RYEZ player with three strains is offered all four, "
+          "in its own words")
+
+    # the gate itself, from the front door, because the widget above was
+    # never the broken part - the branch that decides whether to show it
+    # was, and it read `picked == "keal"`
+    G.clear_run()
+    app = G.App()
+    scr = pygame.Surface((G.W, G.H))
+    app.title.draw(scr, (0, 0))
+    nb = next(b for b in app.title.buttons if b.key[0] == "new")
+    app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=nb.rect.center,
+                                  button=1))
+    assert app.state == "choose", app.state
+    app.choose.draw(scr, (0, 0))
+    app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                  pos=app.choose.rects()["ryez"].center,
+                                  button=1))
+    assert app.state == "frame", (
+        "RYEZ owns three strains and was sent straight to the tanks in "
+        "the stock body: %s" % app.state)
+    assert app.frames.house == "ryez"
+    print("  and picking RYEZ at the front door now stops to ask which")
+    G.clear_run()
+    wipe_meta()
+    G.set_house("keal")
 
     # -- a frame you have not bought cannot be smuggled into a save --------
     wipe_meta()

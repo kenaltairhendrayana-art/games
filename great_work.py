@@ -2356,7 +2356,7 @@ CHASSIS_LIST = [
             "thin, and it births brood that fight for you, constantly",
             mult={"speed": 1.15, "hp": 0.70, "dr": 0.70, "heat": 0.9,
                   "vent": 1.2},
-            flags=("colony",),
+            flags=("colony",), style={"beast": "hollow"},
             tones={"main": (136, 128, 96), "dark": (62, 58, 40),
                    "light": (186, 178, 138), "trim": (206, 226, 120)},
             prop={"leg": 1.06, "legw": 0.80, "body": 0.94, "wide": 0.86,
@@ -2368,7 +2368,7 @@ CHASSIS_LIST = [
             "vast and slow, and it closes its own wounds MID-fight",
             mult={"speed": 0.70, "hp": 1.85, "dr": 1.25, "heat": 1.3,
                   "vent": 0.8},
-            flags=("regrow",),
+            flags=("regrow",), style={"beast": "deepone"},
             tones={"main": (58, 92, 122), "dark": (22, 38, 56),
                    "light": (108, 150, 184), "trim": (120, 226, 214)},
             prop={"leg": 0.88, "legw": 1.50, "body": 1.26, "wide": 1.34,
@@ -2380,7 +2380,7 @@ CHASSIS_LIST = [
             "its hide THICKENS the longer a landfall runs",
             mult={"speed": 0.80, "hp": 1.30, "dr": 1.10, "heat": 1.15,
                   "vent": 1.05},
-            flags=("harden",),
+            flags=("harden",), style={"beast": "spire"},
             tones={"main": (150, 138, 118), "dark": (70, 62, 50),
                    "light": (206, 194, 168), "trim": (232, 176, 96)},
             prop={"leg": 0.92, "legw": 1.18, "body": 1.22, "wide": 1.10,
@@ -2392,7 +2392,7 @@ CHASSIS_LIST = [
             "very fast, very thin, and a third of what swings at it misses",
             mult={"speed": 1.42, "hp": 0.62, "dr": 0.55, "heat": 0.85,
                   "vent": 1.3, "crit": 1.5},
-            flags=("faint",),
+            flags=("faint",), style={"beast": "stalker"},
             tones={"main": (196, 196, 186), "dark": (96, 96, 92),
                    "light": (238, 238, 230), "trim": (176, 120, 204)},
             prop={"leg": 1.30, "legw": 0.68, "body": 0.84, "wide": 0.76,
@@ -2406,6 +2406,7 @@ CHASSIS_LIST = [
                      "r_wpn", "reactor", "armour", "l_aux", "r_aux"),
             mult={"speed": 0.76, "hp": 1.45, "dr": 1.15, "heat": 1.2,
                   "vent": 1.1},
+            style={"beast": "gravid"},
             tones={"main": (152, 96, 132), "dark": (72, 38, 62),
                    "light": (208, 142, 178), "trim": (238, 206, 120)},
             prop={"leg": 0.86, "legw": 1.36, "body": 1.30, "wide": 1.40,
@@ -2417,7 +2418,7 @@ CHASSIS_LIST = [
             "everything near it rots, all the time, without being told to",
             mult={"speed": 0.94, "hp": 1.10, "dr": 0.95, "heat": 1.0,
                   "vent": 1.15},
-            flags=("miasma",),
+            flags=("miasma",), style={"beast": "bloom"},
             tones={"main": (104, 140, 84), "dark": (44, 64, 38),
                    "light": (158, 196, 118), "trim": (206, 240, 96)},
             prop={"leg": 0.96, "legw": 1.08, "body": 1.06, "wide": 1.16,
@@ -2438,6 +2439,18 @@ CHASSIS_LIST = [
 ]
 CHASSIS = {c.key: c for c in CHASSIS_LIST}
 CHASSIS_WARE = {c.ware: c.key for c in CHASSIS_LIST if c.ware}
+
+
+def chassis_grown(key):
+    """Is this chassis an ANIMAL? A strain is grown whoever is looking at
+    it, so a shop card or a picker previewing one has to say so - the
+    renderer's own guess is "whatever house is current", which is right
+    in a fight and wrong on a counter."""
+    ch = CHASSIS.get(key)
+    if ch is None or ch.ware is None:
+        return CURRENT["house"] == "ryez"
+    w = WARES.get(ch.ware)
+    return bool(w and w.house == "ryez")
 
 
 def chassis_of(key):
@@ -3635,6 +3648,14 @@ class Rig:
         pygame.draw.line(self.surf, colour, self.p(*a), self.p(*b),
                          max(1, int(width * self.s)))
 
+    def bar(self, a, b, w1, colour, w2=None, edge=None):
+        # the same call Side takes. A strain's body plan is authored once
+        # and drawn by both rigs; without this the gantry could not run it
+        q = limb(a, b, w1, w2)
+        self.poly(q, colour)
+        if edge:
+            self.poly(q, edge, 1)
+
     def circle(self, c, r, colour, width=0):
         pygame.draw.circle(self.surf, colour, self.p(*c),
                            max(1, int(r * self.s)),
@@ -3933,10 +3954,19 @@ SHAPE = {"legs": shape_legs, "torso": shape_torso, "head": shape_head,
          "armour": shape_armour}
 
 
-def part_shape(socket, fit, arm_tier=1):
+def part_shape(socket, fit, arm_tier=1, strain=None):
     """One socket's polygons, whatever kind of socket it is - and whichever
-    company signed you. The joints are in the same places either way."""
+    company signed you. The joints are in the same places either way.
+
+    `strain` is the body plan, for the two of them that REPLACE a stock
+    part rather than adding to one. It has to reach this far down or the
+    gantry draws the part the fight is hiding - a HOLLOW SWARM with a
+    whip behind it and a lizard tail as well."""
     bio = CURRENT["house"] == "ryez"
+    if bio and socket == "torso":
+        return bio_torso(fit, tail="tail" not in STRAIN_HIDE.get(strain, ()))
+    if bio and socket == "legs":
+        return bio_legs(fit, plan=strain)
     if socket in ("l_arm", "r_arm"):
         side = "l" if socket == "l_arm" else "r"
         return (bio_arm if bio else shape_arm)(fit, side)
@@ -4105,7 +4135,7 @@ def chassis_overlay_front(rig, mech, t):
         rig.light((0, -281), 54 * beat, (255, 120, 54), 110)
 
 def draw_socket_front(rig, socket, fit, dmg=0.0, arm_tier=1, mode="on",
-                      prog=0.0, t=0.0, tones=None):
+                      prog=0.0, t=0.0, tones=None, strain=None):
     """One socket in one of its three states.
 
     `tones` is passed in now rather than worked out here. It used to ask
@@ -4114,7 +4144,7 @@ def draw_socket_front(rig, socket, fit, dmg=0.0, arm_tier=1, mode="on",
     weeks in standard grey and it turned red at landfall."""
     if tones is None and CURRENT["house"] == "ryez":
         tones = BIO_TONES
-    shapes = part_shape(socket, fit, arm_tier)
+    shapes = part_shape(socket, fit, arm_tier, strain)
     if not shapes:
         return
     wrecked = dmg >= 0.999
@@ -4189,8 +4219,17 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
     """The whole machine as it stands in the gantry tonight."""
     rig = Rig(surf, cx, gy, scale, mech.frame.prop)
     jobs = jobs or {}
-    tones = (BIO_TONES if CURRENT["house"] == "ryez"
-             else mech.frame.tones)
+    grown = CURRENT["house"] == "ryez"
+    # `BIO_TONES if ryez` threw the strain's palette away, so six animals
+    # that are six colours in the street were all stock pink in the tank
+    # - which is the view you spend the week looking at.
+    tones = mech.frame.tones or (BIO_TONES if grown else None)
+    strain = (mech.frame.style or {}).get("beast")
+    if grown:
+        # an animal's hinges are not a machine's; see draw_beast_side
+        rig.HIP = LEG_ROOT_Y
+        rig.NECK = NECK_ROOT[1]
+        strain_overlay(rig, mech, t, tones, "under")
     arm_t = {"l": mech.fit["l_arm"] or 1, "r": mech.fit["r_arm"] or 1}
 
     def state(socket):
@@ -4208,7 +4247,8 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
 
     order = [s for s in ("legs", "l_arm", "r_arm", "torso", "armour",
                          "head", "reactor", "l_wpn", "r_wpn",
-                         "l_aux", "r_aux") if mech.usable(s)]
+                         "l_aux", "r_aux")
+             if mech.usable(s) and not (grown and strain_hides(mech, s))]
     for socket in order:
         mode, fit, prog = state(socket)
         if mode is None or fit is None:
@@ -4227,9 +4267,12 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
                     and mode != "job":
                 continue
         rig.zone = ZONE_OF.get(socket, "body")
-        draw_socket_front(rig, socket, fit, dmg, at, mode, prog, t, tones)
+        draw_socket_front(rig, socket, fit, dmg, at, mode, prog, t, tones,
+                          strain)
     rig.zone = "body"
-    if CURRENT["house"] != "ryez":
+    if grown:
+        strain_overlay(rig, mech, t, tones, "over")
+    else:
         chassis_overlay_front(rig, mech, t)
     # the core light, which is the only thing on the machine that is alive
     if mech.alive("reactor") and lit:
@@ -4244,10 +4287,10 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
         rig.circle((CX, CY), r * 0.95, shade(CORE_C, 0.55), 1)
         rig.circle((CX, CY), r * 0.45 * pulse, CORE_C)
         rig.light((CX, CY), r * 1.1 * pulse, CORE_C, 34)
-    if mech.alive("head") and lit:
+    if mech.alive("head") and lit and not strain_hides(mech, "head"):
         tier = mech.fit["head"]
         eye = (-356, -366, -370)[tier - 1]
-        if CURRENT["house"] == "ryez":     # an eye on the side of a skull
+        if grown:                          # an eye on the side of a skull
             e, hs = head_eye(tier)
             rig.circle((e.x, e.y), hs * 0.20, (250, 232, 140))
             rig.circle((e.x, e.y), hs * 0.09, (24, 16, 18))
@@ -4332,20 +4375,39 @@ def leg_xs(tier):
     return (66.0, -34.0) if tier == 1 else (72.0, 8.0, -58.0)
 
 
-def leg_geom(tier):
+# How a strain STANDS: (upper, lower, width, splay, bend) against the
+# tier's own numbers. Six animals on one set of legs was a third of the
+# reason the six read as one animal, and the legs are the half of the
+# silhouette nothing else was reaching - a wing does not change how a
+# thing walks. The TIER still decides how MANY legs there are, because
+# that is the tier's job and a player reads it that way.
+LEG_PLAN = {"hollow":  (1.18, 1.22, 0.58, 0.34, 1.20),   # long, thin, splayed
+            "deepone": (0.70, 0.76, 1.85, 0.06, 0.80),   # short and planted
+            "spire":   (0.50, 0.54, 2.05, -0.14, 0.52),  # a plinth
+            "stalker": (1.34, 1.30, 0.54, 0.26, 1.42),   # spidery
+            "gravid":  (0.80, 0.86, 1.52, 0.36, 0.95),   # short, wide apart
+            "bloom":   (0.96, 1.00, 1.14, -0.16, 0.58)}  # stiff, rooted
+
+
+def leg_geom(tier, plan=None):
     """(upper, lower, width, splay) for one leg of this tier."""
-    return ((72.0, 96.0, 9.0, 0.40),
-            (84.0, 108.0, 12.0, 0.46),
-            (98.0, 122.0, 14.0, 0.54))[tier - 1]
+    up, low, w, splay = ((72.0, 96.0, 9.0, 0.40),
+                         (84.0, 108.0, 12.0, 0.46),
+                         (98.0, 122.0, 14.0, 0.54))[tier - 1]
+    p = LEG_PLAN.get(plan)
+    if p:
+        up, low, w, splay = up * p[0], low * p[1], w * p[2], splay + p[3]
+    return up, low, w, splay
 
 
-def _one_leg(rx, tier, phase=0.0, moving=0.0, dx=0.0):
+def _one_leg(rx, tier, phase=0.0, moving=0.0, dx=0.0, plan=None):
     """Two segments from the belly to the ground. Shared by the pod view
     and the fight, so a leg cannot look like two different legs."""
-    up, low, w, splay = leg_geom(tier)
+    up, low, w, splay = leg_geom(tier, plan)
     splay *= 0.30 + rx / 84.0          # fore legs plant forward, hind back
     swing = math.sin(phase) * 0.38 * moving
     bend = 0.52 + max(0.0, -math.cos(phase)) * 0.42 * moving
+    bend *= LEG_PLAN.get(plan, (1, 1, 1, 0, 1.0))[4]
     if rx < 0:
         bend *= 1.35                   # and the hind pair crouches
     root = Vector2(rx + dx, LEG_ROOT_Y)
@@ -4358,7 +4420,7 @@ def _one_leg(rx, tier, phase=0.0, moving=0.0, dx=0.0):
     return root, knee, foot, w
 
 
-def bio_legs(tier, phase=0.0, moving=0.0, half=None):
+def bio_legs(tier, phase=0.0, moving=0.0, half=None, plan=None):
     """`half` picks the far pair or the near pair, so the fight can put the
     trunk between them. The pod view asks for both and draws them flat."""
     out = []
@@ -4370,7 +4432,7 @@ def bio_legs(tier, phase=0.0, moving=0.0, half=None):
     for dx, sh, off in pairs:
         for i, rx in enumerate(leg_xs(tier)):
             root, knee, foot, w = _one_leg(rx, tier, phase + off + i * 1.7,
-                                           moving, dx=dx)
+                                           moving, dx=dx, plan=plan)
             out.append((_taper(root.x, root.y, knee.x, knee.y, w, w * 0.78,
                                w * 0.3), sh))
             out.append((_taper(knee.x, knee.y, foot.x, foot.y, w * 0.74,
@@ -4384,9 +4446,9 @@ def bio_legs(tier, phase=0.0, moving=0.0, half=None):
     return out
 
 
-def bio_torso(tier, wag=0.0):
+def bio_torso(tier, wag=0.0, tail=True):
     """Trunk and tail together, for the pod view."""
-    return bio_tail(tier, wag) + bio_trunk(tier)
+    return (bio_tail(tier, wag) if tail else []) + bio_trunk(tier)
 
 
 def bio_tail(tier, wag=0.0):
@@ -4438,11 +4500,23 @@ def _up_of(d):
     return n if n.y < 0 else -n
 
 
-def neck_head(tier, rear=0.0):
+# (reach, rise) against the tier's own. Where a head is CARRIED reads
+# from as far away as what it looks like: the LEVIATHAN holds its jaw out
+# low and level, the STALKER thrusts it forward, the SPIRE has barely any
+# neck at all and the SWARM's knot sits right down on the shell.
+NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
+             "spire": (0.66, -0.16), "stalker": (1.34, 0.30),
+             "gravid": (0.62, 0.12)}
+
+
+def neck_head(tier, rear=0.0, plan=None):
     """The neck as a chain and the skull on the end. `rear` lifts it, which
     is what a wind-up looks like on an animal."""
     reach = (50.0, 60.0, 70.0)[tier - 1]
     rise = (-0.42, -0.50, -0.56)[tier - 1] - rear * 0.5
+    p = NECK_PLAN.get(plan)
+    if p:
+        reach, rise = reach * p[0], rise + p[1]
     root = Vector2(*NECK_ROOT)
     tip = root + Vector2(math.cos(rise), math.sin(rise)) * reach
     return root, tip, (27.0, 33.0, 39.0)[tier - 1]
@@ -4683,6 +4757,553 @@ def bio_weapon(key, side, tier_arm):
     return out
 
 
+# Which stock parts a strain REPLACES rather than decorates.
+#
+# Every one of them replaces the HEAD, and that is the single change
+# that did the most work here. Five long toothy snouts pointing up and
+# to the right was most of what made six designs read as one animal: a
+# wing and a shell lose an argument with a face. The HOLLOW SWARM drops
+# the stock tail as well, because a fat lizard tail under a membrane
+# reads as a costume.
+STRAIN_HIDE = {"hollow": ("tail", "head"), "deepone": ("head",),
+               "spire": ("head",), "stalker": ("head",),
+               "gravid": ("head",), "bloom": ("head",)}
+
+
+def strain_hides(mech, part):
+    st = getattr(mech.frame, "style", None) or {}
+    return part in STRAIN_HIDE.get(st.get("beast"), ())
+
+
+def _strain_under(rig, mech, t, kind, main, dark, light, trim):
+    """The parts of a strain that belong BEHIND the trunk.
+
+    A wing or a shell drawn after the body sits on top of it and reads
+    as paint. Drawn before it, the body sits in the middle of it and it
+    reads as anatomy, which is the entire difference."""
+    if kind == "hollow":
+        # THE MANTA. It is not one animal, and the shape enough of them
+        # agree on is a pair of membranes far wider than the shell
+        # between them. The far wing, and the whip it drags.
+        _swarm_wing(rig, t, -30, 14, 0.90, shade(dark, 1.3), trim)
+        wag = math.sin(t * 1.7) * 0.6
+        prev = (TRUNK_BACK + 8, (TRUNK_TOP + TRUNK_BELLY) * 0.5 + 6)
+        for i in range(7):
+            f = (i + 1) / 7.0
+            nxt = (TRUNK_BACK - 48 * (i + 1),
+                   prev[1] + 14 + math.sin(f * 3.6 + wag) * 34)
+            rig.bar(prev, nxt, max(2.0, 13 * (1.0 - f * 0.86)),
+                    shade(dark, 1.35))
+            if i >= 3:                          # barbs, on the last half
+                rig.poly([(nxt[0] + 8, nxt[1] - 4),
+                          (nxt[0] + 24, nxt[1] - 26),
+                          (nxt[0] + 12, nxt[1] + 4)], light)
+            prev = nxt
+
+    elif kind == "deepone":
+        # THE REEF. A carapace wider and taller than the animal under
+        # it, and two feelers it never quite finished pulling up.
+        for k, ln in ((0, 1.0), (1, 0.76)):
+            sw = math.sin(t * 0.7 + k * 1.4)
+            prev = (TRUNK_BACK - 10, -292 + k * 30)
+            for i in range(6):
+                f = (i + 1) / 6.0
+                nxt = (prev[0] - 52 * ln,
+                       -292 + k * 30 - math.sin(f * 2.4 + sw) * 92 * ln
+                       + f * 52)
+                rig.bar(prev, nxt, max(2.0, 10 * (1.0 - f * 0.80)),
+                        shade(light, 0.72))
+                prev = nxt
+        dome = []
+        for i in range(13):
+            a = math.pi + i * math.pi / 12.0
+            dome.append((8 + math.cos(a) * 132, -272 + math.sin(a) * 108))
+        dome.append((TRUNK_FRONT + 30, -232))
+        dome.append((TRUNK_BACK - 38, -232))
+        rig.poly(dome, shade(main, 0.80))
+        rig.poly(dome, shade(dark, 0.85), 3)
+        for i in range(4):                      # growth rings on the shell
+            f = 0.22 + i * 0.18
+            ring = []
+            for k in range(9):
+                a = math.pi + k * math.pi / 8.0
+                ring.append((8 + math.cos(a) * 132 * (1.0 - f * 0.55),
+                             -272 + math.sin(a) * 108 * (1.0 - f * 0.55)))
+            rig.poly(ring, shade(dark, 1.15), 2)
+
+    elif kind == "gravid":
+        # THE HULK. Two slabs of shell torn up off the shoulders, so
+        # what you see over the rooftops is corners, not a back.
+        _mother_shard(rig, -44, 14, 0.74, shade(dark, 1.15))
+
+    elif kind == "bloom":
+        # a haze it stands in, so the upright mass has something to be
+        # standing in rather than just being tall
+        for i in range(3):
+            rig.light((10 + i * 14, -170 - i * 30), 52 + i * 26, trim, 26)
+
+
+def _swarm_wing(rig, t, dx, dy, sc, col, trim):
+    """One membrane. Two of these and a shell is a manta.
+
+    The first pass drew this as a narrow quad off the shoulder and it
+    came out as a blade - two thin spikes over the back, which is the
+    opposite of a wing. A wing is WIDER than the animal carrying it."""
+    root = (46 + dx, TRUNK_TOP + 32 + dy)
+    tip = (root[0] - 226 * sc, root[1] - 196 * sc)
+    vx, vy = tip[0] - root[0], tip[1] - root[1]
+    ln = math.hypot(vx, vy) or 1.0
+    nx, ny = vy / ln, -vx / ln                  # out of the leading edge
+    web = [root,
+           (root[0] - 34 * sc, root[1] - 80 * sc),       # leading edge
+           (root[0] - 126 * sc, root[1] - 168 * sc),
+           tip]
+    ribs = []
+    for i in range(1, 9):                       # and a scalloped trailing one
+        f = i / 9.0
+        bx, by = tip[0] - vx * f, tip[1] - vy * f
+        push = 132 * sc * (0.20 + 0.80 * math.sin(f * math.pi))
+        notch = (17 if i % 2 else 2) * sc
+        q = (bx + nx * (push - notch), by + ny * (push - notch))
+        web.append(q)
+        if i % 2 == 0:
+            ribs.append((bx + nx * push * 0.94, by + ny * push * 0.94))
+    for q in ribs:                              # the struts, under the skin
+        rig.bar(root, q, 2.4, shade(col, 0.74))
+    rig.poly(web, col)
+    rig.poly(web, shade(col, 0.56), 2)
+    for q in ribs:
+        rig.bar(root, q, 2.0, shade(col, 0.76))
+    for i in range(4):                          # and the things leaving
+        q = (t * 0.5 + i * 0.25) % 1.0
+        rig.circle((tip[0] + 54 - q * 60, tip[1] + 44 + q * 104),
+                   3.2 * (1.0 - q * 0.6), shade(trim, 0.95))
+
+
+def _mother_shard(rig, dx, dy, sc, col):
+    """One torn slab off a shoulder. Nothing about it is a smooth curve."""
+    b = (58 + dx, TRUNK_TOP + 22 + dy)
+    pts = [b, (b[0] - 34, b[1] - 6),
+           (b[0] - 104 * sc, b[1] - 70 * sc),
+           (b[0] - 78 * sc, b[1] - 84 * sc),
+           (b[0] - 116 * sc, b[1] - 150 * sc),
+           (b[0] - 62 * sc, b[1] - 118 * sc),
+           (b[0] - 54 * sc, b[1] - 164 * sc),
+           (b[0] - 20 * sc, b[1] - 98 * sc),
+           (b[0] + 20, b[1] - 42)]
+    rig.poly(pts, col)
+    rig.poly(pts, shade(col, 0.52), 2)
+    return pts
+
+
+BLOOM_UP = (TRUNK_FRONT - 52, TRUNK_TOP - 6)    # where the BLOOM rears to
+
+
+def strain_head(rig, mech, t, tones, kind, rear):
+    """The skull. Six of them, and no two are the same animal's.
+
+    This is where the identity of a body plan actually lives. The wings
+    and the shell went in first and the six still read as one thing,
+    because they all still had the stock snout on the end of the stock
+    neck, pointing the same way."""
+    ht = mech.fit["head"]
+    if ht is None:
+        return
+    dead = mech.hp["head"] <= 0
+    dmg = mech.damage_frac("head")
+    main = _tone("main", dmg, dead, tones)
+    dark = _tone("dark", dmg, dead, tones)
+    light = _tone("light", dmg, dead, tones)
+    trim = (tones or BIO_TONES).get("trim", RYEZ_ACID)
+    hz = rig.zone
+
+    if kind == "bloom":
+        # its head is not on a neck; it is on the thing it rears into,
+        # so this one stays in body coordinates with the rest of it
+        ux, uy = BLOOM_UP
+        skull = _blob(ux + 22, uy - 138, 28, 26, 12, 0.14, 1.0)
+        rig.poly(skull, shade(main, 1.10))
+        rig.poly(skull, dark, 2)
+        rig.poly([(ux + 40, uy - 146), (ux + 62, uy - 138),
+                  (ux + 40, uy - 124)], shade(main, 0.95))
+        for i, (cx_, cy_, r) in enumerate(((ux + 4, uy - 172, 15),
+                                           (ux + 34, uy - 178, 12))):
+            sway = math.sin(t * 0.8 + i) * 2.0
+            rig.bar((cx_, cy_ + 26), (cx_ + sway, cy_ + 4), 4.6,
+                    shade(light, 0.86))
+            cap = []
+            for k in range(9):
+                a = math.pi + k * math.pi / 8
+                cap.append((cx_ + sway + math.cos(a) * r,
+                            cy_ + math.sin(a) * r * 0.78))
+            cap.append((cx_ + sway + r * 0.9, cy_ + 4))
+            cap.append((cx_ + sway - r * 0.9, cy_ + 4))
+            rig.poly(cap, shade(main, 1.18))
+            rig.poly(cap, dark, 2)
+        if not dead:
+            for sgn in (-1, 1):
+                e = (ux + 30 + sgn * 9, uy - 140)
+                rig.circle(e, 3.4, trim)
+            rig.light((ux + 30, uy - 140), 26, trim, 60)
+        return
+
+    rig.zone = "head"
+    root, tip, hs = neck_head(ht, rear, kind)
+    d = unit(tip - root)
+    nrm = _up_of(d)
+
+    if kind == "hollow":
+        # no skull at all: a knot of the colony with a hole in the front
+        rig.bar(_t(root), _t(tip), hs * 0.40, shade(dark, 1.2))
+        hc = tip + d * hs * 0.20
+        for ox, oy, r in ((-0.30, -0.48, 0.50), (0.42, -0.24, 0.60),
+                          (0.06, 0.44, 0.44), (0.92, 0.16, 0.36)):
+            q = hc + d * hs * ox + nrm * hs * oy
+            rig.circle(_t(q), hs * r, main)
+            rig.circle(_t(q), hs * r, dark, 1)
+        hole = hc + d * hs * 0.46 + nrm * hs * 0.02
+        rig.circle(_t(hole), hs * 0.32, (12, 14, 12))
+        if not dead:
+            for k in range(3):
+                a = k * 2.1 + t * 1.4
+                rig.circle(_t(hole + Vector2(math.cos(a), math.sin(a))
+                              * hs * 0.15), hs * 0.075, trim)
+
+    elif kind == "deepone":
+        # everything about it is jaw, and it carries its own light
+        rig.bar(_t(root), _t(tip), hs * 0.60, main)
+        hc = tip + d * hs * 0.40
+        skull = [_t(hc - d * hs * 0.90 + nrm * hs * 0.50),
+                 _t(hc + d * hs * 0.55 + nrm * hs * 0.70),
+                 _t(hc + d * hs * 1.80 + nrm * hs * 0.14),
+                 _t(hc + d * hs * 1.62 - nrm * hs * 0.32),
+                 _t(hc - d * hs * 0.82 - nrm * hs * 0.34)]
+        rig.poly(skull, main)
+        rig.poly(skull, dark, 2)
+        jaw = [_t(hc - d * hs * 0.70 - nrm * hs * 0.30),
+               _t(hc + d * hs * 1.66 - nrm * hs * 0.34),
+               _t(hc + d * hs * 1.40 - nrm * hs * 1.08),
+               _t(hc - d * hs * 0.46 - nrm * hs * 1.00)]
+        rig.poly(jaw, shade(dark, 1.25))
+        rig.poly(jaw, dark, 1)
+        for i in range(6):                      # needles, top and bottom
+            f = 0.08 + i * 0.27
+            q = hc + d * hs * f * 1.5
+            rig.poly([_t(q - nrm * hs * 0.30),
+                      _t(q - nrm * hs * 0.66 + d * hs * 0.07),
+                      _t(q - nrm * hs * 0.28 + d * hs * 0.15)], light)
+            rig.poly([_t(q - nrm * hs * 0.74),
+                      _t(q - nrm * hs * 0.40 + d * hs * 0.07),
+                      _t(q - nrm * hs * 0.72 + d * hs * 0.15)], light)
+        lure = tip + d * hs * 0.9 + nrm * hs * (2.4 + math.sin(t * 0.9) * 0.3)
+        rig.bar(_t(hc - d * hs * 0.4 + nrm * hs * 0.5), _t(lure), 2.4, dark)
+        if not dead:
+            rig.circle(_t(lure), hs * 0.16, trim)
+            rig.light(_t(lure), hs * 0.95, trim, 110)
+            e = hc + d * hs * 0.80 + nrm * hs * 0.30
+            rig.circle(_t(e), hs * 0.15, trim)
+            rig.light(_t(e), hs * 0.5, trim, 70)
+
+    elif kind == "spire":
+        # THE CROWN, and it is the mechanic: every horn is as long as
+        # the hide is thick, so a fight that has run a while is visibly
+        # a different animal from one that just started.
+        grown = clamp(getattr(mech, "harden", 0.0) / max(1.0, HARDEN_CAP),
+                      0.0, 1.0)
+        rig.bar(_t(root), _t(tip), hs * 0.66, main)
+        hc = tip + d * hs * 0.25
+        skull = [_t(hc - d * hs * 0.70 + nrm * hs * 0.52),
+                 _t(hc + d * hs * 0.85 + nrm * hs * 0.40),
+                 _t(hc + d * hs * 1.05 - nrm * hs * 0.30),
+                 _t(hc - d * hs * 0.66 - nrm * hs * 0.46)]
+        rig.poly(skull, main)
+        rig.poly(skull, dark, 2)
+        # four horns, and they are told apart by pointing four ways -
+        # the first pass gave them one sweep each and they merged into
+        # a single slab lying over the back
+        for k, (fwd, ax, ay) in enumerate(((0.75, 0.95, -0.55),
+                                           (0.30, 0.30, -1.05),
+                                           (-0.15, -0.45, -0.95),
+                                           (-0.55, -1.05, -0.35))):
+            ln = hs * (0.55 + 1.05 * grown)
+            b = hc + d * hs * fwd + nrm * hs * 0.40
+            v = Vector2(ax, ay)
+            v = v / max(0.001, v.length())
+            side = Vector2(-v.y, v.x)
+            mid = b + (d * v.x + nrm * v.y) * ln * 0.58
+            tp = mid + (d * (v.x * 0.55 + 0.42) + nrm * v.y) * ln * 0.52
+            w = hs * 0.20
+            horn = [_t(b - (d * side.x + nrm * side.y) * w),
+                    _t(b + (d * side.x + nrm * side.y) * w),
+                    _t(mid + (d * side.x + nrm * side.y) * w * 0.55),
+                    _t(tp),
+                    _t(mid - (d * side.x + nrm * side.y) * w * 0.55)]
+            rig.poly(horn, shade(light, 0.98 - k * 0.08))
+            rig.poly(horn, dark, 1)
+        for k in (0.55, 0.05):                  # tusks, forward and down
+            b = hc - nrm * hs * 0.44 + d * hs * k
+            tp = b + d * hs * 1.35 - nrm * hs * 0.50
+            rig.poly([_t(b - nrm * hs * 0.14), _t(b + nrm * hs * 0.12),
+                      _t(tp)], shade(light, 1.04))
+        if not dead:
+            e = hc + d * hs * 0.45 + nrm * hs * 0.02
+            rig.circle(_t(e), hs * 0.13, (250, 206, 120))
+            rig.light(_t(e), hs * 0.4, trim, 50)
+
+    elif kind == "stalker":
+        # THE BLADE: a flat crest three times the length of a skull,
+        # thrown forward over one small eye. Nothing round on it.
+        rig.bar(_t(root), _t(tip), hs * 0.40, main)
+        hc = tip + d * hs * 0.30
+        base = [_t(hc - d * hs * 0.55 + nrm * hs * 0.38),
+                _t(hc + d * hs * 0.85 + nrm * hs * 0.30),
+                _t(hc + d * hs * 0.95 - nrm * hs * 0.42),
+                _t(hc - d * hs * 0.50 - nrm * hs * 0.40)]
+        rig.poly(base, main)
+        rig.poly(base, dark, 1)
+        blade = [_t(hc - d * hs * 0.75 + nrm * hs * 0.20),
+                 _t(hc - d * hs * 0.30 + nrm * hs * 1.15),
+                 _t(hc + d * hs * 1.35 + nrm * hs * 1.30),
+                 _t(hc + d * hs * 3.30 + nrm * hs * 0.10),
+                 _t(hc + d * hs * 1.15 + nrm * hs * 0.02)]
+        rig.poly(blade, main)
+        rig.poly(blade, dark, 2)
+        rig.bar(_t(hc - d * hs * 0.1 + nrm * hs * 0.62),
+                _t(hc + d * hs * 2.60 + nrm * hs * 0.34), 1.8, light)
+        jaw = [_t(hc - d * hs * 0.50 - nrm * hs * 0.30),
+               _t(hc + d * hs * 1.45 - nrm * hs * 0.55),
+               _t(hc + d * hs * 2.15 - nrm * hs * 0.24),
+               _t(hc + d * hs * 0.60 - nrm * hs * 0.10)]
+        rig.poly(jaw, shade(dark, 1.2))
+        rig.poly(jaw, dark, 1)
+        if not dead:
+            e = hc + d * hs * 0.72 + nrm * hs * 0.06
+            rig.circle(_t(e), hs * 0.15, (252, 176, 74))
+            rig.light(_t(e), hs * 0.55, (250, 148, 58), 74)
+
+    elif kind == "gravid":
+        # blunt, heavy, and sunk between the shoulders. It is not the
+        # part of her you are supposed to be looking at.
+        rig.bar(_t(root), _t(tip), hs * 0.88, main)
+        hc = tip + d * hs * 0.25
+        skull = [_t(hc - d * hs * 0.85 + nrm * hs * 0.70),
+                 _t(hc + d * hs * 0.80 + nrm * hs * 0.80),
+                 _t(hc + d * hs * 1.30 + nrm * hs * 0.05),
+                 _t(hc + d * hs * 1.05 - nrm * hs * 0.60),
+                 _t(hc - d * hs * 0.80 - nrm * hs * 0.66)]
+        rig.poly(skull, main)
+        rig.poly(skull, dark, 2)
+        brow = [_t(hc - d * hs * 0.70 + nrm * hs * 0.52),
+                _t(hc + d * hs * 1.05 + nrm * hs * 0.44),
+                _t(hc + d * hs * 1.00 + nrm * hs * 0.14),
+                _t(hc - d * hs * 0.66 + nrm * hs * 0.20)]
+        rig.poly(brow, shade(dark, 1.3))
+        for i in range(4):                      # four small eyes, in a row
+            q = hc + d * hs * (0.05 + i * 0.30) + nrm * hs * 0.02
+            if not dead:
+                rig.circle(_t(q), hs * 0.085, trim)
+        rig.poly([_t(hc + d * hs * 0.40 - nrm * hs * 0.55),
+                  _t(hc + d * hs * 1.15 - nrm * hs * 0.62),
+                  _t(hc + d * hs * 0.85 - nrm * hs * 0.22)],
+                 shade(dark, 1.15))
+    rig.zone = hz
+
+
+def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
+    """What makes one animal not another one.
+
+    Proportions and a palette are not a design. Six bodies at different
+    widths in different greens are one body six times, which is exactly
+    what these were, and laying a fin and some sacs over them made them
+    one body six times with jewellery on.
+
+    So each of these is a BODY PLAN, and it reaches the three things
+    that actually carry a silhouette: the HEAD (`strain_head`, and all
+    six replace the stock one), the LEGS (`LEG_PLAN`, which the shared
+    leg routine reads) and one big mass that is nothing like a lizard -
+    a membrane, a reef, a crown, a blade, a slab, a thing that stands
+    up. The trunk runs TRUNK_BACK..TRUNK_FRONT by TRUNK_TOP..TRUNK_BELLY
+    and everything here is placed against those four, so a plan moves
+    with whatever proportions its strain was given."""
+    st = mech.frame.style
+    kind = st.get("beast") if st else None
+    if not kind:
+        return
+    # the shell is part of the animal, so it takes the animal's condition
+    # with it - a torn wing over an unhurt trunk is two different beasts
+    tdmg = mech.damage_frac("torso") if mech.fit["torso"] else 0.0
+    tdead = mech.fit["torso"] is not None and mech.hp["torso"] <= 0
+    main = _tone("main", tdmg, tdead, tones)
+    dark = _tone("dark", tdmg, tdead, tones)
+    light = _tone("light", tdmg, tdead, tones)
+    trim = (tones or BIO_TONES).get("trim", RYEZ_ACID)
+    if layer == "under":
+        _strain_under(rig, mech, t, kind, main, dark, light, trim)
+        return
+
+    by = (TRUNK_TOP + TRUNK_BELLY) * 0.5
+    top = TRUNK_TOP
+
+    if kind == "hollow":
+        # the near membrane, over the shell, and the holes it is made of
+        _swarm_wing(rig, t, 10, -6, 1.04, shade(main, 1.0), trim)
+        for i, (hx, hy, r) in enumerate(((-30, -222, 14), (8, -238, 17),
+                                         (42, -210, 12))):
+            rig.circle((hx, hy), r, dark)
+            rig.circle((hx, hy), r * 0.62, (14, 16, 14))
+            wig = math.sin(t * 2.2 + i * 1.7)
+            for k in range(3):                  # something in each of them
+                a = k * 2.1 + t * 1.1 + i
+                rig.circle((hx + math.cos(a) * r * 0.4,
+                            hy + math.sin(a) * r * 0.4 + wig), 2.2, trim)
+
+    elif kind == "deepone":
+        # the shell is behind; what is left is what burns on it
+        for row, (ry, n, sz) in enumerate(((-346, 5, 13), (-306, 6, 10),
+                                           (-268, 6, 7))):
+            for i in range(n):
+                f = (i + 0.5) / n
+                x = -104 + f * 216
+                pu = 0.55 + 0.45 * math.sin(t * 1.5 + i * 0.9 + row)
+                rig.poly([(x - sz * 0.5, ry + sz), (x + sz * 0.5, ry + sz),
+                          (x + sz * 0.15, ry - sz * 1.7)],
+                         shade(trim, 0.55 + 0.35 * pu))
+                if row == 0:
+                    rig.light((x, ry - sz), 22 * pu, trim, int(70 * pu))
+        for i in range(3):                      # gills, down the flank
+            x = TRUNK_FRONT - 34 - i * 26
+            rig.poly([(x, by - 6), (x + 9, by - 2), (x + 5, by + 30),
+                      (x - 5, by + 26)], (16, 26, 34))
+            rig.poly([(x + 1, by), (x + 6, by + 2), (x + 3, by + 24),
+                      (x - 1, by + 21)], shade(trim, 0.8))
+
+    elif kind == "spire":
+        # it is called a SPIRE. The plates do not lie along the back,
+        # they STACK, and the stack is the hardening you can see - at
+        # landfall it is a squat thing with two slabs on it and by the
+        # end of a long fight it is carrying a tower.
+        grown = clamp(getattr(mech, "harden", 0.0) / max(1.0, HARDEN_CAP),
+                      0.0, 1.0)
+        for i in range(8):
+            f = i / 7.0
+            if f > grown + 0.14:
+                continue
+            y = top + 12 - f * 208
+            wd = (64 - f * 36) * (0.84 + 0.26 * abs(math.sin(i * 1.7)))
+            xo = TRUNK_BACK + 44 - f * 20 + math.sin(i * 2.3) * 11
+            tl = math.sin(i * 1.1) * 7
+            plate = [(xo - wd, y + 16 + tl), (xo - wd * 0.80, y - 14 + tl),
+                     (xo + wd * 0.84, y - 20 - tl), (xo + wd, y + 11 - tl)]
+            rig.poly(plate, shade(main, 1.12 - f * 0.30))
+            rig.poly(plate, dark, 2)
+            if i and f <= grown:                # the seam between courses
+                rig.bar((xo - wd * 0.7, y + 13), (xo + wd * 0.7, y + 9),
+                        1.8, shade(dark, 1.35))
+        for i in range(4):                      # and a banded flank
+            y = by - 24 + i * 18
+            rig.poly([(TRUNK_BACK + 16, y), (TRUNK_FRONT - 20, y - 4),
+                      (TRUNK_FRONT - 20, y + 5), (TRUNK_BACK + 16, y + 9)],
+                     shade(dark, 1.25))
+
+    elif kind == "stalker":
+        for i in range(7):                      # a long LOW ridge, not a sail
+            f = i / 6.0
+            h = 8 + 15 * math.sin(f * math.pi)
+            x = TRUNK_BACK - 6 + f * 150
+            rig.poly([(x - 10, top + 16), (x - 2, top + 14 - h),
+                      (x + 8, top + 18)], shade(light, 0.86))
+        for ax, ln in ((TRUNK_FRONT - 34, 74), (TRUNK_BACK + 26, 58)):
+            rig.poly([(ax + 8, top + 20), (ax - 4, top + 14),
+                      (ax - ln, top + 6 - ln * 0.30),
+                      (ax - ln * 0.45, top + 22)], shade(light, 0.95))
+            rig.poly([(ax + 8, top + 20), (ax - 4, top + 14),
+                      (ax - ln, top + 6 - ln * 0.30)], dark, 1)
+        for i in range(6):                      # ribs, showing through
+            x = TRUNK_BACK + 22 + i * 16
+            rig.bar((x, by - 20), (x - 5, by + 26), 2.6, shade(dark, 1.3))
+
+    elif kind == "gravid":
+        # the near slab, the hunch under it, and what she is carrying
+        _mother_shard(rig, 6, -8, 0.88, shade(main, 0.92))
+        rig.poly(_blob(TRUNK_FRONT - 40, top + 26, 54, 38, 13, 0.14, 4.0),
+                 shade(dark, 1.15))
+        for i, (ex, ey, r) in enumerate(((-96, -128, 20), (-52, -118, 26),
+                                         (-6, -110, 31), (44, -116, 27),
+                                         (88, -126, 21))):
+            sag = math.sin(t * 1.1 + i * 1.4) * 3.0
+            rig.circle((ex, ey + sag), r, shade(main, 0.88))
+            rig.circle((ex, ey + sag), r, dark, 2)
+            rig.circle((ex - r * 0.2, ey + sag - r * 0.2), r * 0.42,
+                       shade(light, 0.95))
+            for k in range(3):                  # something inside, curled
+                a = k * 2.1 + t * 0.8
+                rig.circle((ex + math.cos(a) * r * 0.35,
+                            ey + sag + math.sin(a) * r * 0.35), 3.0, trim)
+
+    elif kind == "bloom":
+        # IT STANDS UP. Everything else in this house is a long low
+        # thing on six legs; this one rears off the trunk and hangs two
+        # arms off the front of itself, which is the loudest difference
+        # available without a second renderer.
+        ux, uy = BLOOM_UP
+        body = [(ux - 42, uy + 8), (ux - 46, uy - 62), (ux - 30, uy - 108),
+                (ux + 2, uy - 124), (ux + 38, uy - 112),
+                (ux + 50, uy - 66), (ux + 44, uy + 6), (ux + 8, uy + 22)]
+        rig.poly(body, shade(main, 0.96))
+        rig.poly(body, dark, 2)
+        for i in range(4):                      # a ribbed front
+            y = uy - 20 - i * 24
+            rig.poly([(ux - 30, y), (ux + 34, y - 4), (ux + 32, y + 7),
+                      (ux - 30, y + 11)], shade(dark, 1.22))
+        for k, sgn in ((0, -1), (1, 1)):
+            sw = math.sin(t * 1.1 + k * 2.0) * 7
+            sh = (ux + sgn * 34, uy - 96)
+            el = (sh[0] + sgn * 20 + sw, uy - 24)
+            hd = (sh[0] + sgn * 6 + sw * 1.5, uy + 48)
+            arm = shade(dark, 1.25) if k == 0 else main
+            rig.poly(_blob(sh[0], sh[1], 20, 17, 11, 0.14, 2.0 + k),
+                     shade(arm, 0.92))
+            rig.bar(sh, el, 13, arm)
+            rig.bar(el, hd, 10, arm)
+            rig.circle(el, 12, shade(dark, 1.05))
+            for c in (-1, 0, 1):                # and it has hands
+                rig.bar(hd, (hd[0] + c * 9 + sgn * 6, hd[1] + 24), 3.2,
+                        shade(light, 0.9))
+        pu = 0.5 + 0.5 * math.sin(t * 2.4)
+        vein = mix(trim, dark, 0.58)
+        # a NETWORK, branching and getting thinner as it goes. The first
+        # pass drew two long lines corner to corner and it read as a
+        # cable somebody had draped over the animal
+        for a, b, w in (((-44, -158), (-14, -186), 2.4),
+                        ((-14, -186), (16, -200), 2.2),
+                        ((16, -200), (48, -212), 1.7),
+                        ((48, -212), (70, -226), 1.2),
+                        ((48, -212), (64, -198), 1.1),
+                        ((16, -200), (24, -226), 1.6),
+                        ((24, -226), (46, -240), 1.1),
+                        ((24, -226), (12, -244), 1.2),
+                        ((-14, -186), (-34, -204), 1.5),
+                        ((-34, -204), (-56, -212), 1.0),
+                        ((-44, -158), (-70, -176), 1.4),
+                        ((16, -200), (ux - 20, uy - 16), 2.3),
+                        ((ux - 20, uy - 16), (ux - 8, uy - 56), 2.0),
+                        ((ux - 8, uy - 56), (ux + 10, uy - 92), 1.6),
+                        ((ux + 10, uy - 92), (ux + 20, uy - 120), 1.1),
+                        ((ux - 8, uy - 56), (ux - 30, uy - 80), 1.3),
+                        ((ux - 30, uy - 80), (ux - 38, uy - 104), 0.9),
+                        ((ux - 8, uy - 56), (ux + 24, uy - 66), 1.2)):
+            rig.bar(a, b, w, vein)
+        rig.light((ux - 8, uy - 54), 44 * pu, trim, int(34 * pu))
+        rig.light((6, -214), 34 * pu, trim, int(26 * pu))
+        for i in range(7):                      # spores coming off it
+            f = (t * 0.32 + i * 0.143) % 1.0
+            rig.circle((TRUNK_BACK + 20 + i * 20 + math.sin(t + i) * 8,
+                        TRUNK_TOP - 20 - f * 90),
+                       2.6 * (1.0 - f), shade(trim, 1.0))
+
+    strain_head(rig, mech, t, tones, kind, rear)
+
+
 def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
     """The animal in the street. Same shape functions as the pod view -
     they were authored in profile, so the fight gets them for nothing and
@@ -4692,6 +5313,14 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
     # gets its frame's - this was passed to the steel renderer and not
     # to this one, so a RYEZ strain was the stock body in a new colour
     rig = Side(surf, sx, gy, scale, pose.face, mech.frame.prop)
+    # ...and the warp hinges on the ANIMAL's joints, not the machine's.
+    # Side defaults to a mech's hip and neck; on a body whose legs come
+    # out of the belly at -162 that put the belly below the leg roots on
+    # anything with a `body` multiplier, so a wide strain came apart at
+    # the waist. It also means `leg`, `legw`, `head` and `arm` did
+    # nothing at all here, because nothing ever set a zone.
+    rig.hip = LEG_ROOT_Y
+    rig.neck = NECK_ROOT[1]
 
     def col(socket, base):
         if mech.fit[socket] is None:
@@ -4700,6 +5329,7 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
                      tones)
 
     def blit(shapes, socket):
+        rig.zone = ZONE_OF.get(socket, "body")
         c = {}
         for pts, tn in shapes:
             if tn not in c:
@@ -4711,9 +5341,11 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
             else:
                 rig.poly(pts, c[tn])
                 rig.poly(pts, shade(c[tn], 0.6), 1)
+        rig.zone = "body"
 
     tt = mech.fit["torso"]
     lt = mech.fit["legs"]
+    plan = (mech.frame.style or {}).get("beast")
     rear = 0.0
     swing = max(pose.swing["l"], pose.swing["r"])
     if pose.brace:
@@ -4722,26 +5354,29 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
         rear = math.sin(swing * math.pi) * 0.9
     wag = math.sin(t * 2.2 + pose.walk * 0.5) * 0.9 * (0.4 + pose.moving)
 
-    if tt:
+    strain_overlay(rig, mech, t, tones, "under", rear)
+    if tt and not strain_hides(mech, "tail"):
         blit(bio_tail(tt, wag), "torso")
     if lt:
-        blit(bio_legs(lt, pose.walk, pose.moving, "far"), "legs")
+        blit(bio_legs(lt, pose.walk, pose.moving, "far", plan), "legs")
     if tt:
         blit(bio_trunk(tt), "torso")
     if mech.fit["armour"] is not None:
         blit(bio_armour(mech.fit["armour"]), "armour")
     if lt:
-        blit(bio_legs(lt, pose.walk, pose.moving, "near"), "legs")
+        blit(bio_legs(lt, pose.walk, pose.moving, "near", plan), "legs")
     else:
         # nothing to stand on: the trunk is down in the road
         rig.poly(_blob(10, -70, 120, 40, 14, 0.1, 2.0), (44, 34, 44))
-    if mech.fit["head"] is not None:
+    if mech.fit["head"] is not None and not strain_hides(mech, "head"):
         blit(bio_head(mech.fit["head"], rear), "head")
         if mech.alive("head"):
+            rig.zone = "head"
             e, hs = head_eye(mech.fit["head"], rear)
             rig.circle((e.x, e.y), hs * 0.20, (250, 232, 140))
             rig.circle((e.x, e.y), hs * 0.09, (24, 16, 18))
             rig.light((e.x, e.y), hs * 0.6, RYEZ_ACID, 60)
+            rig.zone = "body"
     for side in ("l", "r"):
         asock = "l_arm" if side == "l" else "r_arm"
         at = mech.fit[asock]
@@ -4770,6 +5405,7 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
     if pose.brace and (mech.alive("l_arm") or mech.alive("r_arm")):
         rig.bar((TRUNK_FRONT + 26, TRUNK_TOP + 20),
                 (TRUNK_FRONT + 34, TRUNK_BELLY - 6), 7, (210, 200, 230))
+    strain_overlay(rig, mech, t, tones, "over", rear)
     if pose.flash > 0.01:
         blit_glow(surf, (sx, gy - 200 * scale), 150 * scale,
                   (255, 236, 220), int(150 * clamp(pose.flash, 0, 1)))
@@ -10620,7 +11256,7 @@ def draw_ware_icon(surf, r, w, t):
         p.walk = t * 1.4
         p.moving = 0.0 if ch.has("rooted") else 0.35
         draw_mech_side(surf, m, r.centerx - r.w * 0.06, r.bottom - r.h * 0.06,
-                       r.h / 430.0, t, p)
+                       r.h / 430.0, t, p, bio=chassis_grown(ch.key))
         return
     if k in BLUEPRINT_MODULES.values():
         def lines(s, box):
@@ -11340,6 +11976,7 @@ class PickFrame:
     def __init__(self, house_key="keal"):
         self.t = 0.0
         self.house = house_key
+        self.grown = house_key == "ryez"
         self.frames = owned_chassis()
         self.sel = 0
         self.buttons = []
@@ -11361,10 +11998,13 @@ class PickFrame:
         ov = pygame.Surface((W, H), pygame.SRCALPHA)
         ov.fill((8, 9, 14, 176))
         surf.blit(ov, (0, 0))
-        text(surf, "WHICH MACHINE", 34, (W // 2, 44), PAINT, center=True)
-        text(surf, "The frame decides which sockets exist. It cannot be "
-             "changed once the yard opens.", 14, (W // 2, 86), FAINT,
-             center=True)
+        text(surf, "WHICH BODY" if self.grown else "WHICH MACHINE", 34,
+             (W // 2, 44), PAINT, center=True)
+        text(surf, ("The strain decides which organs it has. It cannot be "
+                    "changed once the tanks open." if self.grown else
+                    "The frame decides which sockets exist. It cannot be "
+                    "changed once the yard opens."), 14, (W // 2, 86),
+             FAINT, center=True)
         self.buttons = []
         for i, ch in enumerate(self.frames):
             r = self.card_rect(i)
@@ -11380,7 +12020,8 @@ class PickFrame:
             p.walk = self.t * 1.3
             p.moving = 0.0 if ch.has("rooted") else 0.4
             draw_mech_side(surf, m, r.centerx, r.y + r.h * 0.62,
-                           r.h / 700.0, self.t, p)
+                           r.h / 700.0, self.t, p,
+                           bio=chassis_grown(ch.key))
             text(surf, ch.name, fit(ch.name, 19, r.w - 16),
                  (r.centerx, r.bottom - 58), INK if on else DIM, center=True)
             for j, ln in enumerate(wrap(ch.effect, 12, r.w - 18)[:2]):
@@ -11395,7 +12036,8 @@ class PickFrame:
                  bold=False)
         lab = ch.name if ch.name.startswith("THE") else "THE " + ch.name
         self.go = Button(pygame.Rect(W // 2 - 190, H - 66, 380, 44),
-                         "BUILD " + lab, ("go", None), primary=True)
+                         ("GROW " if self.grown else "BUILD ") + lab,
+                         ("go", None), primary=True)
         self.go.hover(mouse)
         self.go.draw(surf, 19)
         text(surf, "ESC to go back", 13, (24, H - 34), FAINT)
@@ -11690,7 +12332,7 @@ class Bazaar:
           ("zach", "AGENT ZACH", "he does not say how", ZACH_TONE,
            "draw_zach_front"))),
         ("vask", "THE MAD SCIENTIST",
-         "he does not sell to shipyards. He barely sells to you",
+         "he will sell to a shipyard. It will not do a shipyard any good",
          "draw_vask_lab", "draw_slab", (222, 236, 214), (128, 158, 126),
          (("vask", "DR OSKAR VASK",
            "he grows it, and he will not say from what",
@@ -11698,9 +12340,13 @@ class Bazaar:
           ("hauk", "PROF ANJA HAUK", "she decides what shape it is",
            HAUK_TONE, "draw_hauk_front"))),
     )
-    # who is open to whom: the Capital is a company and the lab is a man
-    # with opinions, and neither will take the other house's money
-    SECTION_HOUSE = {"capital": "keal", "vask": "ryez"}
+    # NOTHING IS HIDDEN. This was a house gate twice and it was wrong
+    # twice, because it contradicts the rule the rest of the shop runs
+    # on: you can buy anything, and it stays quiet in the wrong house -
+    # which is what the amber "does nothing in a RYEZ run" line on each
+    # card is for. Hiding the counter made those wares purchasable and
+    # unreachable at the same time. Marks are per SLOT, so stocking up
+    # for the campaign you have not started yet is the point.
     # four rooms, four tunes. The shop used to play `vigil` over all of
     # them, so the Capital sounded like a wet street at night and the lab
     # sounded like a bargain.
@@ -11735,19 +12381,8 @@ class Bazaar:
         self.buy_btn = None
 
     def open_sections(self):
-        """The tabs you are allowed to walk into.
-
-        Between campaigns there is no house - `to_title` leaves CURRENT on
-        "keal" because something has to be set for the labels, and reading
-        that as "the player is KEAL" hid the lab from everybody who was not
-        mid-run. Marks are per SLOT, not per house, so with no run in play
-        every counter is open and you can stock up for whichever side you
-        play next."""
-        if self.run is None:
-            return list(range(len(self.SECTIONS)))
-        return [i for i, s in enumerate(self.SECTIONS)
-                if self.SECTION_HOUSE.get(s[0], self.run.house)
-                == self.run.house]
+        """All of them. See the note on SECTION_HOUSE above."""
+        return list(range(len(self.SECTIONS)))
 
     def section(self):
         return self.SECTIONS[self.sec]
@@ -12432,7 +13067,14 @@ class App:
             if picked:
                 set_house(picked)
                 frames = owned_chassis()
-                if picked == "keal" and len(frames) > 1:
+                # NOT `picked == "keal"`. It was, for as long as only
+                # Novak sold frames, and it stayed that way after Hauk
+                # started selling whole animals - so a RYEZ player could
+                # buy six strains out of the cellar and be put straight
+                # into the stock body every single time, with no screen
+                # anywhere that even mentioned them. The question is
+                # whether there is a CHOICE, and that is all it is.
+                if len(frames) > 1:
                     self.frames = PickFrame(picked)
                     self.state = "frame"
                 else:
