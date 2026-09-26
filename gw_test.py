@@ -961,21 +961,22 @@ def capital():
     assert run.max_crew == G.RECRUIT_CAP, run.max_crew
     plain = G.WEAPONS["auto"].scrap
     assert run.price(G.WEAPONS["auto"], "l_wpn")[0] == int(round(plain * 0.9))
-    run.crew, run.alloy, run.scrap = 2, 0, 4000
+    run.crew, run.alloy, run.scrap = 4, 0, 4000
+    # the furnace costs a HAND, off the top, for the whole run
+    assert run.furnace_hand == 1
+    assert run.free_crew == run.crew - 1, run.free_crew
     coke = run.scrap
     for _ in range(G.FURNACE_DAYS):
         run.capital_night()
     assert run.alloy == 1, "the furnace: %d in %d nights" % (
         run.alloy, G.FURNACE_DAYS)
-    burnt = coke - run.scrap
-    assert burnt == G.FURNACE_COKE * G.FURNACE_DAYS, burnt
-    assert run.crew == 4, "the office: %d in four nights" % run.crew
+    assert run.scrap == coke, "the furnace is still eating scrap"
     run.crew = G.RECRUIT_CAP
     for _ in range(6):
         run.capital_night()
     assert run.crew == G.RECRUIT_CAP, "the office went past its cap"
-    print("  furnace 1 alloy per %d nights for %d scrap, office 2 hands, "
-          "capped at %d" % (G.FURNACE_DAYS, burnt, G.RECRUIT_CAP))
+    print("  furnace 1 alloy per %d nights and one hand on it; office fills "
+          "to %d" % (G.FURNACE_DAYS, G.RECRUIT_CAP))
 
     # -- and it is a TRADE now, not a tap ---------------------------------
     # It used to pour half an alloy a night for nothing: 28 over a 57-day
@@ -987,6 +988,7 @@ def capital():
     for _ in range(G.SCHEDULE[-1]):
         rich.capital_night()
     spent -= rich.scrap
+    assert spent == 0, "it is charging money as well as a hand"
     # a whole machine: every rung of the body, the dearest hardpoint pair,
     # and three bays - not just the body, which is where the first version
     # of this assertion got its 14 and compared it against 14
@@ -998,21 +1000,18 @@ def capital():
     assert rich.alloy < build_needs * 0.75, (
         "the furnace still covers most of a build on its own: %d of %d"
         % (rich.alloy, build_needs))
-    assert spent / float(rich.alloy) < G.REFINE.scrap, "worse than smelting"
-    print("  over a campaign: %d alloy for %d scrap (%d each, crucible is "
-          "%d), against a whole machine's %d"
-          % (rich.alloy, spent, spent // rich.alloy, G.REFINE.scrap,
-             build_needs))
+    print("  over a campaign: %d alloy, free of money, against a whole "
+          "machine's %d" % (rich.alloy, build_needs))
 
-    # -- and it goes out when the bank does -------------------------------
-    broke = G.Run("keal")
-    broke.scrap, broke.alloy = G.FURNACE_COKE - 1, 0
-    for _ in range(G.FURNACE_DAYS * 2):
-        broke.capital_night()
-    assert broke.alloy == 0 and broke.scrap == G.FURNACE_COKE - 1, (
-        broke.alloy, broke.scrap)
-    assert any("FURNACE IS COLD" in ln for ln in broke.news), broke.news
-    print("  and on an empty bank it goes out and says so")
+    # -- and the hand it costs is a hand you cannot build with ------------
+    lean = G.Run("keal")
+    lean.crew, lean.scrap, lean.alloy = 2, 6000, 9
+    assert lean.free_crew == 1, lean.free_crew
+    assert lean.start_build("legs", G.CATALOGUE["legs"][0])
+    assert lean.free_crew == 0, lean.free_crew
+    assert not lean.start_build("torso", G.CATALOGUE["torso"][0]), (
+        "two jobs on one free hand")
+    print("  two on the books is one usable hand while it is lit")
 
     r2 = G.Run("keal")
     r2.mech.install("torso", 2)

@@ -863,15 +863,17 @@ def slot_card(n):
 # part of the game that does not reset.
 # ---------------------------------------------------------------------------
 # The ARC FURNACE. It used to pour half an alloy a day for nothing, which
-# over a 57-day campaign is 28 - against a full build's 25. One purchase
-# paid for the entire rare-metal economy of the game and deleted the
-# smelter, the FOUNDRY and the HAZMAT TEAM as decisions worth making. It
-# is a TRADE now, in the same family as the smelter: much the better rate
-# (about 105 scrap an alloy against the crucible's 300, with no crew and
-# no days) but it competes with the build for money, and it stops when
-# the bank does.
-FURNACE_DAYS = 4                     # days per alloy
-FURNACE_COKE = 26                    # scrap a day it eats to do it
+# over a 57-day campaign is 28 - against a whole machine's 28. One
+# purchase paid for the entire rare-metal economy and deleted the
+# smelter, the FOUNDRY and the HAZMAT TEAM as decisions worth making.
+#
+# It costs a PAIR OF HANDS. Somebody has to stand in front of it, and
+# that somebody is not building the machine - which is a steeper price
+# than money and a much more interesting one, because crew is the one
+# thing in this game you cannot buy more of mid-run. It is taken off the
+# top of `free_crew` rather than charged per night: the furnace does not
+# stop and start, it is simply always one hand down.
+FURNACE_DAYS = 3                     # days per alloy
 
 
 class Ware:
@@ -963,10 +965,10 @@ WARE_LIST = [
 
     # -- Zoe: the ledger, four terraces down --------------------------------
     Ware("furnace", "zoe", "ARC FURNACE", 95, "power",
-         "burns %d SCRAP a day and pours one ALLOY every %d, for good"
-         % (FURNACE_COKE, FURNACE_DAYS),
-         "It runs whether you are looking at it or not. It does not run "
-         "on nothing.",
+         "one ALLOY every %d days, for good - and a hand on it, for good"
+         % FURNACE_DAYS,
+         "Somebody has to stand in front of it. That somebody is not "
+         "building the machine.",
          house="keal"),
     Ware("hq", "zoe", "REGIONAL HQ", 110, "power",
          "one more pair of hands, and everything costs 10% less",
@@ -7083,8 +7085,13 @@ class Run:
         return int(r * (0.75 if has_ware("rushhour") else 1.0))
 
     @property
+    def furnace_hand(self):
+        """The one standing at the furnace, who is not available."""
+        return 1 if has_ware("furnace") else 0
+
+    @property
     def free_crew(self):
-        return self.crew - sum(j.crew for j in self.jobs)
+        return self.crew - sum(j.crew for j in self.jobs) - self.furnace_hand
 
     def job_on(self, socket):
         for j in self.jobs:
@@ -7173,20 +7180,12 @@ class Run:
         change what a long run feels like without changing what any single
         day can do."""
         if has_ware("furnace"):
-            if self.scrap >= FURNACE_COKE:
-                self.scrap -= FURNACE_COKE
-                self.furnace += 1.0 / FURNACE_DAYS
-                while self.furnace >= 1.0 - 1e-9:
-                    self.furnace -= 1.0
-                    self.alloy += 1
-                    self.news.append("+1 %s OUT OF THE ARC FURNACE"
-                                     % word("alloy", "ALLOY"))
-            else:
-                # said every night it cannot pay, not only on the night it
-                # loses banked heat: a player wondering where their alloy
-                # went should be told, and a player under 26 scrap a night
-                # has worse news on the same screen anyway
-                self.news.append("THE ARC FURNACE IS COLD - NOTHING TO BURN")
+            self.furnace += 1.0 / FURNACE_DAYS
+            while self.furnace >= 1.0 - 1e-9:
+                self.furnace -= 1.0
+                self.alloy += 1
+                self.news.append("+1 %s OUT OF THE ARC FURNACE"
+                                 % word("alloy", "ALLOY"))
         if has_ware("recruit") and self.crew < self.max_crew:
             self.queue += 1
             if self.queue >= 2:
@@ -8307,9 +8306,12 @@ class Hangar:
                     run.crew, word("crew", "CREW")), 13,
                  (r.right - 12, r.y + 10), FAINT, right=True)
         else:
-            text(surf, "%d OF %d %s ASSIGNED"
-                 % (run.crew - run.free_crew, run.crew, word("crew", "CREW")),
-                 13, (r.right - 12, r.y + 10), FAINT, right=True)
+            lab = "%d OF %d %s ASSIGNED" % (run.crew - run.free_crew,
+                                            run.crew, word("crew", "CREW"))
+            if run.furnace_hand:
+                # or a crewman goes missing every night with no explanation
+                lab += "  (1 ON THE FURNACE)"
+            text(surf, lab, 13, (r.right - 12, r.y + 10), FAINT, right=True)
         if not run.jobs:
             text(surf, "Every pod is empty. Nothing is growing." if bio else
                  "Nobody is working on anything. That is a whole day.",
