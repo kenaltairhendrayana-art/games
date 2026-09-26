@@ -454,9 +454,16 @@ def shop(run):
         pods = run.growing()
         for j in pods:
             run.set_crew(j, 0)
-        # two handlers hold a pod steady; the rest go where it is worst
-        for want in (2, 3):
-            for j in sorted(pods, key=lambda j: (-j.unstable, j.left)):
+        # ONE pair of hands first, on every pod that can be covered,
+        # and only then a second on the ones that need it. It used to go
+        # straight to two, which with two handlers in the house meant one
+        # pod watched and four expressing wrong - and it was right to,
+        # because at the old CALM the first handler was the only one that
+        # ever mattered and the second was free to waste.
+        for j in pods:
+            run.set_crew(j, 0)
+        for want in (1, 2):
+            for j in sorted(pods, key=lambda j: (-j.left, -j.unstable)):
                 if run.free_crew <= 0:
                     break
                 if j.crew < want:
@@ -905,6 +912,197 @@ def yard():
         back.end_day()
     assert back.integrity > 50.0, back.integrity
     print("  a half-finished relief job survives a save")
+
+    # -- nothing on the grown side is being WELDED ------------------------
+    # A job in progress fills from the feet and the fill line carried a
+    # torch: a hot white glow and orange sparks flying off the bead. On a
+    # tank that is the steel half of the game leaking into the other one.
+    # The line is a waterline there, and what comes off it is bubbles.
+    #
+    # The colours are matched EXACTLY rather than by hue. A first pass
+    # asked "is this pixel warm or cold" and the HOLLOW SWARM's trim is a
+    # yellow-green, so its bubbles counted as sparks - and half the body
+    # tones fell in one bucket or the other as well.
+    SPARK = (255, 206, 128)
+
+    def marks(house, chassis="standard"):
+        wipe_meta()
+        G.set_house(house)
+        if chassis != "standard":
+            G.add_marks(4000)
+            G.buy_ware("st_" + chassis)
+        m = G.Mech(chassis)
+        sf = pygame.Surface((440, 470), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        rig = G.Rig(sf, 220, 450, 0.62, m.frame.prop)
+        G.draw_socket_front(rig, "legs", 3, 0.0, 1, "job", 0.45, 2.0,
+                            m.frame.tones, (m.frame.style or {}).get("beast"))
+        trim = (m.frame.tones or G.BIO_TONES).get("trim", G.RYEZ_ACID)
+        wet = (G.shade(trim, 0.85), G.shade(trim, 0.62), G.shade(trim, 0.7))
+        hot = cold = 0
+        w, h = sf.get_size()
+        for y in range(h):
+            for x in range(w):
+                c = sf.get_at((x, y))
+                if c[3] < 40:
+                    continue
+                if c[:3] == SPARK:
+                    hot += 1
+                elif c[:3] in wet:
+                    cold += 1
+        return hot, cold
+    steel = marks("keal")
+    grown = marks("ryez")
+    strain = marks("ryez", "hollow")
+    assert steel[0] > 0, "the welder went out"
+    assert steel[1] == 0, "a shipyard is growing something"
+    assert grown[0] == 0, (
+        "there is still a torch over the tank: %d sparks" % grown[0])
+    assert grown[1] > 0, "nothing marks how far the culture has got"
+    # and a STRAIN gets it too. The house test in there used to be
+    # `tones is BIO_TONES`, and a bought body turns up carrying its own
+    # palette, so every one of them was being welded in its tank
+    assert strain[0] == 0, (
+        "a HOLLOW SWARM is being welded: %d sparks" % strain[0])
+    assert strain[1] > 0, "a strain's tank has no waterline"
+    G.set_house("ryez")
+    assert G.work_sfx() == "graft"
+    G.set_house("keal")
+    assert G.work_sfx() == "weld"
+    print("  a weld throws %d sparks and no bubbles; a culture throws "
+          "%d bubbles and no sparks, strain or not" % (steel[0], grown[1]))
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- HANDLERS: what a pair of hands on a pod is actually worth --------
+    # Both halves of this were reported by a player: "the handlers don't
+    # do anything" and "I can't mend two things at once". They are one
+    # bug. RYEZ ran five tanks on the two hands a gantry gets, so mending
+    # anything meant an organ came out wrong - and the dose was set so
+    # that one handler covered a THIRTEEN day culture when the longest in
+    # the game is nine, which made the second pair of hands a no-op in
+    # every situation that can occur.
+    wipe_meta()
+    G.set_house("ryez")
+
+    def drifts(days, hands):
+        """Where a culture of this length ends up with this many on it."""
+        u = 0.0
+        for _ in range(days):
+            u = max(0.0, min(100.0, u + G.DRIFT_PER_DAY
+                             - G.HANDLER_CALM * hands))
+        return u >= G.FAULT_AT
+
+    # against the cultures that EXIST, not against invented lengths
+    lens = sorted({int(math.ceil(max(1, p.days) * G.GESTATE))
+                   for s in G.SOCKETS if s in G.CATALOGUE
+                   for p in G.CATALOGUE[s]})
+    assert max(lens) <= 12, lens
+    assert all(drifts(d, 0) for d in lens if d >= 4), (
+        "a pod nobody watches can still come out right: %s" % lens)
+    assert any(not drifts(d, 1) for d in lens), "one handler is never enough"
+    assert any(drifts(d, 1) for d in lens), (
+        "one handler covers every culture in the game, so the second pair "
+        "of hands cannot ever matter: %s" % lens)
+    assert not any(drifts(d, 2) for d in lens), "two handlers still fault"
+    short = [d for d in lens if not drifts(d, 1)]
+    long_ = [d for d in lens if drifts(d, 1)]
+    print("  one handler holds a %d-%dd culture and loses a %d-%dd one; "
+          "two hold anything" % (min(short), max(short), min(long_),
+                                 max(long_)))
+
+    # and the slider stops where the effect stops
+    run = G.Run("ryez")
+    run.scrap, run.alloy = 9000, 90
+    run.start_build("head", G.CATALOGUE["head"][0])
+    pod = run.jobs[0]
+    run.set_crew(pod, 9)
+    assert pod.crew == G.HANDS_PER_POD, (
+        "a pod took %d handlers and two already stop it drifting"
+        % pod.crew)
+    run.set_crew(pod, 0)
+
+    # -- and there are enough hands for the tanks to mean anything --------
+    assert run.crew == G.HANDS_START and run.crew > G.CREW_START, run.crew
+    fresh = G.Run("ryez")
+    fresh.scrap = 9000
+    for s in ("legs", "torso"):
+        fresh.mech.install(s, 1)
+        fresh.mech.hp[s] = 10
+    assert fresh.start_repair("legs"), "RYEZ cannot mend at all"
+    assert fresh.start_repair("torso"), (
+        "RYEZ cannot mend two things at once with %d hands and nothing "
+        "else running" % fresh.crew)
+    keal = G.Run("keal")
+    keal.scrap = 9000
+    for s in ("legs", "torso"):
+        keal.mech.install(s, 1)
+        keal.mech.hp[s] = 10
+    assert keal.start_repair("legs") and keal.start_repair("torso")
+    print("  both houses can have two things being mended at once")
+
+    # -- RYEZ can grow its hands, which it could not do at all ------------
+    # every ware that sent one was Zoe's and Zoe will not sell to a tank
+    # farm, so the grown house opened on two and finished on two
+    givers = ("earlyshift", "hq", "recruit", "v_hands")
+    G.set_house("ryez")
+    reach = [k for k in givers if G.WARES[k].house in (None, "ryez")]
+    assert reach == ["earlyshift", "v_hands"], reach
+    G.add_marks(4000)
+    G.buy_ware("v_hands")
+    grow = G.Run("ryez")
+    start = grow.crew
+    for _ in range(4):
+        grow.capital_night()
+    assert grow.crew == start + 2, (start, grow.crew)
+    for _ in range(40):
+        grow.capital_night()
+    assert grow.crew == grow.max_crew == grow.pods + 2, (
+        grow.crew, grow.max_crew, grow.pods)
+    print("  his students take RYEZ from %d hands to %d, one per tank "
+          "plus two" % (start, grow.crew))
+
+    # -- and the whole point: a watched tank and an unwatched one -------
+    # This is the player's complaint stated as a measurement. If it comes
+    # out the same either way then the sliders are furniture.
+    def tanks(n, watch):
+        wipe_meta()
+        G.set_house("ryez")
+        r = G.Run("ryez")
+        r.scrap, r.alloy = 20000, 200
+        for s in ("head", "l_arm", "r_arm", "reactor")[:n]:
+            r.start_build(s, G.CATALOGUE[s][-1])   # the long ones
+        pods = r.growing()
+        assert len(pods) == n, len(pods)
+        if watch:
+            for want in (1, 2):
+                for j in pods:
+                    if r.free_crew > 0 and j.crew < want:
+                        r.set_crew(j, want)
+        else:
+            for j in pods:
+                r.set_crew(j, 0)
+        for _ in range(max(int(j.need) for j in pods) + 1):
+            r.end_day()
+        return sum(1 for j in pods if j.faulted)
+    assert tanks(2, False) == 2, "an unwatched tank came out right"
+    assert tanks(2, True) == 0, (
+        "handlers changed nothing on two long cultures, which is exactly "
+        "as many as four pairs of hands can hold")
+    print("  two long cultures: 0 of 2 wrong with handlers on them, "
+          "2 of 2 with nobody watching")
+
+    # ...and the tanks still outnumber the hands, which is the decision.
+    # Four long cultures want eight handlers and the house has four, so
+    # something in there comes out wrong whatever you do with the sliders
+    assert tanks(4, True) > 0, (
+        "four long cultures and four hands and nothing went wrong - the "
+        "pods are free and there is no decision left in them")
+    print("  four of them at once is more than the house has hands for, "
+          "and it costs")
+    wipe_meta()
+    G.set_house("keal")
+
     print("\nyard ok")
 
 
@@ -947,8 +1145,11 @@ def capital():
     assert len(G.module_list()) == base_mods, "KEAL bays in a RYEZ rack"
     assert len(G.options_for("l_wpn", None)) == base_wpns, "KEAL guns, RYEZ"
     ryez = G.Run("ryez")
-    assert ryez.crew == 2, ryez.crew
-    assert ryez.max_crew == G.MAX_CREW, ryez.max_crew
+    # the HQ sends nobody to a tank farm and the recruiting office does
+    # not raise its ceiling either - RYEZ's hands come from its own pod
+    # count and from Vask's students, neither of which is on this list
+    assert ryez.crew == G.HANDS_START, ryez.crew
+    assert ryez.max_crew == ryez.pods + 2, ryez.max_crew
     print("  RYEZ owns all twelve and can use none of them")
 
     G.set_house("keal")
@@ -1982,6 +2183,72 @@ def frames():
             break
     assert most > 0, "the swarm shed nothing"
     print("  hollow swarm put %d of them out without being asked" % most)
+
+    # -- and what comes out of it is not a man with a rifle --------------
+    # The brood ARE Mercs with a flag on them, and that is right: "a
+    # small thing standing between you and it that soaks one hit" is one
+    # object, not two. They were DRAWN as Mercs as well, which is not -
+    # so RYEZ's hatchlings came out of the sac in helmets, in army
+    # green, carrying rifles.
+    bf = G.Fight(grown("hollow"), G.roster_for("ryez")[2])
+
+    # sx() is a camera, not an offset, so put the speck where we want it
+    # by inverting it rather than by guessing
+    s0, s1 = bf.sx(0.0), bf.sx(1000.0)
+    at = lambda px: (px - s0) * 1000.0 / (s1 - s0)
+
+    def speck(brood, age=6.0):
+        sf = pygame.Surface((90, 70), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        m = G.Merc(at(45.0), 1)
+        m.brood, m.t = brood, age
+        bf.draw_merc(sf, m, 52, (0, 0))
+        w, h = sf.get_size()
+        return sf, bytes(1 if sf.get_at((x, y))[3] > 40 else 0
+                         for y in range(h) for x in range(w))
+    man_s, man = speck(False)
+    bug_s, bug = speck(True)
+    assert sum(man) and sum(bug), "one of the two drew nothing at all"
+    # overlap over union, NOT over the smaller one - a big shape that
+    # simply contains a small one shares ~100% of the small one's pixels
+    # and that says nothing about whether they are the same drawing
+    both = sum(1 for a, b in zip(man, bug) if a and b)
+    either = sum(1 for a, b in zip(man, bug) if a or b)
+    share = both / float(max(1, either))
+    assert share < 0.4, (
+        "the brood are still the hired men: %.0f%% of the two drawings "
+        "coincide" % (share * 100))
+    mb, bb = man_s.get_bounding_rect(), bug_s.get_bounding_rect()
+    assert bb.w > mb.w, "a hatchling is not bigger than a person"
+    assert bb.w > bb.h, (
+        "a hatchling should be low and wide, not stood up: %dx%d"
+        % (bb.w, bb.h))
+    assert mb.h > mb.w, "a mercenary should still be a person"
+    print("  the brood are %dx%d and low; a mercenary is %dx%d and "
+          "upright" % (bb.w, bb.h, mb.w, mb.h))
+
+    # -- and the sac they come out of is ON the animal, filling up -------
+    # "it puts one on the animal" was true of the rules and not of the
+    # picture: the sac was a number counting down in the dark
+    def sac_box(frac):
+        sf = pygame.Surface((440, 420), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        bf.brood_t = G.COLONY_EVERY * (1.0 - frac)
+        bf.draw_brood_sac(sf, 210, 396)
+        return sf.get_bounding_rect()
+    empty, full = sac_box(0.02), sac_box(0.97)
+    assert empty.w > 0, "there is nothing on the animal to see"
+    assert full.w > empty.w * 1.7, (
+        "the sac does not visibly fill: %dpx -> %dpx" % (empty.w, full.w))
+    bare = G.Fight(grown("standard"), G.roster_for("ryez")[2])
+    sf = pygame.Surface((440, 420), pygame.SRCALPHA)
+    sf.fill((0, 0, 0, 0))
+    bare.draw_brood_sac(sf, 210, 396)
+    assert sf.get_bounding_rect().w == 0, (
+        "an animal with no sac and no colony grew one anyway")
+    print("  and the sac on it swells from %dpx across to %d before it "
+          "opens" % (empty.w, full.w))
+
 
     f = G.Fight(grown("bloom"), G.roster_for("ryez")[2])
     f.boss().x = f.mx + 300          # a landfall starts a mile apart

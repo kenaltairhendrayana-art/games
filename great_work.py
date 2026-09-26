@@ -267,6 +267,12 @@ def glow(radius, colour, strength=100):
     return s
 
 
+def work_sfx():
+    """The noise a yard makes when it starts something. One house strikes
+    an arc and the other lowers a thing into a tank."""
+    return "graft" if CURRENT["house"] == "ryez" else "weld"
+
+
 def blit_glow(surf, pos, radius, colour, strength=100):
     radius = max(2, int(radius))
     strength = max(0, min(255, int(strength)))
@@ -914,7 +920,7 @@ WARE_LIST = [
          "every run starts with 200 more in the bank",
          "She knows somebody. She always knows somebody."),
     Ware("earlyshift", "sarah", "EARLY SHIFT", 55, "power",
-         "every run starts with a third pair of hands",
+         "every run starts with one more pair of hands",
          "Signed on before you got there and already working."),
     Ware("sharptools", "sarah", "SHARP TOOLS", 50, "power",
          "mending costs 30% less, for good",
@@ -1063,6 +1069,16 @@ WARE_LIST = [
     Ware("st_deepone", "hauk", "DEEP LEVIATHAN", 480, "chassis",
          "vast, slow, and it closes its own wounds mid-fight",
          "It came up once, a long way, and it has not finished.",
+         house="ryez"),
+
+    # RYEZ's answer to the recruiting office. Zoe will not sell to a
+    # tank farm and everything else that gave a pair of hands was hers,
+    # so the grown house had no way to get a single handler past the two
+    # it opened with - over five pods, with mending out of the same
+    # budget. He has students. They are free, which tells you something.
+    Ware("v_hands", "vask", "HIS STUDENTS", 88, "power",
+         "another pair of hands every second day, up to your pod count",
+         "Unpaid, unregistered, and each of them thinks this is a career.",
          house="ryez"),
 
     Ware("v_mend", "vask", "FIELD SURGERY", 30, "service",
@@ -1444,6 +1460,9 @@ class Sfx:
                 # the yard
                 "click":  self._mk(700, 38, "sine", 0.14, 0.0),
                 "weld":   self._mk(260, 220, "noise", 0.13, 1.2),
+                # the same moment on the grown side: low, wet, and it
+                # falls away instead of rising like a struck arc
+                "graft":  self._mk(120, 300, "noise", 0.15, -0.72),
                 "rivet":  self._mk(1100, 60, "square", 0.16, -0.5),
                 "done":   self._mk(430, 300, "sine", 0.20, 1.1),
                 "horn":   self._mk(150, 700, "saw", 0.20, -0.12),
@@ -4144,6 +4163,11 @@ def draw_socket_front(rig, socket, fit, dmg=0.0, arm_tier=1, mode="on",
     weeks in standard grey and it turned red at landfall."""
     if tones is None and CURRENT["house"] == "ryez":
         tones = BIO_TONES
+    # ...and then ASK THE HOUSE, not the palette. `tones is BIO_TONES` was
+    # the test here, and a strain arrives with its own palette, so every
+    # bought body quietly fell down the steel branch of both of the
+    # decisions below - cross braces instead of ribs, and a welding torch
+    grown = CURRENT["house"] == "ryez"
     shapes = part_shape(socket, fit, arm_tier, strain)
     if not shapes:
         return
@@ -4169,23 +4193,64 @@ def draw_socket_front(rig, socket, fit, dmg=0.0, arm_tier=1, mode="on",
                 rig.poly(pts, shade((tones or TONES).get(tone, STEEL), 0.86))
                 rig.poly(pts, _tone("dark", 0, False, tones), 1)
         rig.surf.set_clip(old)
-        # the torch
         if prog < 1.0:
-            wob = math.sin(t * 9.0) * 6 * rig.s
             rig.surf.set_clip(None)
-            px = rig.p(0, 0)[0] + wob
-            blit_glow(rig.surf, (px, cut), 7 * rig.s, (255, 236, 180), 110)
-            for _ in range(4):                 # sparks off the bead
-                sx = px + random.uniform(-9, 9) * rig.s
-                sy = cut + random.uniform(-2, 11) * rig.s
-                pygame.draw.line(rig.surf, (255, 206, 128), (sx, sy),
-                                 (sx + random.uniform(-3, 3), sy + 4), 1)
+            px = rig.p(0, 0)[0]
+            if grown:
+                # THE LINE IS A WATERLINE. Nothing here is being welded -
+                # a culture rises in its tank and the cut is the surface
+                # of the medium it is rising through, so what comes off
+                # it is bubbles and strands of tissue knitting, not
+                # sparks off a bead. A torch over a RYEZ tank was the
+                # steel half of the game leaking into the grown half.
+                trim = (tones or BIO_TONES).get("trim", RYEZ_ACID)
+                # across the whole PART, not a tuft at the centreline. A
+                # welder is a point and a waterline is not: a fixed span
+                # put the whole thing in a clump in the middle of a limb
+                # three times as wide as it was.
+                xs2 = [q[0] for pts, _ in shapes for q in pts]
+                lx = rig.p(min(xs2), 0)[0] - 4 * rig.s
+                rx = rig.p(max(xs2), 0)[0] + 4 * rig.s
+                if rx < lx:
+                    lx, rx = rx, lx
+                span = max(8.0, rx - lx)
+                pygame.draw.line(rig.surf, shade(trim, 0.62), (lx, cut),
+                                 (rx, cut), max(1, int(2 * rig.s)))
+                for k in range(3):             # a soft skin of light on it
+                    blit_glow(rig.surf, (lx + span * (k + 0.5) / 3.0, cut),
+                              span * 0.30, trim, 40)
+                for i in range(11):            # coming up out of it
+                    f = (t * 0.45 + i * 0.0909) % 1.0
+                    bx = lx + span * ((i * 0.3181 + 0.08
+                                       + math.sin(i * 2.3 + t * 0.5) * 0.04)
+                                      % 1.0)
+                    by = cut - f * 46 * rig.s
+                    r = (1.3 + (i % 3) * 0.9) * (1.0 - f * 0.4) * rig.s
+                    pygame.draw.circle(rig.surf, shade(trim, 0.85),
+                                       (bx, by), max(1, int(r)))
+                for i in range(7):             # and tissue closing over
+                    a = i * 1.7 + t * 0.8
+                    sx = lx + span * ((i + 0.5) / 7.0)
+                    pygame.draw.line(
+                        rig.surf, shade(trim, 0.7),
+                        (sx - 2 * rig.s, cut),
+                        (sx + math.sin(a) * 5 * rig.s,
+                         cut - (5 + 6 * abs(math.sin(a))) * rig.s), 1)
+            else:
+                px += math.sin(t * 9.0) * 6 * rig.s
+                blit_glow(rig.surf, (px, cut), 7 * rig.s, (255, 236, 180),
+                          110)
+                for _ in range(4):             # sparks off the bead
+                    sx = px + random.uniform(-9, 9) * rig.s
+                    sy = cut + random.uniform(-2, 11) * rig.s
+                    pygame.draw.line(rig.surf, (255, 206, 128), (sx, sy),
+                                     (sx + random.uniform(-3, 3), sy + 4), 1)
         return
     for pts, tone in shapes:
         if tone == "hollow":                   # a bare frame, or bare ribs
             rig.poly(pts, _tone("main", dmg, wrecked, tones), 3)
             mid = sum(p[1] for p in pts) / len(pts)
-            if tones is BIO_TONES:
+            if grown:
                 xs = [q[0] for q in pts]
                 ys = [q[1] for q in pts]
                 x0, x1 = min(xs), max(xs)
@@ -7311,7 +7376,12 @@ class Fight:
             e = self.nearest(self.mx)
             if e is not None and e.alive:
                 for i in range(n_out):
-                    m = Merc(e.x - (i + 1) * 70, -1)
+                    # toward the enemy, not away from it. They spawn on
+                    # the near side of it and were handed face -1 flat,
+                    # so every one of them stood with its back to the
+                    # thing it is supposed to be standing in front of
+                    bx = e.x - (i + 1) * 70 * (1 if e.x > self.mx else -1)
+                    m = Merc(bx, 1 if e.x > bx else -1)
                     m.hp = 1.0
                     m.brood = True
                     self.mercs.append(m)
@@ -7442,6 +7512,106 @@ class Fight:
                     best = m
         return best
 
+    def brood_tones(self):
+        """What the animal's own brood are made of. They come out of it,
+        so they are its colour - a HOLLOW SWARM sheds olive."""
+        tones = (self.mech.frame.tones if self.mech.frame.tones
+                 else BIO_TONES)
+        return (tones.get("main", FLESH), tones.get("dark", FLESH_D),
+                tones.get("trim", RYEZ_ACID))
+
+    def draw_brood(self, surf, m, gy, sh):
+        """One of the animal's own, and NOT a man with a rifle.
+
+        The brood are Mercs with a flag on them, which is right - "a
+        small thing between you and it that soaks one hit" is the same
+        object twice. They were DRAWN as Mercs as well, which is not:
+        RYEZ's hatchlings came out of the sac in helmets, carrying
+        rifles, in army green.
+
+        Same object, different body. Low, six-legged, no head above the
+        shoulders, and lit from inside by the thing that goes off when
+        it dies - which gets brighter the longer it has been out, so the
+        one that is about to pop is the one you can see."""
+        main, dark, trim = self.brood_tones()
+        x = int(self.sx(m.x) + sh[0])
+        if x < -40 or x > W + 40:
+            return
+        g = int(gy)
+        if m.hp <= 0:
+            # it does not leave a body, it leaves a wet mark and a flash
+            f = clamp(m.dead / 1.2, 0, 1)
+            if f < 0.55:
+                blit_glow(surf, (x, g - 5), 10 + f * 30, trim,
+                          int(170 * (1.0 - f / 0.55)))
+            r = int(4 + f * 13)
+            pygame.draw.ellipse(surf, mix(shade(trim, 0.45), (28, 32, 24), f),
+                                (x - r, g - 2, r * 2, 3))
+            return
+        # half again the size of a hired man: still a speck against the
+        # animal, but big enough that you can tell at a glance which of
+        # the things in the road are yours and which you are paying for
+        bob = 1 if math.sin(m.t * 13.0) > 0 else 0
+        by = g - 8 - bob
+        fc = m.face
+        for i in range(4):                    # eight legs, in two banks
+            px = x - 7 + i * 4
+            sw = math.sin(m.t * 13.0 + i * 1.9) * 3.0
+            pygame.draw.line(surf, shade(dark, 1.35), (px, by + 2),
+                             (int(px - sw), g), 1)
+            pygame.draw.line(surf, dark, (px, by + 2), (int(px + sw), g), 1)
+        pygame.draw.ellipse(surf, main, (x - 9, by - 5, 18, 11))
+        pygame.draw.ellipse(surf, shade(dark, 1.15), (x - 9, by - 5, 18, 11),
+                            1)
+        pygame.draw.ellipse(surf, shade(main, 1.22),
+                            (x - 7 + (4 if fc > 0 else 0), by - 5, 10, 6))
+        for k in (-1, 1):                     # mandibles, out in front
+            pygame.draw.line(surf, shade(main, 1.4), (x + fc * 7, by),
+                             (x + fc * 14, by + k * 4), 2)
+        pygame.draw.line(surf, shade(dark, 1.3), (x - fc * 2, by - 5),
+                         (x - fc * 9, by - 8), 1)
+        ripe = clamp(m.t / 26.0, 0, 1)        # the charge it is carrying
+        pu = 0.55 + 0.45 * math.sin(m.t * (4.0 + ripe * 11.0))
+        pygame.draw.circle(surf, trim, (x, by), max(2, int(2 + ripe * 2.2)))
+        blit_glow(surf, (x, by), 9 + ripe * 13, trim,
+                  int(55 + 95 * ripe * pu))
+
+    def draw_brood_sac(self, surf, mx, gy):
+        """The sac on the animal, filling up.
+
+        "It puts one on the animal" is what this does and there was
+        nothing on the animal - the sac was a number counting down in
+        the dark, and the first the player knew of it was three things
+        appearing in the road. A thing that is about to hand you bodies
+        should be visible swelling before it does."""
+        colony = self.mech.has_flag("colony")
+        if not (self.mech.has("embryo") or colony) or self.mech.down:
+            return
+        period = COLONY_EVERY if colony else BROOD_EVERY
+        f = clamp(1.0 - self.brood_t / max(0.1, period), 0.0, 1.0)
+        main, dark, trim = self.brood_tones()
+        rig = Side(surf, mx, gy, FSCALE, self.pose.face, self.mech.frame.prop)
+        rig.hip, rig.neck = LEG_ROOT_Y, NECK_ROOT[1]
+        throb = 1.0 + (0.11 * f) * math.sin(self.t * (3.0 + 9.0 * f))
+        r = (9.0 + 23.0 * f) * throb
+        cx = -34.0
+        cy = TRUNK_BELLY + 2.0 + r * 0.5
+        sac = _blob(cx, cy, r * 1.06, r, 14, 0.14, 2.0)
+        rig.poly(sac, shade(main, 0.88))
+        rig.poly(sac, dark, 2)
+        rig.poly(_blob(cx - r * 0.25, cy - r * 0.28, r * 0.42, r * 0.34, 10,
+                       0.12, 5.0), shade(main, 1.12))
+        rig.bar((cx - 6, TRUNK_BELLY - 14), (cx, cy - r * 0.8),
+                max(2.0, r * 0.18), shade(dark, 1.2))
+        n = COLONY_N if colony else BROOD_N
+        for i in range(n):                    # what is curled up in there
+            a = i * TAU / n + self.t * 0.6
+            q = (cx + math.cos(a) * r * 0.40, cy + math.sin(a) * r * 0.40)
+            rig.circle(q, max(1.2, r * 0.17 * (0.45 + f)), shade(trim, 0.85))
+        if f > 0.78:                          # and it is about to go
+            rig.light((cx, cy), r * 2.0, trim,
+                      int(80 * (f - 0.78) / 0.22))
+
     def draw_merc(self, surf, m, gy, sh):
         """About ten pixels of person, which is the whole point of them.
 
@@ -7450,6 +7620,9 @@ class Fight:
         the machine and a sixtieth of the animal, and the picture is only
         honest if they are specks - so the detail is four rectangles and
         a muzzle flash, and it is meant to be hard to see."""
+        if m.brood:
+            self.draw_brood(surf, m, gy, sh)
+            return
         x = int(self.sx(m.x) + sh[0])
         if x < -40 or x > W + 40:
             return
@@ -8113,6 +8286,7 @@ class Fight:
                           40, (90, 74, 66), 34)
         else:
             draw_mech_side(surf, self.mech, mx, gy, FSCALE, self.t, self.pose)
+            self.draw_brood_sac(surf, mx, gy)
             for side in self.mech.sides():
                 w = self.mech.weapon(side)
                 if w and w.kind == "beam" and self.beam_on[side]:
@@ -8404,8 +8578,11 @@ class Fight:
 # ---------------------------------------------------------------------------
 SCHEDULE = (7, 15, 24, 34, 45, 57)
 MAX_CREW = 6
+CREW_START = 2                       # KEAL, on a gantry
+HANDS_START = 4                      # RYEZ, over five tanks - see below
 RECRUIT_CAP = 10                     # what Zoe's office will fill you to
 CREW_PER_JOB = 3
+HANDS_PER_POD = 2                    # past two, a pod cannot drift at all
 RUSH_PER_DAY = 62
 
 # RYEZ's half of the calendar. A culture gestates for half as long again as
@@ -8415,20 +8592,34 @@ RUSH_PER_DAY = 62
 # be, which is the same cost FORCING one carries by definition.
 GESTATE = 1.5
 DRIFT_PER_DAY = 16.0
-HANDLER_CALM = 12.0
+HANDLER_CALM = 9.0
 FAULT_AT = 50.0
 FLAWED_HP = 0.62
 POD_BASE = 5
 BIO_COST = 0.76
 
-# Those four numbers are the whole of RYEZ's decision, so they are chosen
-# to make it a real one rather than a tax. Nobody on a pod is +16 a day and
-# it faults on the fourth; one handler is +4 and it faults on the
-# thirteenth; two is -8 and it never faults at all. So a short culture
-# tolerates a single pair of hands and a long one does not, and with four
-# pods and three handlers you are always choosing which tank goes unwatched
-# tonight. An earlier pass had nobody able to hold more than two, every
-# spare pod faulting, and the yard paying for everything twice.
+# Those four numbers are the whole of RYEZ's decision, so they have to
+# make it a real one. They did not. At CALM 12 one handler was +4 a day
+# and faulted on the thirteenth - and NOTHING IN THE GAME GESTATES FOR
+# THIRTEEN DAYS. The longest culture is nine. So every pod was pass/fail
+# on whether it had one pair of hands at all, the second pair changed
+# nothing that could ever happen, and the slider ran to three.
+#
+# At CALM 9, against the cultures that actually exist (2 to 9 days):
+#
+#   nobody on it   +16 a day, over the line on the fourth - always wrong
+#   one handler     +7 a day, over the line on the eighth
+#   two handlers    -2 a day, and it cannot drift at all
+#
+# So a SHORT culture tolerates one pair of hands and a LONG one does not,
+# which is what this was always supposed to say. A third pair still buys
+# nothing over the second, so a pod will not take one.
+#
+# The other half of it is how many hands there are to spread. RYEZ ran on
+# the same two as a gantry while owning FIVE TANKS, so three pods were
+# unwatched every night whatever you did, and any mend at all meant an
+# organ came out wrong. Its parallelism is tanks, so its hands have to be
+# sized against tanks: four to start and room to grow to the pod count.
 
 
 class Job:
@@ -8498,7 +8689,7 @@ class Run:
         self.day = 1
         self.scrap = 170
         self.alloy = 0
-        self.crew = 2
+        self.crew = HANDS_START if self.house == "ryez" else CREW_START
         self.integrity = 100.0
         self.kaiju_index = 0
         self.killed = 0
@@ -8632,10 +8823,21 @@ class Run:
 
     @property
     def max_crew(self):
+        if self.bio:
+            # hands follow tanks. A house whose parallelism is pods needs
+            # enough people to stand over the pods it is allowed to run,
+            # or the extra tanks are a tax on quality rather than a gift
+            return self.pods + 2
         n = MAX_CREW + (1 if self.yard >= 2 else 0)
         if has_ware("recruit"):
             n = max(n, RECRUIT_CAP)
         return n
+
+    def hands_cap(self, job):
+        """The most that can usefully stand over one job. Two handlers
+        already stop a pod drifting outright, so a third is a pair of
+        hands thrown away and the slider should not offer it."""
+        return HANDS_PER_POD if job.bio else self.crew_per_job
 
     def refine_yield(self):
         return 2 if self.yard >= 3 else 1
@@ -8812,11 +9014,12 @@ class Run:
 
     def set_crew(self, job, n):
         low = 0 if job.bio else 1        # a pod can be left to itself
-        n = int(clamp(n, low, self.crew_per_job))
+        high = self.hands_cap(job)
+        n = int(clamp(n, low, high))
         delta = n - job.crew
         if delta > 0 and self.free_crew < delta:
             n = job.crew + self.free_crew
-        job.crew = int(clamp(n, low, self.crew_per_job))
+        job.crew = int(clamp(n, low, high))
 
     # -- the night --------------------------------------------------------
     def capital_night(self):
@@ -8834,12 +9037,18 @@ class Run:
                 self.alloy += 1
                 self.news.append("+1 %s OUT OF THE ARC FURNACE"
                                  % word("alloy", "ALLOY"))
-        if has_ware("recruit") and self.crew < self.max_crew:
+        # Zoe's office, and Vask's students, who do the same thing for
+        # the house Zoe will not sell to. RYEZ had NO source of hands at
+        # all - every ware that gave one was KEAL-gated - so it opened on
+        # two and finished on two while a shipyard walked up to ten.
+        more = has_ware("recruit") or has_ware("v_hands")
+        if more and self.crew < self.max_crew:
             self.queue += 1
             if self.queue >= 2:
                 self.queue = 0
                 self.crew += 1
-                self.news.append("THE RECRUITING OFFICE SENT ONE MORE")
+                self.news.append("HIS STUDENTS SENT ANOTHER ONE" if self.bio
+                                 else "THE RECRUITING OFFICE SENT ONE MORE")
 
     def end_day(self):
         """Returns "landfall", "done" or None."""
@@ -9367,7 +9576,7 @@ class Hangar:
                 elif kind == "build":
                     if run.start_build(MOD_SLOT, data):
                         self.say("QUEUED: " + data.name)
-                        SFX.play("weld", 0.5)
+                        SFX.play(work_sfx(), 0.5)
                     else:
                         self.say("CANNOT START THAT", True)
                         SFX.play("deny", 0.5)
@@ -9393,7 +9602,7 @@ class Hangar:
             elif kind == "build":
                 if run.start_build(self.sel, data):
                     self.say("QUEUED: " + data.name)
-                    SFX.play("weld", 0.5)
+                    SFX.play(work_sfx(), 0.5)
                 elif run.job_on(self.sel):
                     self.say("THAT SOCKET IS ALREADY BEING WORKED", True)
                 elif run.free_crew < 1:
@@ -9404,14 +9613,14 @@ class Hangar:
             elif kind == "refine":
                 if run.start_refine():
                     self.say("INTO THE " + ("VATS" if run.bio else "CRUCIBLE"))
-                    SFX.play("weld", 0.5)
+                    SFX.play(work_sfx(), 0.5)
                 else:
                     self.say("CANNOT START THAT", True)
                     SFX.play("deny", 0.5)
             elif kind == "relief":
                 if run.start_relief():
                     self.say(pname(CITY_SLOT, RELIEF) + " STARTED")
-                    SFX.play("weld", 0.5)
+                    SFX.play(work_sfx(), 0.5)
                 elif run.integrity >= 100.0:
                     self.say("THE CITY IS WHOLE", True)
                     SFX.play("deny", 0.5)
@@ -9424,7 +9633,7 @@ class Hangar:
             elif kind == "repair":
                 if run.start_repair(self.sel):
                     self.say("REPAIR QUEUED")
-                    SFX.play("weld", 0.5)
+                    SFX.play(work_sfx(), 0.5)
                 else:
                     self.say("CANNOT START THAT REPAIR", True)
                     SFX.play("deny", 0.5)
@@ -9654,6 +9863,19 @@ class Hangar:
                         enabled=run.scrap >= cost and run.job_on(s) is None
                         and run.free_crew > 0, tone=GOOD))
                     y += 30
+                    if run.job_on(s) is None and run.free_crew < 1:
+                        why = ("all %d %s are on a pod - take one off to "
+                               "mend" if run.bio else
+                               "all %d %s are on a job - take one off to "
+                               "mend") % (run.crew,
+                                          word("crew", "crew").lower())
+                        text(surf, why, 12, (r.x + 14, y), WARN, bold=False)
+                        y += 18
+                    elif run.scrap < cost:
+                        text(surf, "not enough %s"
+                             % word("scrap", "scrap").lower(), 12,
+                             (r.x + 14, y), WARN, bold=False)
+                        y += 18
         else:
             text(surf, "NOTHING BUILT" if s == YARD_SLOT
                  else word("empty", "EMPTY"), 15, (r.x + 14, y), FAINT)
@@ -9970,7 +10192,8 @@ class Hangar:
                                   run.pods if bio else 4)))
         cw = (r.w - 24) / slots
         for i, j in enumerate(run.jobs[:4]):
-            box = pygame.Rect(r.x + 12 + i * cw, r.y + 28, cw - 8, 102)
+            box = pygame.Rect(r.x + 12 + i * cw, r.y + 28, cw - 8,
+                              110 if j.bio else 102)
             hot = j.socket == self.sel
             panel(surf, box, (21, 23, 31), CORE if hot else LINE, 5)
             head = ("POD %d - " % (i + 1) if j.bio else "") + (
@@ -9994,15 +10217,16 @@ class Hangar:
                 f = clamp(j.unstable / 100.0, 0, 1)
                 col = GOOD if f < 0.28 else (WARN if f < FAULT_AT / 100.0
                                              else BAD)
-                bw2 = box.w - 106
-                bar(surf, pygame.Rect(box.x + 8, box.y + 68, bw2, 7), f, col)
-                mark = box.x + 8 + bw2 * (FAULT_AT / 100.0)
-                pygame.draw.line(surf, INK, (mark, box.y + 66),
-                                 (mark, box.y + 77), 1)
                 lab = "DRIFT" if not j.faulted else "WILL BE WRONG"
-                text(surf, lab, fit(lab, 11, 92),
-                     (box.right - 8, box.y + 68), FAINT if not j.faulted
-                     else BAD, right=True)
+                text(surf, lab, fit(lab, 11, 96),
+                     (box.x + 8, box.y + 70), FAINT if not j.faulted
+                     else BAD)
+                bx = box.x + 112
+                bw2 = max(30, box.right - 8 - bx)
+                bar(surf, pygame.Rect(bx, box.y + 72, bw2, 7), f, col)
+                mark = bx + bw2 * (FAULT_AT / 100.0)
+                pygame.draw.line(surf, INK, (mark, box.y + 70),
+                                 (mark, box.y + 81), 1)
                 text(surf, "%d ON IT" % j.crew, 13,
                      (box.right - bw * 2 - 18, box.y + 50), INK, right=True)
             else:
@@ -10015,17 +10239,17 @@ class Hangar:
             self.buttons.append(Button(
                 pygame.Rect(box.right - bw - 8, box.y + 46, bw, 22),
                 "+", ("crew", (j, 1)),
-                enabled=j.crew < run.crew_per_job and run.free_crew > 0))
+                enabled=j.crew < run.hands_cap(j) and run.free_crew > 0))
             cost = int(math.ceil(j.left) * run.rush_rate)
             self.buttons.append(Button(
-                pygame.Rect(box.x + 8, box.y + (80 if j.bio else 68),
+                pygame.Rect(box.x + 8, box.y + (88 if j.bio else 68),
                             box.w * 0.52, 20),
                 ("FORCE %d" if j.bio else "RUSH %d") % cost, ("rush", j),
                 enabled=not j.rushed and run.scrap >= cost and j.left > 0,
                 tone=RUST))
             self.buttons.append(Button(
                 pygame.Rect(box.x + 12 + box.w * 0.52,
-                            box.y + (80 if j.bio else 68), box.w * 0.34, 20),
+                            box.y + (88 if j.bio else 68), box.w * 0.34, 20),
                 "DROP", ("cancel", j), tone=BAD))
         if len(run.jobs) > 4:
             text(surf, "+%d MORE %s" % (len(run.jobs) - 4,
@@ -11441,7 +11665,7 @@ def draw_ware_icon(surf, r, w, t):
         pygame.draw.circle(surf, PAINT,
                            (cx + s * (0.24 * math.sin(t * 1.1)), cy + s * 0.04),
                            s * 0.05)
-    elif k == "recruit":                      # a queue of them, shuffling up
+    elif k in ("recruit", "v_hands"):         # a queue of them, shuffling up
         for i in range(4):
             f = (t * 0.5 + i * 0.25) % 1.0
             x = cx - s * 0.30 + f * s * 0.60
