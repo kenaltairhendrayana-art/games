@@ -1303,8 +1303,6 @@ def can_buy(key):
     w = WARES.get(key)
     if w is None:
         return False
-    if w.house is not None and w.house != CURRENT["house"]:
-        return False               # not sold to this house at all
     if not unlocked(key):
         return False
     if w.kind != "specimen" and bought(key):
@@ -1673,8 +1671,126 @@ def _build_vigil():
     return s
 
 
+def _build_market():
+    """THE NIGHT MARKET - warm, small and a bit shabby. A plucked figure
+    that swings, brushed time, and nobody in a hurry.
+
+    This is the one the shop used to play everywhere, which meant the
+    Capital sounded like a wet street and the lab sounded like a bargain.
+    The four counters are four different places and they are allowed to
+    sound like it."""
+    bpm, bars = 84.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 2.0)
+    roots = (40, 40, 45, 43, 40, 38, 36, 38)
+    fig = (0, 3, 7, 10, 7, 3)
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        for k, step in enumerate(fig):
+            # swung: the off-beats sit late, which is the whole feel
+            off = k * beat * 0.66 + (beat * 0.10 if k % 2 else 0.0)
+            s.note("pluck", r + 12 + step, t + off, beat * 0.8,
+                   0.26 if k == 0 else 0.18)
+        # the four shop loops are heard one after another as the player
+        # changes tab, so they are levelled against each other rather than
+        # each mixed on its own - this one came out a fifth quieter than
+        # the office and the change of counter read as a volume drop
+        s.note("pad", r - 12, t, beat * 4.3, 0.19)
+        s.note("pad", r - 5, t + 0.05, beat * 4.0, 0.12)
+        s.drum("hat", t + beat * 1.0, 0.13)
+        s.drum("hat", t + beat * 2.5, 0.10)
+        s.drum("hat", t + beat * 3.5, 0.08)
+        if b % 4 == 0:
+            s.drum("clank", t, 0.16)
+        if b % 4 == 2:
+            s.note("bell", r + 24, t + beat * 2.5, beat * 2.0, 0.11)
+    return s
+
+
+def _build_capital():
+    """KEAL CAPITAL - clean, bright and very pleased with itself. Major,
+    glassy, a steady pulse under it and no grit anywhere."""
+    bpm, bars = 104.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 1.8)
+    roots = (45, 45, 47, 52, 45, 50, 47, 45)
+    up = (0, 4, 7, 11, 12, 11, 7, 4)          # major seventh, all the way up
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        for k, step in enumerate(up):
+            s.note("bell", r + 24 + step, t + k * beat * 0.5, beat * 1.1,
+                   0.14 if k % 4 == 0 else 0.09)
+        s.note("pad", r, t, beat * 4.2, 0.19)
+        s.note("pad", r + 7, t + 0.04, beat * 4.0, 0.12)
+        s.note("pad", r + 16, t + 0.08, beat * 3.8, 0.07)
+        for e in range(4):                     # a pulse, not a drum kit
+            s.drum("hat", t + e * beat, 0.09 if e else 0.14)
+        if b % 4 == 3:
+            s.note("pluck", r + 12, t + beat * 3, beat * 1.0, 0.14)
+    return s
+
+
+def _build_office():
+    """THE GOVERNMENT OFFICE - institutional and flat. A plod on every
+    beat, a square-wave figure that keeps arriving at the same note, and
+    one bell an hour. It is not unpleasant. It is just admin."""
+    bpm, bars = 76.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 1.6)
+    roots = (36, 36, 36, 38, 36, 36, 34, 36)   # it barely moves, on purpose
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        for e in range(4):
+            s.note("square", r, t + e * beat, beat * 0.44,
+                   0.16 if e == 0 else 0.10)
+            s.drum("kick", t + e * beat, 0.20 if e == 0 else 0.11)
+        s.note("pad", r - 12, t, beat * 4.2, 0.16)
+        s.note("pad", r - 5, t + 0.05, beat * 4.0, 0.09)
+        line = ((0, 0, 3, 0), (0, 0, 5, 3), (0, 0, 3, 0), (0, -2, 0, 0))[b % 4]
+        for k, step in enumerate(line):
+            s.note("square", r + 19 + step, t + k * beat, beat * 0.7, 0.08)
+        if b == 3 or b == 7:
+            s.drum("clank", t + beat * 3.5, 0.14)     # a stamp, somewhere
+    return s
+
+
+def _build_lab():
+    """THE MAD SCIENTIST - wet, slow and not quite right. A low pad that
+    wanders, a tritone that never resolves, bells at intervals that do
+    not divide evenly into the bar, and something dripping."""
+    bpm, bars = 58.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 2.6)
+    roots = (31, 31, 30, 32, 31, 29, 30, 27)
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        s.note("pad", r - 12, t, beat * 4.6, 0.20)
+        s.note("pad", r - 6, t + 0.07, beat * 4.3, 0.12)
+        # the interval that will not settle - six semitones, held under
+        s.note("pad", r - 12 + 6, t + 0.12, beat * 4.0, 0.075)
+        # bells on sevenths of the bar, so they never land where the last
+        # one did and the loop is hard to hear as a loop
+        for k in range(3):
+            s.note("bell", r + 24 + (0, 6, 13)[(b + k) % 3],
+                   t + beat * 4 * ((k * 3 + 1) / 7.0), beat * 1.9,
+                   0.10 if k else 0.13)
+        if b % 2 == 0:
+            s.note("pluck", r + 12, t + beat * 1.3, beat * 0.9, 0.12)
+        for k in range(2):                      # something dripping
+            s.drum("hat", t + beat * (0.4 + k * 2.3), 0.07)
+        if b % 4 == 1:
+            s.drum("clank", t + beat * 2.8, 0.12)
+    return s
+
+
 TRACKS = {"yard": _build_yard, "landfall": _build_landfall,
-          "vigil": _build_vigil}
+          "vigil": _build_vigil, "market": _build_market,
+          "capital": _build_capital, "office": _build_office,
+          "lab": _build_lab}
 _music = {}
 _playing = [None]
 
@@ -11048,6 +11164,11 @@ class Bazaar:
     # who is open to whom: the Capital is a company and the lab is a man
     # with opinions, and neither will take the other house's money
     SECTION_HOUSE = {"capital": "keal", "vask": "ryez"}
+    # four rooms, four tunes. The shop used to play `vigil` over all of
+    # them, so the Capital sounded like a wet street at night and the lab
+    # sounded like a bargain.
+    SECTION_MUSIC = {"market": "market", "capital": "capital",
+                     "gov": "office", "vask": "lab"}
     HEAD = 84                       # the dark strip the header sits on
 
     def __init__(self, back="title", run=None):
@@ -11072,10 +11193,19 @@ class Bazaar:
         self.buy_btn = None
 
     def open_sections(self):
-        """The tabs this house is allowed to walk into."""
+        """The tabs you are allowed to walk into.
+
+        Between campaigns there is no house - `to_title` leaves CURRENT on
+        "keal" because something has to be set for the labels, and reading
+        that as "the player is KEAL" hid the lab from everybody who was not
+        mid-run. Marks are per SLOT, not per house, so with no run in play
+        every counter is open and you can stock up for whichever side you
+        play next."""
+        if self.run is None:
+            return list(range(len(self.SECTIONS)))
         return [i for i, s in enumerate(self.SECTIONS)
-                if self.SECTION_HOUSE.get(s[0], CURRENT["house"])
-                == CURRENT["house"]]
+                if self.SECTION_HOUSE.get(s[0], self.run.house)
+                == self.run.house]
 
     def section(self):
         return self.SECTIONS[self.sec]
@@ -11290,6 +11420,7 @@ class Bazaar:
 
     def update(self, dt):
         self.t += dt
+        music(self.SECTION_MUSIC.get(self.section()[0], "vigil"))
         for k in list(self.flash):
             self.flash[k] -= dt * 1.6
             if self.flash[k] <= 0:
@@ -11841,7 +11972,10 @@ class App:
     def to_shop(self, back):
         self.bazaar = Bazaar(back, self.run)
         self.state = "shop"
-        music("vigil")
+        # the counter it opens on picks the tune; Bazaar.update keeps it
+        # honest when the player changes tab
+        music(Bazaar.SECTION_MUSIC.get(
+            Bazaar.SECTIONS[self.bazaar.sec][0], "vigil"))
 
     def pick(self, act):
         if act == "shop":

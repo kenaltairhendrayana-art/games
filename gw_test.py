@@ -5,6 +5,7 @@ measured.
     python gw_test.py capital        the KEAL counters, and the house gate
     python gw_test.py gov            the state's desk, the calendar, the squad
     python gw_test.py frames         six whole machines and the rules they change
+    python gw_test.py score          every loop, measured rather than heard
     python gw_test.py yard           the option list, the ladder, the city
     python gw_test.py slots          prove the three save slots stay apart
     python gw_test.py flow           drive the real App through a whole run
@@ -46,6 +47,7 @@ and the broodlings spawned on the city side of the line.
 """
 import io
 import json
+import math
 import os
 import random
 import statistics
@@ -1457,6 +1459,28 @@ def gov():
     print("  and a RYEZ player is told BIOMASS, not SCRAP")
     G.set_house("keal")
 
+    # -- and every counter is open between campaigns ----------------------
+    # `to_title` leaves CURRENT on "keal" because the labels need
+    # something, and reading that as "the player is KEAL" hid the lab from
+    # anybody who was not mid-run. Marks are per SLOT, so with no run in
+    # play you can stock up for whichever side you play next.
+    G.set_house("keal")
+    G.add_marks(2000)                # this far in, the purse is empty
+    from_title = G.Bazaar("title")
+    assert len(from_title.open_sections()) == len(G.Bazaar.SECTIONS), (
+        [G.Bazaar.SECTIONS[i][0] for i in from_title.open_sections()])
+    assert G.can_buy("g_lungs"), "a RYEZ gene cannot be bought at the title"
+    assert G.can_buy("ch_tank"), "nor a KEAL chassis"
+    for h in ("keal", "ryez"):
+        G.set_house(h)
+        shut = {"ryez": "capital", "keal": "vask"}[h]
+        open_now = [G.Bazaar.SECTIONS[i][0]
+                    for i in G.Bazaar("hangar", G.Run(h)).open_sections()]
+        assert shut not in open_now, (h, open_now)
+    G.set_house("keal")
+    print("  all four counters open between runs, and the right one shuts "
+          "inside one")
+
     # -- and the desk draws ------------------------------------------------
     G.set_house("keal")
     b = G.Bazaar()
@@ -1883,6 +1907,87 @@ def frames():
     print("\nframes ok")
 
 
+# ---------------------------------------------------------------------------
+# SCORE - seven loops, and none of them the same loop twice
+# ---------------------------------------------------------------------------
+def _fingerprint(buf, rate, bands=12, frames=24):
+    """A coarse spectrum over time, with loudness AND length divided out.
+
+    Both have to go before two pieces can be compared. Two tracks at
+    different volumes are not different tracks, and neither are two at
+    different tempos - normalising each frame to its own peak and taking
+    a fixed number of frames whatever the length leaves only the shape."""
+    n = len(buf)
+    step = max(1, n // frames)
+    out = []
+    for f in range(frames):
+        seg = buf[f * step:(f + 1) * step]
+        row = []
+        for b in range(bands):
+            hz = 55.0 * (2 ** (b / 2.0))
+            re = im = 0.0
+            for i in range(0, len(seg), 7):     # sparse DFT; shape only
+                a = 2 * math.pi * hz * i / rate
+                re += seg[i] * math.cos(a)
+                im += seg[i] * math.sin(a)
+            row.append(math.hypot(re, im))
+        m = max(row) or 1.0
+        out += [v / m for v in row]
+    return out
+
+
+def score():
+    """Every loop in the game, measured rather than listened to.
+
+    The shop used to play one tune over all four of its counters, so the
+    Capital sounded like a wet street at night and the mad scientist's
+    cellar sounded like a bargain. Four new pieces went in for that, and
+    the risk with four written in one sitting is that they come out as
+    one piece in four hats."""
+    names = list(G.TRACKS)
+    built = {}
+    for nm in names:
+        s = G.TRACKS[nm]()
+        pk = max(abs(v) for v in s.buf)
+        rms = (sum(v * v for v in s.buf) / len(s.buf)) ** 0.5
+        secs = len(s.buf) / float(s.RATE)
+        assert pk < 0.95, "%s clips at %.2f" % (nm, pk)
+        assert rms > 0.02, "%s is effectively silence (rms %.3f)" % (nm, rms)
+        assert 8.0 < secs < 60.0, "%s is %.0fs long" % (nm, secs)
+        built[nm] = (s, pk, rms, secs)
+        print("  %-9s %5.1fs  peak %.2f  rms %.3f" % (nm, secs, pk, rms))
+
+    # nothing should be much louder than anything else, or the mix jumps
+    # every time the player changes screen
+    loud = [v[2] for v in built.values()]
+    assert max(loud) / min(loud) < 2.0, (
+        "the loudest loop is %.1fx the quietest" % (max(loud) / min(loud)))
+
+    fp = {nm: _fingerprint(built[nm][0].buf, built[nm][0].RATE)
+          for nm in names}
+    worst = None
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            d = sum(abs(x - y) for x, y in zip(fp[a], fp[b])) / len(fp[a])
+            if worst is None or d < worst[0]:
+                worst = (d, a, b)
+    assert worst[0] > 0.10, (
+        "%s and %s are the same piece in two hats (%.3f apart)"
+        % (worst[1], worst[2], worst[0]))
+    print("  %d loops, all distinct; closest pair %s/%s at %.3f"
+          % (len(names), worst[1], worst[2], worst[0]))
+
+    # and every shop counter has to name a tune that exists
+    for sec, tune in G.Bazaar.SECTION_MUSIC.items():
+        assert tune in G.TRACKS, (sec, tune)
+        assert sec in [s[0] for s in G.Bazaar.SECTIONS], sec
+    assert len(set(G.Bazaar.SECTION_MUSIC.values())) == \
+        len(G.Bazaar.SECTION_MUSIC), "two counters share a tune"
+    print("  and all %d counters have one of their own"
+          % len(G.Bazaar.SECTION_MUSIC))
+    print("\nscore ok")
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     SLOPPY[0] = "sloppy" in sys.argv
@@ -1891,6 +1996,9 @@ def main():
     if what in ("smoke", "all"):
         print("== SMOKE ==")
         smoke()
+    if what in ("score", "all"):
+        print("== SCORE ==")
+        score()
     if what in ("frames", "all"):
         print("== FRAMES ==")
         frames()
@@ -1914,8 +2022,8 @@ def main():
         print("\n== BALANCE ==")
         for hk in ("keal", "ryez"):
             balance(6 if what == "all" else n, hk)
-    if what not in ("smoke", "capital", "gov", "frames", "yard", "slots",
-                    "flow", "balance", "all"):
+    if what not in ("smoke", "capital", "gov", "frames", "score", "yard",
+                    "slots", "flow", "balance", "all"):
         print(__doc__)
         return 2
     return 0
