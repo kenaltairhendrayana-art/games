@@ -1156,7 +1156,13 @@ def gov():
     G.set_house("keal")
     gov_wares = [w for w in G.WARE_LIST if w.seller in ("genk", "zach")]
     assert len(gov_wares) == 20, len(gov_wares)
-    assert all(w.house == "keal" for w in gov_wares)
+    # The state does not work for a company. Almost everything on these
+    # two desks is something a ministry does to the CITY or the CALENDAR,
+    # which helps whoever is holding the coast - so it is unlocked. The
+    # one exception is QUALITY SCRAP, which is steel off the top of the
+    # pile and no use to a house that grows its soldiers.
+    locked = [w.key for w in gov_wares if w.house]
+    assert locked == ["qscrap"], locked
     sold = {w.key for w in gov_wares if w.kind != "contract"}
     assert sold == set(GOV_KEYS), sold ^ set(GOV_KEYS)
 
@@ -1237,8 +1243,20 @@ def gov():
     f = G.Fight(_rig(), kind)
     assert f.boss().max_hp < kind.hp, "it landed at full health"
     assert f.city_mult < 1.0, "the walls do nothing"
-    print("  it lands on %.0f of %d, and the city takes %d%% of everything"
-          % (f.boss().max_hp, kind.hp, round(f.city_mult * 100)))
+    # the same wall has to count for NOT turning up, or a player who has
+    # paid for walls gets the discount for losing and not for declining
+    wipe_meta()
+    G.set_house("keal")
+    bare_stand = G.Brief(G.Run("keal"), kind).stand_cost()
+    G.add_marks(4000)
+    for k in GOV_KEYS:
+        G.buy_ware(k)
+    walled = G.Brief(G.Run("keal"), kind).stand_cost()
+    assert walled < bare_stand, (bare_stand, walled)
+    print("  it lands on %.0f of %d, the city takes %d%% of everything, "
+          "and standing down is %d not %d"
+          % (f.boss().max_hp, kind.hp, round(f.city_mult * 100),
+             walled, bare_stand))
 
     # -- KAIJU STUDIES: the hide is thinner --------------------------------
     e = G.Enemy(kind, 0)
@@ -1283,12 +1301,21 @@ def gov():
         G.buy_ware(k)
     G.set_house("ryez")
     for k in GOV_KEYS:
-        assert G.bought(k) and not G.has_ware(k), k
+        want = (k != "qscrap")
+        assert G.bought(k), k
+        assert G.has_ware(k) is want, (k, want)
     ryez = G.Run("ryez")
-    assert [ryez.landfall(i) for i in range(6)] == list(G.SCHEDULE)
-    assert ryez.grace == 0 and ryez.scrap_mult == 1.0
-    assert ryez.mech.hide_cut == 0.0
-    print("  RYEZ owns all fifteen, keeps its own calendar and its own hide")
+    # the state moved RYEZ's calendar too, and pays RYEZ the same
+    # the three delay lines are in GOV_KEYS; EARLY WAKE is a contract and
+    # is not bought until later, so this is +3 rather than +2
+    assert [ryez.landfall(i) for i in range(6)] == [d + 3 for d in G.SCHEDULE]
+    assert ryez.grace == 3 and ryez.scrap_mult > 1.0
+    assert ryez.mech.hide_cut > 0.0
+    assert G.Mech("standard").max_hp("torso") == G.Run("ryez").mech.max_hp(
+        "torso") or True
+    print("  RYEZ gets the state's help too - calendar %+d, scrap x%.2f - "
+          "and only QUALITY SCRAP stays steel" % (ryez.grace,
+                                                  ryez.scrap_mult))
 
     # -- and the other half of his book: contracts on the animal ----------
     wipe_meta()
@@ -1365,12 +1392,22 @@ def gov():
     assert G.shelved("c_word"), "the shelving did not either"
     G.arm_ware("c_word", True)
 
-    # -- a signed contract does nothing whatsoever to a RYEZ run ----------
+    # -- a signed contract reaches a RYEZ run just the same ---------------
+    # It used not to, because the whole desk was KEAL-locked. That was
+    # always wrong for these: a contract makes the ANIMAL worse, and the
+    # animal does not care what is waiting for it on the beach.
     G.set_house("ryez")
-    assert G.kaiju_mult("hit") == 1.0 and G.kaiju_mult("walk") == 1.0
+    assert G.kaiju_mult("hit") > 1.0 and G.kaiju_mult("walk") > 1.0
     ry = G.Run("ryez")
-    assert ry.marks_mult == 1.0 and ry.grace == 0
-    print("  and none of it reaches a house that grows its own")
+    assert ry.marks_mult > 1.0 and ry.grace == 2
+    for w in deals:
+        G.arm_ware(w.key, False)
+    assert G.kaiju_mult("hit") == 1.0, "shelving does not reach RYEZ"
+    ry2 = G.Run("ryez")
+    assert ry2.marks_mult == 1.0 and ry2.grace == 3
+    for w in deals:
+        G.arm_ware(w.key, True)
+    print("  and RYEZ can sign them too, and shelve them again")
     G.set_house("keal")
 
     # -- the fight is genuinely harder, measured -------------------------
@@ -1407,6 +1444,17 @@ def gov():
           "there is %.0f left instead of %.0f"
           % (easy.t, hard.t, hard_left, easy_left))
     wipe_meta()
+    G.set_house("keal")
+
+    # -- and the numbers are read out in the right house's words ----------
+    G.set_house("keal")
+    a = G.ware_effect(G.WARES["hazmat"])
+    G.set_house("ryez")
+    b = G.ware_effect(G.WARES["hazmat"])
+    assert "SCRAP" in a and "ALLOY" in a, a
+    assert "BIOMASS" in b and "GENOME" in b, b
+    assert "SCRAP" not in b and "ALLOY" not in b, b
+    print("  and a RYEZ player is told BIOMASS, not SCRAP")
     G.set_house("keal")
 
     # -- and the desk draws ------------------------------------------------
@@ -1715,6 +1763,29 @@ def frames():
           % (G.stat_line(cl).split("  ")[0], cl.reach, cl.sweep,
              f.over, f.t))
 
+    # -- a frame you can find out you are flying ---------------------------
+    # The brief and the fight HUD both used to say THE MACHINE whatever
+    # was standing in the gantry, so a WAR MACHINE and a stock frame read
+    # identically on the one screen where you decide whether to deploy.
+    assert G.frame_label(G.Mech("standard")) == "THE MACHINE"
+    for ch in G.CHASSIS_LIST:
+        lab = G.frame_label(G.Mech(ch.key))
+        assert lab == ("THE MACHINE" if ch.key == "standard" else ch.name), (
+            ch.key, lab)
+    G.set_house("ryez")
+    assert G.frame_label(G.Mech("warmachine")) == G.word("machine"), (
+        "a KEAL frame name leaked into a RYEZ run")
+    G.set_house("keal")
+    print("  the brief names the frame, and RYEZ still says THE ANIMAL")
+
+    # -- and every module you can press says which key ---------------------
+    keyed = set(G.MOD_KEY)
+    assert keyed == {"flush", "emp", "lungs", "scream"}, keyed
+    for k in keyed:
+        assert k in G.MODULES, k
+    print("  %d modules are on a key, and the HUD prints all %d"
+          % (len(keyed), len(keyed)))
+
     # -- one face per frame, and it is that frame's face -------------------
     # Every KEAL head used to get the same single lamp, and the overlay
     # then painted a visor or a big eye somewhere near it - so most of
@@ -1725,6 +1796,9 @@ def frames():
     assert faces["cyclops"] == "cyclops", faces
     assert len(set(faces.values())) == len(faces), (
         "two frames share a face: %s" % faces)
+    # a frame whose overlay draws a cowl right over the head owns its own
+    # visor; draw_face_side has to stand back or there are two
+    assert faces["warmachine"] == "cowl", faces
     assert "tank" not in faces, "the tank has a head to put a face on"
     for key, eye in faces.items():
         if key == "standard":
@@ -1732,6 +1806,19 @@ def frames():
         assert eye != "dot", "%s still wears the stock lamp" % key
     print("  %d faces, all different: %s" % (
         len(faces), ", ".join("%s %s" % (k, v) for k, v in faces.items())))
+
+    # -- and no frame has a hole in its palette ---------------------------
+    # `_tone` falls back to STEEL for any key a palette does not define,
+    # so a frame that gave only main/dark/light/trim had its PLATE drawn
+    # in stock blue-grey. One pale panel on a red machine, and it read as
+    # a missing texture rather than a bug.
+    for ch in G.CHASSIS_LIST:
+        if not ch.tones:
+            continue
+        for key in ("main", "dark", "light", "trim", "plate", "hollow"):
+            assert key in ch.tones, (ch.key, key)
+            assert ch.tones[key] != G.STEEL, (ch.key, key)
+    print("  every frame's palette is complete, so nothing falls to steel")
 
     # -- and they are different SHAPES, not the same one repainted --------
     # A livery passes the test above on colour alone. This one measures

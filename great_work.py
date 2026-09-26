@@ -91,8 +91,11 @@ CONTROLS
     J / left click  fire the left hardpoint
     K / right click fire the right hardpoint
     S / down        brace - halves what gets through, but you cannot act
-    SPACE           boost (piston striders only)
+    SPACE / SHIFT   dash (piston striders, or anything with THRUSTERS)
+    SHIFT + S       shield charge (the WAR MACHINE only) - through
+                    anything, untouchable while it lasts, once every six
     V               dump the coolant (with the flush module, once a fight)
+    E               the EMP lance, if it is in the rack - once a landfall
     1 2 3           open one of Jack's jars, if you are carrying one
   Any time
     P               pause
@@ -843,8 +846,10 @@ def slot_card(n):
            "losses": int(best.get("losses", 0) or 0), "run": None}
     if run:
         house = run.get("house") if run.get("house") in HOUSES else "keal"
+        ch = run.get("chassis")
         out["run"] = {"house": house, "day": int(run.get("day", 1) or 1),
                       "killed": int(run.get("killed", 0) or 0),
+                      "chassis": ch if ch in CHASSIS else "standard",
                       "city": int(float(run.get("integrity", 100) or 0))}
     return out
 
@@ -878,10 +883,10 @@ FURNACE_DAYS = 3                     # days per alloy
 
 class Ware:
     __slots__ = ("key", "seller", "name", "cost", "kind", "effect", "blurb",
-                 "house")
+                 "house", "needs")
 
     def __init__(self, key, seller, name, cost, kind, effect, blurb,
-                 house=None):
+                 house=None, needs=None):
         self.key = key
         self.seller = seller        # who is behind the counter
         self.name = name
@@ -890,6 +895,10 @@ class Ware:
         self.effect = effect
         self.blurb = blurb
         self.house = house          # None = both; "keal" = steel only
+        # what has to come first. A ware key, or a weapon key - the second
+        # means "you have actually fitted one of these to a machine", which
+        # is recorded when the job finishes rather than when it is queued.
+        self.needs = needs
 
 
 WARE_LIST = [
@@ -987,6 +996,57 @@ WARE_LIST = [
          "There is a queue. There has been a queue since the first one.",
          house="keal"),
 
+    # -- Dr Vask: the one who only talks to RYEZ -----------------------------
+    # A line of grown weapons, four genes, and two things you can simply
+    # buy with marks when a run has gone wrong. Every one of them is
+    # house="ryez": a shipyard has nowhere to put a gland.
+    Ware("bp_acid", "vask", "ACID SPITTER", 88, "blueprint",
+         "an organ whose hits keep working after they land",
+         "It does not have to get through. It only has to land.",
+         house="ryez", needs="auto"),
+    Ware("bp_drill", "vask", "THE DRILL", 96, "blueprint",
+         "almost no reach, no pause at all, and it opens them up",
+         "Close enough to touch, and it does not stop touching.",
+         house="ryez"),
+    Ware("bp_fleshmotor", "vask", "FLESH MOTOR", 120, "blueprint",
+         "200 a shot - or one big one over the top with an EXTRA SAC",
+         "It leaves under its own power and it does not come back.",
+         house="ryez", needs="missile"),
+    Ware("bp_fleshmissile", "vask", "FLESH MISSILES", 145, "blueprint",
+         "six at once, twelve with an EXTRA SAC",
+         "All of them, all at once. There is no aiming it worth the name.",
+         house="ryez", needs="bp_fleshmotor"),
+
+    Ware("g_scalehide", "vask", "SCALE HIDE", 110, "blueprint",
+         "a gene: 30 flat off every hit, and it bites back",
+         "Overlapping plate with something alive under it.",
+         house="ryez"),
+    Ware("g_embryo", "vask", "BROOD SAC", 130, "blueprint",
+         "a gene: it puts one on the animal, and what hatches is yours",
+         "They do not live long. They were never going to.",
+         house="ryez"),
+    Ware("g_lungs", "vask", "EXPANDED LUNGS", 105, "blueprint",
+         "a gene: L, once a landfall, and everything goes backwards",
+         "Two more of them, folded in behind the first two.",
+         house="ryez"),
+    Ware("g_scream", "vask", "SHRIEK GLAND", 115, "blueprint",
+         "a gene: Q, once a landfall, and it stops dead",
+         "Below what you can hear, and it does not stop at the ears.",
+         house="ryez"),
+
+    Ware("v_mend", "vask", "FIELD SURGERY", 30, "service",
+         "mends the animal whole, here and now",
+         "He does not ask what happened and he does not write it down.",
+         house="ryez"),
+    Ware("v_genome", "vask", "A JAR OF GENOME", 26, "service",
+         "+2 GENOME into this run, now",
+         "Somebody else's. He is very clear that it is somebody else's.",
+         house="ryez"),
+    Ware("v_mass", "vask", "A DRUM OF BIOMASS", 18, "service",
+         "+400 BIOMASS into this run, now",
+         "It is still warm. Do not ask him that either.",
+         house="ryez"),
+
     # -- Dr Ilse Novak: whole machines, and what they cost -------------------
     # These are not upgrades. A chassis decides which sockets exist at all,
     # what every part in them is worth and which guns will bolt to it, so
@@ -1024,62 +1084,50 @@ WARE_LIST = [
     # wall up, get a lorry through a checkpoint.
     Ware("coffee", "genk", "COFFEE RATION", 48, "power",
          "a pair of hands gets 20% more done in a day",
-         "Requisitioned, shipped and guarded. It is very bad coffee.",
-         house="keal"),
+         "Requisitioned, shipped and guarded. It is very bad coffee."),
     Ware("rushhour", "genk", "RUSH HOUR", 52, "power",
          "overtime costs 25% less",
-         "The rate was set by somebody who has never done the work.",
-         house="keal"),
+         "The rate was set by somebody who has never done the work."),
     Ware("evac", "genk", "EVACUATIONS", 68, "power",
          "25% more MARKS for every body you put down",
-         "Fewer people under it when it falls. They notice that.",
-         house="keal"),
+         "Fewer people under it when it falls. They notice that."),
     Ware("hazmat", "genk", "HAZMAT TEAM", 72, "power",
          "+15% SCRAP and one more ALLOY off every body",
-         "Men in white suits who get the parts nobody else will touch.",
-         house="keal"),
+         "Men in white suits who get the parts nobody else will touch."),
     Ware("walls", "genk", "BETTER WALLS", 78, "power",
          "the city takes 20% less from everything",
-         "Poured over a winter by people who were not asked twice.",
-         house="keal"),
+         "Poured over a winter by people who were not asked twice."),
     Ware("qscrap", "genk", "QUALITY SCRAP", 82, "power",
          "every part on the machine carries 5% more",
-         "The same steel, off the top of the pile instead of the bottom.",
+         "The same steel, off the top of the pile instead of the bottom. "
+         "No use at all to anybody growing theirs.",
          house="keal"),
     Ware("military", "genk", "MILITARY SUPPORT", 88, "power",
          "they soften it first - it lands on 95% of its health",
-         "Guns from the ridge. It does not stop them. It slows them.",
-         house="keal"),
+         "Guns from the ridge. It does not stop them. It slows them."),
     Ware("funding", "genk", "GOVERNMENT FUNDING", 92, "power",
          "everything in the yard costs 5% less",
-         "A line in a budget with your name misspelled on it.",
-         house="keal"),
+         "A line in a budget with your name misspelled on it."),
 
     # -- Agent Zach: the other kind of help ----------------------------------
     Ware("sabotage", "zach", "SABOTAGE", 58, "power",
          "one more day before every landfall",
-         "Nobody will say what was done, or where, or to whom.",
-         house="keal"),
+         "Nobody will say what was done, or where, or to whom."),
     Ware("decoys", "zach", "DECOY CITIES", 60, "power",
          "one more day before every landfall",
-         "Lights and noise on an empty headland. It works every time.",
-         house="keal"),
+         "Lights and noise on an empty headland. It works every time."),
     Ware("prebomb", "zach", "PRE-BOMBING", 62, "power",
          "one more day before every landfall",
-         "The shallows, before it wades out of them. Expensive.",
-         house="keal"),
+         "The shallows, before it wades out of them. Expensive."),
     Ware("supplies", "zach", "FOREIGN SUPPLIES", 66, "power",
          "+5% SCRAP and +5% ALLOY off everything",
-         "Unmarked crates. He will not say from where, and you stopped.",
-         house="keal"),
+         "Unmarked crates. He will not say from where, and you stopped."),
     Ware("shipping", "zach", "FOREIGN SHIPPING", 74, "power",
          "one ALLOY after every landfall, win or lose",
-         "It sails whatever happened here. That is the arrangement.",
-         house="keal"),
+         "It sails whatever happened here. That is the arrangement."),
     Ware("mercs", "zach", "MERCENARIES", 95, "power",
          "a squad drops in mid-fight and takes a hit meant for you",
-         "They are not brave. They are extremely well paid.",
-         house="keal"),
+         "They are not brave. They are extremely well paid."),
     # He does not only sell TO you. These make the animal worse and pay
     # you for it - which is the only honest reading of a man who will not
     # say where the crates come from or who has been taking them apart.
@@ -1088,29 +1136,23 @@ WARE_LIST = [
     # choice, and the whole point of these is that they are a choice.
     Ware("c_coords", "zach", "SOLD COORDINATES", 72, "contract",
          "it lands knowing where you are: +22% walk. +25% MARKS",
-         "Somebody told it. He will not say who, and he took a fee.",
-         house="keal"),
+         "Somebody told it. He will not say who, and he took a fee."),
     Ware("c_hide", "zach", "HARDENED HIDE", 84, "contract",
          "something got into the water: +80% hide. +20% SCRAP",
-         "Whatever it was, it worked, and there is a lot of it left.",
-         house="keal"),
+         "Whatever it was, it worked, and there is a lot of it left."),
     Ware("c_feed", "zach", "DEEP FEEDING", 96, "contract",
          "it comes ashore fat: +18% health. +15% SCRAP and +1 ALLOY",
-         "Feeding grounds nobody was using. Nobody is using them now.",
-         house="keal"),
+         "Feeding grounds nobody was using. Nobody is using them now."),
     Ware("c_word", "zach", "A WORD IN THE WRONG EAR", 108, "contract",
          "it hits 20% harder. +30% MARKS",
-         "One conversation, in a language you do not have.",
-         house="keal"),
+         "One conversation, in a language you do not have."),
     Ware("c_early", "zach", "EARLY WAKE", 120, "contract",
          "every landfall comes a day SOONER. +35% MARKS",
-         "He can move the date either way. He has never explained that.",
-         house="keal"),
+         "He can move the date either way. He has never explained that."),
 
     Ware("studies", "zach", "KAIJU STUDIES", 98, "power",
          "+8% damage, and every hardpoint cuts a third of the hide",
-         "Somebody has been taking them apart. He will not say who.",
-         house="keal"),
+         "Somebody has been taking them apart. He will not say who."),
 ]
 
 WARES = {w.key: w for w in WARE_LIST}
@@ -1144,6 +1186,9 @@ def meta():
             "spent": max(0, int(m.get("spent", 0) or 0)),
             # contracts that are owned but not currently signed
             "off": [k for k in (m.get("off") or []) if k in WARES],
+            # every weapon this slot has ever had finish in a socket, which
+            # is what a "you can buy this once you have used one" gate reads
+            "fitted": [k for k in (m.get("fitted") or []) if k in WEAPONS],
         }
     return _META[0]
 
@@ -1216,13 +1261,82 @@ def stock_of(key):
     return meta()["stock"].get(key, 0)
 
 
+def record_fitted(key):
+    """Remember that a weapon was actually built and hung on a machine."""
+    if key not in WEAPONS or key in meta()["fitted"]:
+        return
+    m = dict(meta())
+    m["fitted"] = list(m["fitted"]) + [key]
+    _meta_put(m)
+
+
+def ever_fitted(key):
+    return key in meta()["fitted"]
+
+
+def unlocked(key):
+    """Is this ware's prerequisite met? A gate on another WARE means you
+    have to have bought that one; a gate on a WEAPON means you have to
+    have carried one into a fight."""
+    w = WARES.get(key)
+    need = w.needs if w else None
+    if not need:
+        return True
+    if need in WEAPONS:
+        return ever_fitted(need)
+    return bought(need)
+
+
+def needs_label(key):
+    """What the card says when it is locked."""
+    need = (WARES.get(key) or Ware("", "", "", 0, "", "", "")).needs
+    if not need:
+        return ""
+    if need in WEAPONS:
+        return "FIT A %s FIRST" % (RYEZ_PARTS.get(("wpn", need))
+                                   if CURRENT["house"] == "ryez"
+                                   else WEAPONS[need].name)
+    return "%s FIRST" % ware_name(WARES[need])
+
+
 def can_buy(key):
     w = WARES.get(key)
     if w is None:
         return False
+    if w.house is not None and w.house != CURRENT["house"]:
+        return False               # not sold to this house at all
+    if not unlocked(key):
+        return False
     if w.kind != "specimen" and bought(key):
         return False               # a blueprint is bought once
     return marks() >= w.cost
+
+
+SERVICE_NEEDS_RUN = ("v_mend", "v_genome", "v_mass")
+
+
+def apply_service(key, run):
+    """One of Vask's, paid for and handed over on the spot."""
+    if run is None:
+        return False
+    if key == "v_mend":
+        hurt = [s for s in run.mech.sockets()
+                if run.mech.damage_frac(s) > 0.001]
+        if not hurt:
+            return False
+        for s in hurt:
+            run.mech.hp[s] = run.mech.max_hp(s)
+        run.news.append("HE PUT IT BACK TOGETHER. DO NOT ASK WITH WHAT.")
+        return True
+    if key == "v_genome":
+        run.alloy += 2
+        run.news.append("+2 %s FROM THE LAB" % word("alloy", "ALLOY"))
+        return True
+    if key == "v_mass":
+        run.scrap += 400
+        run.news.append("+400 %s FROM THE LAB" % word("scrap", "SCRAP"))
+        return True
+    return False
 
 
 def buy_ware(key):
@@ -1260,6 +1374,21 @@ def ware_name(w):
     if CURRENT["house"] == "ryez":
         return RYEZ_WARE_NAME.get(w.key, w.name)
     return w.name
+
+
+def ware_effect(w):
+    """A ware's line of numbers, in the wording of whichever house is
+    signed. The state's counter sells to both houses now, and a RYEZ
+    player reading "+15% SCRAP" about a thing they have just bought has
+    no idea that means their biomass.
+
+    A plain ordered replace is safe here: no house's word for a resource
+    contains another house's word for one."""
+    out = w.effect
+    if CURRENT["house"] == "ryez":
+        for k in ("scrap", "alloy", "crew"):
+            out = out.replace(k.upper(), word(k, k.upper()))
+    return out
 
 # ---------------------------------------------------------------------------
 # NOISE
@@ -1680,6 +1809,15 @@ class Chassis:
         self.guns = tuple(guns)      # weapons only this frame can mount
         self.own_only = own_only     # ...and whether it mounts ANYTHING else
         self.flags = frozenset(flags)
+        # A partial palette is a trap: `_tone` falls back to STEEL for any
+        # key it is not given, so a frame that defined only main/dark/light
+        # /trim had its PLATE drawn in stock blue-grey - one pale panel on
+        # an otherwise red machine, and it looked like a missing texture.
+        # Every frame gets a complete set, derived from what it did give.
+        if tones:
+            tones = dict(tones)
+            tones.setdefault("plate", shade(tones["dark"], 1.55))
+            tones.setdefault("hollow", tones["main"])
         self.tones = tones           # a repaint, passed to draw_mech_side
         self.style = style or {}     # silhouette bits laid over the base
         self.prop = prop or None     # and how the body itself is shaped
@@ -1719,10 +1857,10 @@ CHASSIS_LIST = [
                   "vent": 1.05, "melee": 1.30, "spread": 1.5},
             guns=("cleaver", "crusher", "rendclaw"),
             flags=("charge", "slab"),
-            tones={"main": (158, 44, 38), "dark": (62, 20, 22),
-                   "light": (214, 80, 62), "trim": (255, 150, 74)},
+            tones={"main": (172, 40, 34), "dark": (44, 13, 16),
+                   "light": (232, 88, 60), "trim": (255, 146, 62)},
             style={"head": "warhead", "shoulder": "warplate",
-                   "core": True, "eye": "visor"},
+                   "core": True, "eye": "cowl"},
             prop={"leg": 0.94, "legw": 1.85, "body": 1.18, "wide": 1.42,
                   "head": 0.76, "arm": 1.30, "all": 1.10}),
 
@@ -1977,7 +2115,7 @@ WEAPON_LIST = [
     Weapon("auto", "AUTOCANNON", "gun", 130, 0, 4, 150,
            20, 0.34, 4.2, 900,
            "Forty millimetre, belt fed. The honest answer to most things.",
-           speed=1250, stagger=0.05),
+           speed=1250, stagger=0.05, slow=0.16, slow_t=1.4),
     Weapon("revolver", "REVOLVER CANNON", "gun", 320, 1, 5, 250,
            28, 0.28, 6.2, 980,
            "Four barrels on a drum. Runs hot and does not care.",
@@ -1986,7 +2124,8 @@ WEAPON_LIST = [
     Weapon("missile", "MISSILE RACK", "salvo", 200, 1, 5, 150,
            34, 2.60, 26.0, 1100,
            "Four at a time, and they go off where they land.",
-           shots=4, splash=110, speed=720, stagger=0.10),
+           shots=4, splash=110, speed=720, stagger=0.10,
+           rot=9.0, rot_t=1.1, rot_cap=4.0),
     Weapon("swarm", "SWARM RACK", "salvo", 380, 2, 5, 250,
            40, 2.40, 44.0, 1200,
            "Six tubes and a faster reload. Clears a street.",
@@ -2036,6 +2175,23 @@ WEAPON_LIST = [
            "Drags what it catches back into reach, whatever it wanted.",
            stagger=0.16),
 
+    # -- grown, and only RYEZ will ever be offered them ----------------------
+    Weapon("acid", "ACID SPITTER", "gun", 360, 1, 5, 180,
+           15, 0.30, 4.2, 1050,
+           "It does not have to get through. It only has to land.",
+           speed=1150, stagger=0.02, rot=24.0, rot_t=1.5, rot_cap=10.0),
+    Weapon("drill", "THE DRILL", "beam", 380, 2, 5, 200,
+           88, 0.0, 26.0, 260,
+           "Close enough to touch, and it does not stop touching.",
+           stagger=0.0, rot=30.0, rot_t=3.0, rot_cap=3.0),
+    Weapon("fleshmotor", "FLESH MOTOR", "salvo", 480, 2, 6, 230,
+           200, 2.60, 30.0, 2400,
+           "It leaves under its own power and it does not come back.",
+           shots=1, splash=220, speed=820, stagger=0.24),
+    Weapon("fleshmissile", "FLESH MISSILES", "salvo", 520, 3, 6, 240,
+           58, 2.90, 38.0, 2200,
+           "All of them at once. There is no aiming it worth the name.",
+           shots=6, splash=150, speed=760, stagger=0.10),
     # Mike's, and locked until the Capital has been paid
     Weapon("claw", "PLASMA CLAW", "melee", 360, 2, 5, 190,
            42, 0.62, 8.2, 200,
@@ -2068,7 +2224,7 @@ WEAPON_LIST = [
     Weapon("cleaver", "RED CLEAVER", "melee", 540, 3, 6, 280,
            194, 1.55, 16.5, 300,
            "Two hands, no guard, and an edge that is not really there.",
-           stagger=0.50, knock=120.0, sweep=3),
+           stagger=0.50, knock=70.0, sweep=3),
     Weapon("crusher", "CRUSHER", "melee", 420, 2, 5, 260,
            126, 1.30, 12.5, 205,
            "Not swung. Dropped, with the whole frame behind it.",
@@ -2092,7 +2248,7 @@ WEAPON_LIST = [
     Weapon("gauntlet", "TITAN GAUNTLET", "melee", 360, 1, 5, 250,
            76, 0.90, 10.5, 200,
            "A fist the size of a bus. Things go backwards when it lands.",
-           stagger=0.30, knock=170.0),
+           stagger=0.30, knock=85.0),
     Weapon("titanmg", "TITAN MG", "gun", 300, 1, 4, 190,
            19, 0.11, 3.0, 1000,
            "Belt fed from the hip and nobody is counting.",
@@ -2129,9 +2285,13 @@ WEAPON_FAMILIES = (("fist", "pile"), ("saw", "ripper"), ("auto", "revolver"),
 # what is not in the book until somebody has sold you the book
 BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook",
                      "claw": "bp_claw", "flame": "bp_flame",
-                     "blight": "bp_blight"}
+                     "blight": "bp_blight", "acid": "bp_acid",
+                     "drill": "bp_drill", "fleshmotor": "bp_fleshmotor",
+                     "fleshmissile": "bp_fleshmissile"}
 BLUEPRINT_MODULES = {"emp": "mod_emp", "aux": "mod_aux",
-                     "thrust": "mod_thrust", "eject": "mod_eject"}
+                     "thrust": "mod_thrust", "eject": "mod_eject",
+                     "scalehide": "g_scalehide", "embryo": "g_embryo",
+                     "lungs": "g_lungs", "scream": "g_scream"}
 
 
 def module_list():
@@ -2282,6 +2442,19 @@ MODULE_LIST = [
     Module("baffles", "CORE BAFFLES", 260, 1, 4,
            "the reactor cannot be hit; the frame takes it instead",
            "The one part you cannot fight without, moved inboard."),
+    # -- grown. Four genes, and a house of steel has nowhere to put them -----
+    Module("scalehide", "SCALE HIDE", 340, 2, 5,
+           "30 flat off every hit, and it bites whatever bit you",
+           "Overlapping plate with something alive under it."),
+    Module("embryo", "BROOD SAC", 380, 2, 5,
+           "it puts one on the animal's back; what hatches fights for you",
+           "They do not live long. They were never going to."),
+    Module("lungs", "EXPANDED LUNGS", 300, 1, 4,
+           "L: one breath a landfall, and everything goes backwards",
+           "Two more of them, folded in behind the first two."),
+    Module("scream", "SHRIEK GLAND", 320, 1, 4,
+           "Q: one scream a landfall, and it stops dead",
+           "Below what you can hear, and it does not stop at the ears."),
     # Mike's, and locked until the Capital has been paid
     Module("emp", "EMP LANCE", 320, 1, 4,
            "E: stops one of them dead for 3s, once a landfall",
@@ -2300,6 +2473,8 @@ MODULE_LIST = [
            "It sits above the fight and tells you what is coming."),
 ]
 MODULES = {m.key: m for m in MODULE_LIST}
+# the ones you press, and on what
+MOD_KEY = {"flush": "V", "emp": "E", "lungs": "L", "scream": "Q"}
 MOD_SLOT = "mods"                    # a job socket, but not one on the body
 
 
@@ -2352,6 +2527,25 @@ CONTRACTS = {
 }
 
 
+def city_mult():
+    """What the city actually loses, per point the animal is owed.
+
+    Three places read this - the rampage when the machine goes down, the
+    blocks that come off while it is inside the wall, and the price of
+    not turning up at all - and BETTER WALLS used to reach only the first
+    two. A player who had paid for walls got the discount for LOSING and
+    not for standing down, which is the same wall either way."""
+    return 0.80 if has_ware("walls") else 1.0
+
+
+def frame_label(mech):
+    """What to call this machine. The stock frame is just 'the machine';
+    anything else has a name and the player paid for it."""
+    if CURRENT["house"] == "ryez" or mech.chassis == "standard":
+        return word("machine", "THE MACHINE")
+    return mech.frame.name
+
+
 def kaiju_mult(what):
     m = 1.0
     for key, (axis, v) in CONTRACTS.items():
@@ -2360,9 +2554,34 @@ def kaiju_mult(what):
     return m
 
 
+LUNG_REACH = 620.0                   # how far one breath carries
+LUNG_KNOCK = 150.0                   # and how far back it puts them
+LUNG_DMG = 60.0
+SCREAM_T = 3.4                       # seconds a shriek holds one still
+BROOD_EVERY = 21.0                   # seconds between sacs
+BROOD_N = 3                          # what comes out of one
+BROOD_DMG = 190.0                    # and what it does going off
+BROOD_SPLASH = 260.0
+NUKE_BASE = 900.0                    # the floor, on an empty machine
+NUKE_SCALE = 0.55                    # ...and what every point of you adds
+NUKE_HEAT = 1.6                      # heat ceiling, times this, afterwards
+NUKE_STUN = 2.6
+NUKE_SLOW = 6.0
+NUKE_ROT = 60.0
+NUKE_ROT_T = 9.0
+SCALE_DR = 30.0                      # flat, off every hit
+SCALE_THORNS = 26.0                  # and what it takes back in melee
+FLESHMOTOR_BIG = 2.5                 # one over the top instead of one flat
+FLESHMOTOR_SLOW = 2.1                # ...and how much longer it takes
 CHARGE_T = 0.85                      # seconds a shield charge lasts
 CHARGE_DMG = 340.0                   # what it does to what it runs into
-CHARGE_KNOCK = 420.0                 # and how far back that goes
+# A shove has to be SHORTER than the ground the animal can make back
+# before you can shove it again, or the fight never closes: 420 against a
+# BASTION, which re-walks 252 in the charge's six seconds, meant you could
+# push it backwards for ever. Watch the range readout go UP and that is
+# what is happening. The slowest thing in either roster re-walks 252, so
+# every number here is set well under that.
+CHARGE_KNOCK = 120.0                 # and how far back that goes
 PLASMA_C = (150, 220, 255)           # Mike's arc
 FLAME_C = (255, 150, 60)             # and his cone
 BLIGHT_C = (168, 226, 96)            # and the thing he borrowed from Jack
@@ -2582,7 +2801,8 @@ class Mech:
 
     @property
     def dr(self):
-        return self.stat("armour", "dr", 0.0) * self.frame.of("dr")
+        v = self.stat("armour", "dr", 0.0) * self.frame.of("dr")
+        return v + (SCALE_DR if self.has("scalehide") else 0.0)
 
     @property
     def spread(self):
@@ -4478,10 +4698,17 @@ def draw_face_side(rig, mech, hx, hy, hw, hh, ex, ey):
         rig.circle((ex - 2, ey), 3.8, (252, 96, 84))
         rig.circle((ex - 1, ey - 1), 1.4, (255, 226, 216))
         rig.light((ex - 2, ey), 16, (255, 80, 70), 105)
+    elif kind == "cowl":
+        # nothing here: this frame's overlay draws a cowl right over the
+        # head, so the visor has to go on last, with the cowl
+        return
     elif kind == "visor":                      # a slot, corner to corner
-        rig.poly([(hx - hw + 4, ey + 4), (hx + hw - 3, ey - 1),
-                  (hx + hw - 3, ey - 7), (hx - hw + 4, ey - 3)], trim)
-        rig.light((hx + hw * 0.3, ey - 1), 18, trim, 90)
+        rig.poly([(hx - hw + 2, ey + 6), (hx + hw - 1, ey - 1),
+                  (hx + hw - 1, ey - 11), (hx - hw + 2, ey - 5)], trim)
+        rig.poly([(hx - hw + 5, ey + 2), (hx + hw - 4, ey - 3),
+                  (hx + hw - 4, ey - 8), (hx - hw + 5, ey - 2)],
+                 (255, 238, 196))
+        rig.light((hx + hw * 0.25, ey - 2), 34, trim, 120)
     elif kind == "lens":                       # one good one, two spares
         rig.circle((ex - 1, ey), 3.4, (30, 34, 40))
         rig.circle((ex - 1, ey), 2.2, trim)
@@ -4538,14 +4765,28 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
                       (lean + sweep * 0.30, hy - 16)], shade(dark, 0.7), 1)
         rig.poly([(lean - 18, hy + 2), (lean + 20, hy - 2),
                   (lean + 22, hy + 14), (lean - 18, hy + 16)], dark)
-    elif head == "warhead":                 # a visor and two blunt horns
-        rig.poly([(lean - 21, hy - 12), (lean + 25, hy - 16),
-                  (lean + 27, hy + 16), (lean - 21, hy + 18)], dark)
-        for sgn, sw in ((-1, -26), (1, 20)):
-            rig.poly([(lean + sgn * 6, hy - 14), (lean + sgn * 14, hy - 12),
-                      (lean + sw, hy - 40), (lean + sw * 0.5, hy - 18)],
-                     shade(main, 0.9))
-        # no visor here - see draw_face_side, which puts it on the head
+    elif head == "warhead":
+        # A crown of four horns over a bigger cowl. The first pass put a
+        # small dark box between two crates and the machine read headless
+        # in the one view you spend the fight looking at.
+        rig.poly([(lean - 24, hy - 20), (lean + 28, hy - 26),
+                  (lean + 30, hy + 14), (lean - 24, hy + 16)], dark)
+        rig.poly([(lean - 20, hy - 17), (lean + 25, hy - 22),
+                  (lean + 26, hy - 7), (lean - 20, hy - 3)],
+                 shade(main, 1.05))
+        for sgn, sw, up in ((-1, -42, 50), (-1, -23, 64), (1, 25, 60),
+                            (1, 42, 42)):
+            horn = [(lean + sgn * 5, hy - 20), (lean + sgn * 16, hy - 18),
+                    (lean + sw, hy - up), (lean + sw * 0.55, hy - 25)]
+            rig.poly(horn, shade(main, 0.86 if sgn < 0 else 1.0))
+            rig.poly(horn, shade(dark, 0.8), 1)
+        vz = hy - 4
+        rig.poly([(lean - 20, vz + 7), (lean + 27, vz - 1),
+                  (lean + 27, vz - 12), (lean - 20, vz - 5)], trim)
+        rig.poly([(lean - 16, vz + 3), (lean + 24, vz - 4),
+                  (lean + 24, vz - 9), (lean - 16, vz - 2)],
+                 (255, 238, 196))
+        rig.light((lean + 8, vz - 3), 42, trim, 125)
     elif head == "slab":                    # no face, just a visor slot
         rig.poly([(lean - 20, hy - 12), (lean + 24, hy - 16),
                   (lean + 26, hy + 16), (lean - 20, hy + 18)], dark)
@@ -4592,19 +4833,27 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
             for i in range(3):
                 rig.circle((dx + lean - 12 + i * 12, sh_y + 2), 2.2,
                            shade(trim, sc))
-    elif sh == "warplate":                  # slabs with spikes stood on them
-        for dx, sc in ((-22, 0.70), (17, 1.0)):
-            plate = [(dx + lean - 22, sh_y - 18), (dx + lean + 24, sh_y - 12),
-                     (dx + lean + 26, sh_y + 32), (dx + lean - 24, sh_y + 26)]
+    elif sh == "warplate":
+        # Swept rather than square, and the top edge slopes DOWN away
+        # from the neck so the head clears it. Two orange crates either
+        # side of a buried head was the old read.
+        for dx, sc in ((-24, 0.66), (18, 1.0)):
+            plate = [(dx + lean - 20, sh_y - 2), (dx + lean + 15, sh_y - 13),
+                     (dx + lean + 30, sh_y + 8), (dx + lean + 26, sh_y + 34),
+                     (dx + lean - 22, sh_y + 28)]
             rig.poly(plate, shade(main, sc))
             rig.poly(plate, shade(dark, sc), 2)
-            for i in range(3):                 # the spikes on the ridge
-                px = dx + lean - 12 + i * 15
-                rig.poly([(px - 5, sh_y - 15), (px + 5, sh_y - 14),
-                          (px + 1, sh_y - 36)], shade(light, sc))
-            rig.poly([(dx + lean - 16, sh_y + 2), (dx + lean + 18, sh_y + 5),
-                      (dx + lean + 18, sh_y + 11),
-                      (dx + lean - 16, sh_y + 8)], shade(trim, sc))
+            for i in range(3):                 # spines along the sweep
+                f = i / 2.0
+                px = dx + lean - 6 + f * 26
+                py = sh_y - 4 - f * 7
+                rig.poly([(px - 4, py + 2), (px + 5, py + 1),
+                          (px + 4 + f * 7, py - 24 - f * 5)],
+                         shade(light, sc))
+            rig.poly([(dx + lean - 13, sh_y + 11),
+                      (dx + lean + 24, sh_y + 16),
+                      (dx + lean + 23, sh_y + 22),
+                      (dx + lean - 13, sh_y + 17)], shade(trim, sc))
     elif sh == "box":                       # crates, welded where arms meet
         for dx, sc in ((-18, 0.74), (15, 1.0)):
             rig.poly([(dx + lean - 16, sh_y - 8), (dx + lean + 18, sh_y - 8),
@@ -4631,15 +4880,18 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
                       (dx + lean + 12, sh_y + 14), (dx + lean - 8, sh_y + 14)],
                      light)
     if st.get("core"):                      # a furnace, not a pilot light -
-        cx_, cy_ = lean + 26, sh_y + 30     # and it goes on OVER the plates
+        cx_, cy_ = lean + 24, sh_y + 26     # and it goes on OVER the plates
         beat = 0.82 + 0.18 * math.sin(t * 4.2)
-        rig.poly([(cx_ - 15, cy_ - 15), (cx_ + 15, cy_ - 15),
-                  (cx_ + 18, cy_ + 15), (cx_ - 18, cy_ + 15)], dark)
-        rig.poly([(cx_ - 9, cy_ - 10), (cx_ + 9, cy_ - 10),
-                  (cx_ + 12, cy_ + 10), (cx_ - 12, cy_ + 10)],
+        rig.poly([(cx_ - 20, cy_ - 19), (cx_ + 20, cy_ - 19),
+                  (cx_ + 24, cy_ + 19), (cx_ - 24, cy_ + 19)], dark)
+        rig.poly([(cx_ - 13, cy_ - 13), (cx_ + 13, cy_ - 13),
+                  (cx_ + 16, cy_ + 13), (cx_ - 16, cy_ + 13)],
                  (255, 138, 62))
-        rig.circle((cx_, cy_), 6.0 * beat, (255, 226, 176))
-        rig.light((cx_, cy_), 44 * beat, (255, 120, 54), 105)
+        rig.poly([(cx_ - 8, cy_ - 8), (cx_ + 8, cy_ - 8),
+                  (cx_ + 10, cy_ + 8), (cx_ - 10, cy_ + 8)],
+                 (255, 200, 126))
+        rig.circle((cx_, cy_), 8.0 * beat, (255, 242, 212))
+        rig.light((cx_, cy_), 70 * beat, (255, 110, 48), 132)
 
 def weapon_muzzle(mech, pose, side, sx, gy, scale):
     """Where a shot comes out, in screen coordinates. The fight needs this
@@ -5429,7 +5681,9 @@ class Merc:
     as a story. What it does is stand somewhere a swipe is about to land,
     which is worth a great deal and costs somebody their afternoon."""
 
-    __slots__ = ("x", "hp", "t", "fire", "dead", "face")
+    __slots__ = ("x", "hp", "t", "fire", "dead", "face", "brood")
+
+    __slots_extra__ = ("brood",)
 
     def __init__(self, x, face):
         self.x = float(x)
@@ -5438,6 +5692,7 @@ class Merc:
         self.fire = random.uniform(0.2, 0.9)
         self.dead = 0.0
         self.face = face
+        self.brood = False           # one of RYEZ's, which goes off
 
 
 MERC_EVERY = 17.0                    # seconds between drops
@@ -5574,6 +5829,10 @@ class Fight:
         self.spared = False          # redundant linkage, one part per landfall
         self.flushed = False         # coolant flush, one tank per landfall
         self.emped = False           # EMP lance, one shot per landfall
+        self.lunged = False          # expanded lungs, one breath
+        self.screamed = False        # shriek gland, one scream
+        self.nuked = False           # and the one that costs half of you
+        self.brood_t = 9.0           # until the sac opens again
         self.charge = 0.0            # shield charge, while it lasts
         self.charged = []            # ...and what it has already run into
         self.mercs = []              # Zach's, when any are on the ground
@@ -5666,6 +5925,8 @@ class Fight:
         if self.cd[side] > 0:
             return
         self.cd[side] = wpn.cd * cycle
+        if wpn.key == "fleshmotor" and self.mech.has("hoist"):
+            self.cd[side] *= FLESHMOTOR_SLOW
         self.mech.add_heat(wpn.heat * (1.16 if fast else 1.0))
         crit = random.random() < self.mech.crit
         mult = self.mech.dmg_mult * (1.9 if crit else 1.0)
@@ -5725,6 +5986,11 @@ class Fight:
                 tgt = o
         shots = wpn.shots + (1 if (wpn.kind == "salvo"
                                    and self.mech.has("hoist")) else 0)
+        if wpn.key == "fleshmissile" and self.mech.has("hoist"):
+            shots = wpn.shots * 2            # twelve, and no aiming worth
+        if wpn.key == "fleshmotor" and self.mech.has("hoist"):
+            # one big one, over the top, and it comes down burning
+            shots = 1
         for i in range(shots):
             spread = self.mech.spread
             if wpn.kind == "salvo" and tgt is not None:
@@ -5739,17 +6005,27 @@ class Fight:
                 ang = base + random.uniform(-0.05, 0.05) * spread
                 v = Vector2(math.cos(ang) * self.pose.face,
                             math.sin(ang)) * wpn.speed
+            dmg = wpn.dmg * mult
+            colour_over = None
+            if wpn.key == "fleshmotor" and self.mech.has("hoist"):
+                dmg *= FLESHMOTOR_BIG
+                colour_over = FLAME_C
             self.shots.append(Shot((self.mx + 60 * self.pose.face, wy), v,
-                                   wpn.dmg * mult, "mech",
-                                   (255, 214, 140) if wpn.kind == "gun"
-                                   else (255, 168, 96),
-                                   splash=wpn.splash,
-                                   size=5 if wpn.kind == "gun" else 7,
+                                   dmg, "mech",
+                                   colour_over or ((255, 214, 140)
+                                                   if wpn.kind == "gun"
+                                                   else (255, 168, 96)),
+                                   splash=(wpn.splash * 1.6 if colour_over
+                                           else wpn.splash),
+                                   size=(9 if colour_over else
+                                         (5 if wpn.kind == "gun" else 7)),
                                    arc=520.0 if wpn.kind == "salvo" else 0.0,
                                    pierce=1 if self.pierce_now(wpn) else 0,
                                    slow=wpn.slow, slow_t=wpn.slow_t,
-                                   rot=wpn.rot, rot_t=wpn.rot_t,
-                                   rot_cap=wpn.rot_cap))
+                                   rot=(38.0 if colour_over else wpn.rot),
+                                   rot_t=(3.2 if colour_over else wpn.rot_t),
+                                   rot_cap=(3.2 if colour_over
+                                            else wpn.rot_cap)))
 
     def charge_tick(self, dt):
         """Forward at speed, through anything, and nothing touches you.
@@ -5783,9 +6059,141 @@ class Fight:
             self.say(e.kind.name + " WENT BACKWARDS")
             SFX.play("wreck", 0.8)
 
+    # -- the grown kit, all of it once a landfall except the brood --------
+    def blow_lungs(self):
+        """EXPANDED LUNGS. One breath, and everything in front of it goes
+        backwards. It does almost no damage - the point is the ground it
+        buys, not the hit."""
+        if not self.mech.has("lungs") or self.lunged or self.mech.down:
+            return False
+        self.lunged = True
+        self.say("IT BREATHES OUT")
+        SFX.play("roar", 0.7)
+        self.shake = max(self.shake, 8)
+        hit = 0
+        for e in self.enemies:
+            if not e.alive or abs(e.x - self.mx) > LUNG_REACH:
+                continue
+            hit += 1
+            e.x += math.copysign(LUNG_KNOCK, e.x - self.mx)
+            e.stagger = max(e.stagger, 0.7)
+            self.dealt += e.hurtby(LUNG_DMG, cut=self.mech.hide_cut)
+        for i in range(24):
+            f = i / 23.0
+            self.spark(self.mx + self.pose.face * (80 + f * LUNG_REACH),
+                       -80 - random.uniform(0, 220), (198, 226, 238), 1, 200)
+        if not hit:
+            self.say("NOTHING IN FRONT OF IT")
+        return True
+
+    def shriek(self):
+        """SHRIEK GLAND. Below what you can hear, and it stops dead."""
+        if not self.mech.has("scream") or self.screamed or self.mech.down:
+            return False
+        e = self.nearest(self.mx)
+        if e is None or not e.alive:
+            return False
+        self.screamed = True
+        e.stun = max(e.stun, SCREAM_T)
+        e.state, e.timer, e.attack = "stagger", SCREAM_T, None
+        self.say(e.kind.name + " HAS STOPPED")
+        SFX.play("roar", 1.0)
+        self.shake = max(self.shake, 7)
+        for _ in range(20):
+            self.spark(self.mx + self.pose.face * 60,
+                       -240 - random.uniform(0, 120), (236, 214, 255), 1, 260)
+        return True
+
+    def brood_tick(self, dt):
+        """BROOD SAC. It puts one on the animal, and what hatches is
+        yours: fast, brittle, and it goes off when it dies. They are bait
+        with teeth - the thing they are really buying is the attack that
+        lands on them instead of on you."""
+        if not self.mech.has("embryo") or self.over is not None:
+            return
+        self.brood_t -= dt
+        if self.brood_t <= 0:
+            self.brood_t = BROOD_EVERY
+            e = self.nearest(self.mx)
+            if e is not None and e.alive:
+                for i in range(BROOD_N):
+                    m = Merc(e.x - (i + 1) * 70, -1)
+                    m.hp = 1.0
+                    m.brood = True
+                    self.mercs.append(m)
+                self.say("THE SAC OPENED")
+                SFX.play("roar", 0.5)
+
+    def brood_burst(self, m):
+        """One of them dying, which is the half that matters."""
+        self.shake = max(self.shake, 6)
+        SFX.play("wreck", 0.5)
+        for e in self.enemies:
+            if e.alive and abs(e.x - m.x) < BROOD_SPLASH:
+                self.dealt += e.hurtby(BROOD_DMG, cut=self.mech.hide_cut)
+                e.stagger += 0.12 / e.kind.poise
+        for _ in range(16):
+            self.spark(m.x, -40 - random.uniform(0, 90), RYEZ_ACID, 1, 200)
+
+    def flesh_nuke(self):
+        """The one that costs you half of what you are.
+
+        It needs all three - an EXTRA SAC, the FLESH MISSILES and the
+        FLESH MOTOR they are built out of - and it takes half of every
+        part you have left. The damage scales on what you HAD, so it is
+        at its best when you are whole, which is exactly when you least
+        want to press it. Then the heat goes over the ceiling and stays
+        there, so the fight afterwards is fought cold."""
+        if not self.can_nuke() or self.nuked or self.mech.down:
+            return False
+        self.nuked = True
+        pool = sum(self.mech.hp[s] for s in self.mech.sockets())
+        for s in self.mech.sockets():
+            if s == "torso":
+                self.mech.hp[s] = max(1.0, self.mech.hp[s] * 0.5)
+            else:
+                self.mech.hp[s] *= 0.5
+        dmg = NUKE_BASE + pool * NUKE_SCALE
+        self.mech.heat = self.mech.heat_cap * NUKE_HEAT
+        self.mech.locked = True
+        self.say("FLESH NUKE - HALF OF IT IS GONE")
+        SFX.play("wreck", 1.0)
+        self.shake = max(self.shake, 22)
+        for e in self.enemies:
+            if not e.alive:
+                continue
+            self.dealt += e.hurtby(dmg, cut=self.mech.hide_cut)
+            e.stun = max(e.stun, NUKE_STUN)
+            e.state, e.timer, e.attack = "stagger", NUKE_STUN, None
+            e.tether(0.55, NUKE_SLOW)
+            e.ail(NUKE_ROT, NUKE_ROT_T, NUKE_ROT_T, RYEZ_ACID)
+            self.number(e.x, -260, int(dmg), True)
+        for _ in range(60):
+            self.spark(self.mx + random.uniform(-200, 200),
+                       -100 - random.uniform(0, 400),
+                       random.choice((RYEZ_ACID, (255, 210, 140),
+                                      (198, 226, 238))), 1, 320)
+        return True
+
+    def can_nuke(self):
+        return (self.mech.has("hoist")
+                and self.mech.fit["l_wpn"] == "fleshmissile"
+                or self.mech.fit["r_wpn"] == "fleshmissile") and \
+            self.mech.has("hoist") and ever_fitted("fleshmotor")
+
     def merc_tick(self, dt):
-        """Drop a squad now and then, walk them up, and let them chip."""
-        if not has_ware("mercs") or self.over is not None:
+        """Drop a squad now and then, walk them up, and let them chip.
+
+        This also walks whatever the BROOD SAC has hatched, which is why
+        the early return checks the list as well as the contract - the
+        brood are Mercs with a flag on them, because "something small
+        between you and it that soaks one hit" is the same object twice
+        and a second class for it would be a second set of bugs."""
+        if self.over is not None:
+            return
+        if not has_ware("mercs"):
+            if self.mercs:
+                self.merc_walk(dt)
             return
         self.merc_t -= dt
         if self.merc_t <= 0:
@@ -5798,9 +6206,14 @@ class Fight:
                     self.mercs.append(Merc(base + (i - 1) * 46, face))
                 self.say("A SQUAD CAME DOWN")
                 SFX.play("thud", 0.4)
+        self.merc_walk(dt)
+
+    def merc_walk(self, dt):
         for m in list(self.mercs):
             m.t += dt
             if m.hp <= 0:
+                if m.brood and m.dead == 0.0:
+                    self.brood_burst(m)
                 m.dead += dt
                 if m.dead > 1.2:
                     self.mercs.remove(m)
@@ -5865,7 +6278,7 @@ class Fight:
 
     @property
     def city_mult(self):
-        return 0.80 if has_ware("walls") else 1.0
+        return city_mult()
 
     def in_reach(self, wpn):
         """Is there anything close enough to swing at?"""
@@ -6100,8 +6513,9 @@ class Fight:
         if k in ("swipe", "slam", "kick"):
             if not self.mech.down and abs(e.x - self.mx) <= a["reach"] + 60:
                 self.mech_hit(e, a["dmg"] * kaiju_mult("hit"))
-                if self.mech.has("shock"):        # the hull bills for it
-                    back = e.hurtby(16.0, pierce=True)
+                thorns = (16.0 if self.mech.has("shock") else 0.0) +                          (SCALE_THORNS if self.mech.has("scalehide") else 0.0)
+                if thorns:                        # the hide bills for it
+                    back = e.hurtby(thorns, pierce=True)
                     self.dealt += back
                     self.number(e.x, -190, int(back))
                     self.spark(e.x, -150, (150, 220, 255), 7)
@@ -6334,8 +6748,15 @@ class Fight:
             self.spark(self.mx, -240, (180, 240, 255), 18, 220)
         if inp.get("emp") and not down:
             self.fire_emp()
+        if inp.get("lungs") and not down:
+            self.blow_lungs()
+        if inp.get("scream") and not down:
+            self.shriek()
+        if inp.get("nuke") and not down:
+            self.flesh_nuke()
         self.pose.flash = approach(self.pose.flash, 0.0, dt * 3.0)
 
+        self.brood_tick(dt)
         self.merc_tick(dt)
         # -- the animals ---------------------------------------------------
         for e in self.enemies:
@@ -6588,7 +7009,8 @@ class Fight:
         m = self.mech
         # the machine, part by part
         panel(surf, pygame.Rect(14, 12, 236, 186), (16, 18, 26), LINE, 6)
-        text(surf, word("machine", "THE MACHINE"), 16, (26, 20), DIM)
+        lab = frame_label(m)
+        text(surf, lab, fit(lab, 16, 208), (26, 20), DIM)
         y = 42
         for s in SOCKETS:
             if m.fit[s] is None:
@@ -6617,17 +7039,23 @@ class Fight:
             chips = pygame.Rect(14, 240, 236, 22 * ((len(m.mods) + 1) // 2)
                                 + 8)
             panel(surf, chips, (16, 18, 26), LINE, 5)
+            spent = {"flush": self.flushed, "emp": self.emped,
+                     "lungs": self.lunged, "scream": self.screamed}
             for i, k in enumerate(m.mods):
                 mod = MODULES[k]
                 cx = chips.x + 8 + (i % 2) * 114
                 cy = chips.y + 4 + (i // 2) * 22
-                live = not (k == "flush" and self.flushed)
+                live = not spent.get(k, False)
                 short = pname(MOD_SLOT, mod)
                 short = short.split()[0][:9] if len(short) > 11 else short
                 text(surf, short, 12, (cx, cy), CORE if live else FAINT)
-                if k == "flush":
-                    text(surf, "V" if live else "-", 12, (cx + 100, cy),
-                         GOOD if live else FAINT, right=True)
+                # every module you can PRESS says so, not just the flush -
+                # an EMP LANCE is 160 marks and used to arrive with no
+                # indication that it was on a key at all
+                key = MOD_KEY.get(k)
+                if key:
+                    text(surf, key if live else "USED", 12, (cx + 104, cy),
+                         GOOD if live else RUST, right=True)
         # Jack's cupboard, and how long the sac has left in it
         jy = 240 + ((22 * ((len(m.mods) + 1) // 2) + 8 + 6) if m.mods else 0)
         held = [w for w in SPECIMENS if stock_of(w.key) > 0]
@@ -6732,9 +7160,28 @@ class Fight:
                  if "GONE" in s else (222, 196, 140), center=True,
                  alpha=int(255 * clamp(life, 0, 1)))
 
+        if m.has_flag("charge") and not m.down:
+            # the one move in the game that is two keys at once, on a six
+            # second lock, and nothing was telling anybody either fact
+            ready = self.boost_cd <= 0 and self.charge <= 0
+            cr = pygame.Rect(W // 2 - 96, H - 118, 192, 26)
+            panel(surf, cr, (24, 14, 14) if ready else (16, 17, 24),
+                  BAD if ready else LINE, 5)
+            if not ready and self.charge <= 0:
+                bar(surf, pygame.Rect(cr.x + 3, cr.bottom - 5, cr.w - 6, 3),
+                    1.0 - clamp(self.boost_cd / 6.0, 0, 1), RUST)
+            text(surf, "SHIFT+S  SHIELD CHARGE" if ready else
+                 ("CHARGING" if self.charge > 0 else "PLATES COOLING"),
+                 14, cr.center, (255, 196, 150) if ready else FAINT,
+                 center=True)
         if self.tutorial > 0:
             a = int(230 * clamp(self.tutorial / 4.0, 0, 1))
-            text(surf, "A / D  WALK      J / K  FIRE      S  BRACE", 19,
+            keys = ["A / D  WALK", "J / K  FIRE", "S  BRACE"]
+            if m.can_boost:
+                keys.append("SHIFT  DASH")
+            if [w for w in SPECIMENS if stock_of(w.key) > 0]:
+                keys.append("1-3  JARS")
+            text(surf, "      ".join(keys), 19,
                  (W // 2, H - 100), (230, 216, 180), center=True, alpha=a)
             text(surf, "IT IS WALKING TO THE CITY. BE IN THE WAY.", 16,
                  (W // 2, H - 78), (200, 160, 120), center=True, alpha=a)
@@ -7238,6 +7685,8 @@ class Run:
                                      + " OPEN")
                 else:
                     self.mech.install(job.socket, job.target)
+                    if job.socket in HARDPOINTS:
+                        record_fitted(job.target)
                     self.news.append(
                         pname(job.socket, part_of(job.socket, job.target))
                         + " " + house().verb)
@@ -7286,7 +7735,7 @@ class Run:
                 self.crew += 1
                 lines.append("ONE MORE PAIR OF HANDS SIGNED ON")
         else:
-            hit = kind.rampage * (0.80 if has_ware("walls") else 1.0)
+            hit = kind.rampage * city_mult()
             self.integrity = clamp(self.integrity - hit, 0.0, 100.0)
             lines.append("THE MACHINE WENT DOWN.")
             lines.append("%s WENT THROUGH THE CITY AND BACK TO THE SEA."
@@ -8471,8 +8920,9 @@ class Brief:
 
     def stand_cost(self):
         """Always worse than losing the fight, or nobody would ever fight -
-        but not so much worse that it is never the right call."""
-        return int(self.kind.rampage + self.kind.wreck * 4)
+        but not so much worse that it is never the right call. Walls count
+        here too; see `city_mult`."""
+        return int((self.kind.rampage + self.kind.wreck * 4) * city_mult())
 
     def draw(self, surf, mouse):
         run, k = self.run, self.kind
@@ -8509,7 +8959,7 @@ class Brief:
         m = run.mech
         p = pygame.Rect(56, 404, 470, 172)
         panel(surf, p, (16, 18, 25), LINE, 6)
-        text(surf, "%s - %d%% %s" % (word("machine", "THE MACHINE"),
+        text(surf, "%s - %d%% %s" % (frame_label(m),
                                       round(m.completion() * 100),
                                       word("built", "BUILT")),
              19, (p.x + 14, p.y + 10), PAINT)
@@ -9420,6 +9870,174 @@ def draw_ware_icon(surf, r, w, t):
                                  (box.x + 5, y), (box.x + box.w * 0.4, y), 1)
         _sheet(surf, r, t, lines)
         return
+    if k in ("bp_acid", "bp_drill", "bp_fleshmotor", "bp_fleshmissile",
+             "g_scalehide", "g_embryo", "g_lungs", "g_scream"):
+        # Vask does not draw blueprints. Everything on his counter is in a
+        # jar, so it is the specimen frame with the thing itself inside.
+        def body(s, f, tt):
+            cx, cy = f.centerx, f.centery
+            u = f.h / 100.0
+            if k == "bp_acid":                 # a sac, dripping
+                pygame.draw.ellipse(s, (150, 200, 90),
+                                    (cx - 15 * u, cy - 22 * u, 30 * u,
+                                     34 * u))
+                pygame.draw.ellipse(s, (192, 230, 120),
+                                    (cx - 8 * u, cy - 16 * u, 12 * u,
+                                     14 * u))
+                for i in range(3):
+                    dy = ((tt * 34 + i * 26) % 40) * u
+                    pygame.draw.circle(s, (176, 226, 110),
+                                       (cx - 6 * u + i * 7 * u,
+                                        cy + 12 * u + dy), 2.4 * u)
+            elif k == "bp_drill":              # a spiral of teeth
+                for i in range(9):
+                    f2 = i / 8.0
+                    w2 = (1.0 - f2) * 15 * u
+                    y = cy - 24 * u + f2 * 48 * u
+                    a = tt * 5.0 + f2 * 7.0
+                    pygame.draw.line(s, (214, 226, 210),
+                                     (cx - w2 * math.cos(a), y),
+                                     (cx + w2 * math.cos(a), y),
+                                     max(2, int(2.6 * u)))
+                pygame.draw.polygon(s, (236, 244, 232),
+                                    [(cx - 4 * u, cy + 22 * u),
+                                     (cx + 4 * u, cy + 22 * u),
+                                     (cx, cy + 32 * u)])
+            elif k == "bp_fleshmotor":         # one, with a tail
+                pygame.draw.ellipse(s, (196, 118, 128),
+                                    (cx - 11 * u, cy - 26 * u, 22 * u,
+                                     32 * u))
+                pygame.draw.circle(s, (236, 176, 172),
+                                   (cx, cy - 16 * u), 5 * u)
+                prev = (cx, cy + 5 * u)
+                for i in range(1, 6):
+                    q = i / 5.0
+                    pnt = (cx + math.sin(tt * 4 + q * 6) * 9 * u,
+                           cy + 5 * u + q * 26 * u)
+                    pygame.draw.line(s, (168, 96, 108), prev, pnt,
+                                     max(2, int((1.0 - q) * 6 * u)))
+                    prev = pnt
+            elif k == "bp_fleshmissile":       # a great many of them
+                for i in range(7):
+                    a = i * TAU / 7 + tt * 0.5
+                    x = cx + math.cos(a) * 17 * u
+                    y = cy + math.sin(a) * 20 * u
+                    pygame.draw.ellipse(s, (206, 126, 134),
+                                        (x - 4 * u, y - 8 * u, 8 * u,
+                                         16 * u))
+                    pygame.draw.circle(s, (244, 186, 180), (x, y - 4 * u),
+                                       2.2 * u)
+            elif k == "g_scalehide":           # overlapping scale
+                for row in range(4):
+                    for i in range(3):
+                        x = cx - 17 * u + i * 13 * u + (6 * u if row % 2
+                                                        else 0)
+                        y = cy - 22 * u + row * 12 * u
+                        pygame.draw.polygon(s, (120, 158, 116),
+                                            [(x, y + 5 * u),
+                                             (x + 6 * u, y - 2 * u),
+                                             (x + 12 * u, y + 5 * u),
+                                             (x + 6 * u, y + 12 * u)])
+                        pygame.draw.polygon(s, (72, 104, 74),
+                                            [(x, y + 5 * u),
+                                             (x + 6 * u, y - 2 * u),
+                                             (x + 12 * u, y + 5 * u),
+                                             (x + 6 * u, y + 12 * u)], 1)
+            elif k == "g_embryo":              # something curled up
+                pygame.draw.circle(s, (198, 150, 162), (cx, cy), 20 * u)
+                pygame.draw.circle(s, (152, 106, 122), (cx, cy), 20 * u, 2)
+                beat = 1.0 + 0.10 * math.sin(tt * 3.4)
+                pygame.draw.circle(s, (238, 196, 198),
+                                   (cx - 4 * u, cy - 4 * u), 8 * u * beat)
+                pygame.draw.circle(s, (60, 44, 52),
+                                   (cx - 7 * u, cy - 6 * u), 2.2 * u)
+                prev = (cx + 2 * u, cy + 2 * u)
+                for i in range(1, 5):
+                    q = i / 4.0
+                    pnt = (cx + 2 * u + math.cos(q * 5 + tt) * 11 * u * q,
+                           cy + 2 * u + q * 13 * u)
+                    pygame.draw.line(s, (176, 124, 138), prev, pnt,
+                                     max(2, int(4 * u * (1 - q * 0.6))))
+                    prev = pnt
+            elif k == "g_lungs":               # two of them, filling
+                br = 0.82 + 0.18 * math.sin(tt * 1.8)
+                for sgn in (-1, 1):
+                    pygame.draw.ellipse(s, (214, 150, 158),
+                                        (cx + sgn * 4 * u - (sgn < 0) *
+                                         16 * u, cy - 20 * u,
+                                         16 * u, 34 * u * br))
+                pygame.draw.rect(s, (188, 196, 200),
+                                 (cx - 2 * u, cy - 30 * u, 4 * u, 14 * u))
+            else:                              # g_scream: a throat, open
+                pygame.draw.ellipse(s, (60, 30, 40),
+                                    (cx - 16 * u, cy - 20 * u, 32 * u,
+                                     40 * u))
+                for i in range(6):
+                    a = i * TAU / 6 + tt * 0.8
+                    r2 = 10 * u + math.sin(tt * 6 + i) * 3 * u
+                    pygame.draw.polygon(s, (236, 226, 226),
+                                        [(cx + math.cos(a) * r2,
+                                          cy + math.sin(a) * r2 * 1.2),
+                                         (cx + math.cos(a + 0.3) * r2,
+                                          cy + math.sin(a + 0.3) * r2 * 1.2),
+                                         (cx + math.cos(a + 0.15) * r2 * 1.7,
+                                          cy + math.sin(a + 0.15) * r2 * 2.0)])
+                for i in range(3):
+                    rr = (8 + ((tt * 30 + i * 14) % 40)) * u
+                    pygame.draw.ellipse(s, (198, 170, 210),
+                                        (cx - rr, cy - rr * 0.7, rr * 2,
+                                         rr * 1.4), 1)
+        _jar(surf, r, t, (150, 200, 150), body)
+        return
+    if k in ("v_mend", "v_genome", "v_mass"):
+        pygame.draw.rect(surf, (22, 32, 26), r, border_radius=4)
+        pygame.draw.rect(surf, (64, 96, 72), r, 1, border_radius=4)
+        cx, cy, s = r.centerx, r.centery, r.h
+        if k == "v_mend":                      # a needle and thread
+            pygame.draw.line(surf, (214, 222, 214),
+                             (cx - s * 0.24, cy + s * 0.20),
+                             (cx + s * 0.18, cy - s * 0.22), 3)
+            pygame.draw.circle(surf, (214, 222, 214),
+                               (cx + s * 0.20, cy - s * 0.24), s * 0.05, 1)
+            prev = (cx - s * 0.24, cy + s * 0.20)
+            for i in range(1, 6):
+                q = i / 5.0
+                pnt = (cx - s * (0.24 + q * 0.14),
+                       cy + s * (0.20 - q * 0.30)
+                       + math.sin(q * 7 + t * 2) * s * 0.05)
+                pygame.draw.line(surf, (176, 96, 110), prev, pnt, 2)
+                prev = pnt
+        elif k == "v_genome":                  # a jar with a strand in it
+            pygame.draw.rect(surf, (52, 84, 66),
+                             (cx - s * 0.16, cy - s * 0.22, s * 0.32,
+                              s * 0.46), border_radius=int(s * 0.05))
+            pygame.draw.rect(surf, (96, 132, 104),
+                             (cx - s * 0.19, cy - s * 0.28, s * 0.38,
+                              s * 0.08), border_radius=2)
+            for i in range(7):
+                q = i / 6.0
+                y = cy - s * 0.16 + q * s * 0.34
+                dx = math.sin(q * 7 + t * 2.0) * s * 0.10
+                pygame.draw.circle(surf, ALLOY_C, (cx + dx, y), s * 0.035)
+                pygame.draw.circle(surf, shade(ALLOY_C, 0.7),
+                                   (cx - dx, y), s * 0.03)
+        else:                                  # v_mass: a drum of it
+            pygame.draw.rect(surf, (120, 92, 84),
+                             (cx - s * 0.22, cy - s * 0.20, s * 0.44,
+                              s * 0.42), border_radius=int(s * 0.04))
+            for i in range(3):
+                pygame.draw.line(surf, (86, 66, 60),
+                                 (cx - s * 0.22, cy - s * 0.10 + i * s * 0.13),
+                                 (cx + s * 0.22, cy - s * 0.10 + i * s * 0.13),
+                                 2)
+            pygame.draw.ellipse(surf, (168, 126, 116),
+                                (cx - s * 0.22, cy - s * 0.26, s * 0.44,
+                                 s * 0.12))
+            bl = 0.9 + 0.1 * math.sin(t * 3)
+            pygame.draw.ellipse(surf, (196, 108, 112),
+                                (cx - s * 0.12 * bl, cy - s * 0.23,
+                                 s * 0.24 * bl, s * 0.07))
+        return
     if k in CHASSIS_WARE:
         # the real renderer, very small. A picture of the machine that
         # cannot drift out of date with the machine, because it IS the
@@ -10247,6 +10865,146 @@ class PickFrame:
         return None
 
 
+# ---------------------------------------------------------------------------
+# THE MAD SCIENTIST
+#
+# One room, one man, and he will not sell to a shipyard. Everything here
+# is grown, and half of it is grown out of something he will not name.
+# ---------------------------------------------------------------------------
+VASK_TONE = (146, 206, 140)
+VASK_COAT = (206, 214, 198)
+VASK_COAT_D = (160, 170, 152)
+VASK_HAIR = (214, 214, 208)
+VASK_APRON = (98, 82, 70)
+
+
+def draw_vask_lab(surf, t):
+    """A cellar with tanks in it. Green light from below, because every
+    light in the room is something in a jar."""
+    for i in range(0, H, 4):
+        f = i / float(H)
+        surf.fill(mix((16, 26, 20), (26, 38, 28), f ** 1.2), (0, i, W, 4))
+    rnd = random.Random(53)
+    for x in range(-30, W + 80, 132):            # tanks along the back wall
+        hgt = rnd.randint(120, 200)
+        tk = pygame.Rect(x, 250 - hgt, 96, hgt)
+        pygame.draw.rect(surf, (22, 34, 30), tk.inflate(10, 10),
+                         border_radius=8)
+        pygame.draw.rect(surf, (44, 78, 58), tk, border_radius=6)
+        pygame.draw.rect(surf, (30, 52, 42), tk, 2, border_radius=6)
+        pulse = 0.7 + 0.3 * math.sin(t * 1.3 + x * 0.01)
+        blit_glow(surf, tk.center, tk.w * 0.9, (90, 200, 130),
+                  int(34 * pulse))
+        for k in range(4):                       # something in each of them
+            a = t * 0.5 + k * 1.9 + x
+            pygame.draw.circle(surf, (128, 214, 150),
+                               (tk.centerx + math.sin(a) * tk.w * 0.24,
+                                tk.centery + math.cos(a * 0.7) * tk.h * 0.22),
+                               3 + (k % 2))
+        for pipe in (tk.x + 20, tk.right - 22):  # and pipes off the top
+            pygame.draw.rect(surf, (54, 64, 56), (pipe, tk.y - 22, 7, 24))
+    pygame.draw.rect(surf, (30, 42, 34), (0, 246, W, 10))
+    for x in range(0, W, 46):                    # a gantry rail
+        pygame.draw.rect(surf, (40, 54, 44), (x, 256, 28, 5))
+    for i in range(7):                           # bulbs in cages, swinging
+        f = (i + 0.5) / 7.0
+        x = f * W
+        sway = math.sin(t * 0.8 + i) * 5
+        pygame.draw.line(surf, (44, 52, 44), (x, 0), (x + sway, 56), 2)
+        pygame.draw.circle(surf, (188, 236, 170), (x + sway, 62), 5)
+        pygame.draw.circle(surf, (60, 80, 60), (x + sway, 62), 8, 1)
+        blit_glow(surf, (x + sway, 62), 70, (120, 220, 150), 40)
+    pygame.draw.rect(surf, (20, 30, 24), (0, H - 74, W, 74))
+    for x in range(0, W, 58):                    # a drain, and a wet floor
+        pygame.draw.line(surf, (28, 40, 32), (x, H - 74), (x, H), 1)
+    blit_glow(surf, (W * 0.5, H - 40), 300, (80, 180, 120), 20)
+
+
+def draw_slab(surf, r, tone, t, seller):
+    """His counter is a slab with a gutter in it."""
+    panel(surf, r, (30, 42, 34), (46, 66, 50), 8)
+    head = pygame.Rect(r.x + 4, r.y + 4, r.w - 8, 44)
+    pygame.draw.rect(surf, (22, 32, 26), head, border_radius=6)
+    pygame.draw.rect(surf, shade(tone, 0.9),
+                     (head.x + 8, head.bottom - 5, head.w - 16, 3))
+    for i in range(3):                           # jars on a shelf
+        jx = r.x + 26 + i * 26
+        pygame.draw.rect(surf, (52, 84, 62), (jx, r.y + 14, 14, 22),
+                         border_radius=3)
+        pygame.draw.circle(surf, (140, 226, 160),
+                           (jx + 7, r.y + 25 + math.sin(t * 2 + i) * 3), 3)
+    blit_glow(surf, (r.centerx, r.y + 120), 210, (120, 220, 150), 26)
+    tank = pygame.Rect(r.x + 16, r.y + 58, r.w - 32, 216)
+    pygame.draw.rect(surf, (36, 58, 46), tank, border_radius=5)
+    pygame.draw.rect(surf, (52, 78, 58), tank, 2, border_radius=5)
+    seller(surf, r.centerx, r.y + 272, 176, t)
+    top = pygame.Rect(r.x + 10, r.y + 272, r.w - 20, 16)
+    pygame.draw.rect(surf, (96, 104, 96), top, border_radius=3)
+    pygame.draw.rect(surf, (58, 66, 58), top, 1, border_radius=3)
+    pygame.draw.rect(surf, (44, 52, 44), (r.x + 10, top.bottom, r.w - 20, 14))
+    pygame.draw.rect(surf, (26, 34, 28),       # the gutter
+                     (r.x + 24, top.bottom + 4, r.w - 48, 4))
+
+
+def draw_vask_front(surf, cx, gy, h, t):
+    """White hair going in every direction, one magnifier down over an
+    eye, a rubber apron over the coat, and gloves to the elbow."""
+    u = h / 100.0
+    bob = math.sin(t * 1.6 + 0.9) * 1.1 * u
+    top = gy - 38 * u + bob
+    _blk(surf, cx - 32 * u, top, 64 * u, 50 * u, VASK_COAT, 0.78, 4)
+    _blk(surf, cx - 19 * u, top + 6 * u, 38 * u, 44 * u, VASK_APRON, 0.7, 3)
+    for sgn in (-1, 1):                          # gloves, to the elbow
+        ax = cx + sgn * 38 * u
+        _blk(surf, ax - 12 * u, top + 2 * u, 25 * u, 26 * u, VASK_COAT,
+             0.78, 3)
+        _blk(surf, ax - 12 * u, top + 24 * u, 25 * u, 20 * u,
+             (92, 140, 104), 0.7, 3)
+        _blk(surf, cx + sgn * 25 * u - 8 * u, top + 36 * u, 17 * u, 9 * u,
+             (108, 158, 118), 0.72, 3)
+    for i in range(3):                           # stains he has stopped seeing
+        pygame.draw.circle(surf, (120, 150, 110),
+                           (cx - 12 * u + i * 11 * u, top + (16 + i * 9) * u),
+                           2.4 * u)
+    _blk(surf, cx - 8 * u, top - 10 * u, 16 * u, 13 * u, SKIN_D, 0.8, 2)
+    hb = top - 9 * u
+    hh = 42 * u
+    br = hb - hh
+    _blk(surf, cx - 23 * u, br, 46 * u, hh, SKIN, 0.8, 4)
+    for sgn in (-1, 1):                          # brows, one up
+        pygame.draw.line(surf, (188, 188, 182),
+                         (cx + sgn * 6 * u, br + (9 if sgn > 0 else 13) * u),
+                         (cx + sgn * 17 * u, br + (13 if sgn > 0 else 12) * u),
+                         max(2, int(2.3 * u)))
+    pygame.draw.circle(surf, (42, 40, 44), (cx - 11 * u, br + 19 * u), 2.4 * u)
+    pygame.draw.circle(surf, (250, 250, 252),
+                       (cx - 12.3 * u, br + 17.8 * u), 1.0 * u)
+    pygame.draw.lines(surf, (150, 118, 112), False,   # a grin with teeth in it
+                      [(cx - 10 * u, br + 30 * u), (cx - 2 * u, br + 35 * u),
+                       (cx + 9 * u, br + 29 * u)], max(2, int(2.1 * u)))
+    pygame.draw.polygon(surf, VASK_HAIR, [       # hair, going everywhere
+        (cx - 26 * u, br + 12 * u), (cx - 30 * u, br - 10 * u),
+        (cx - 12 * u, br - 4 * u), (cx - 6 * u, br - 20 * u),
+        (cx + 4 * u, br - 6 * u), (cx + 16 * u, br - 18 * u),
+        (cx + 20 * u, br - 2 * u), (cx + 30 * u, br - 12 * u),
+        (cx + 26 * u, br + 12 * u), (cx, br + 2 * u)])
+    for sgn in (-1, 1):
+        pygame.draw.polygon(surf, shade(VASK_HAIR, 0.9), [
+            (cx + sgn * 22 * u, br + 2 * u), (cx + sgn * 30 * u, br + 8 * u),
+            (cx + sgn * 26 * u, br + 22 * u), (cx + sgn * 19 * u, br + 12 * u)])
+    band = pygame.Rect(int(cx - 25 * u), int(br + 12 * u), int(50 * u),
+                       int(7 * u))               # the head strap
+    pygame.draw.rect(surf, (72, 66, 60), band, border_radius=2)
+    lens = (cx + 13 * u, br + 19 * u)            # and the magnifier on it
+    pygame.draw.line(surf, (84, 78, 70), (cx + 13 * u, br + 13 * u), lens,
+                     max(1, int(2 * u)))
+    pygame.draw.circle(surf, (176, 226, 198), lens, 7.5 * u)
+    pygame.draw.circle(surf, (70, 96, 78), lens, 7.5 * u, max(1, int(1.8 * u)))
+    pygame.draw.circle(surf, (228, 248, 236), (lens[0] - 2.4 * u,
+                                               lens[1] - 2.4 * u), 2.0 * u)
+    blit_glow(surf, lens, 22 * u, (120, 220, 160), 46)
+
+
 class Bazaar:
     """The only screen in the game where nothing is trying to kill you.
 
@@ -10274,28 +11032,50 @@ class Bazaar:
           ("novak", "DR ILSE NOVAK", "she builds the whole thing",
            NOVAK_TONE, "draw_novak_front"))),
         ("gov", "THE GOVERNMENT OFFICE",
-         "neither of them works for KEAL. Both of them will help KEAL",
+         "neither of them works for a company. The coast is the coast",
          "draw_gov_office", "draw_desk", (238, 242, 228), (168, 178, 150),
          (("genk", "GENERAL K", "he moves the date", GENK_TONE,
            "draw_genk_front"),
           ("zach", "AGENT ZACH", "he does not say how", ZACH_TONE,
            "draw_zach_front"))),
+        ("vask", "THE MAD SCIENTIST",
+         "he does not sell to shipyards. He barely sells to you",
+         "draw_vask_lab", "draw_slab", (222, 236, 214), (128, 158, 126),
+         (("vask", "DR OSKAR VASK",
+           "he grows it, and he will not say from what",
+           VASK_TONE, "draw_vask_front"),)),
     )
+    # who is open to whom: the Capital is a company and the lab is a man
+    # with opinions, and neither will take the other house's money
+    SECTION_HOUSE = {"capital": "keal", "vask": "ryez"}
     HEAD = 84                       # the dark strip the header sits on
 
-    def __init__(self, back="title"):
+    def __init__(self, back="title", run=None):
         self.t = 0.0
         self.back = back
+        # Vask's three services act on a run that is happening. From the
+        # title there is no run, so they are shown and refused rather than
+        # hidden - "come back when you have something to mend" is a better
+        # answer than a counter that changes shape depending on where you
+        # walked in from.
+        self.run = run
         self.slots = []
         self.tabs = []
-        self.sec = 0
+        self.sec = self.open_sections()[0]
         self.open = None            # the ware being turned over
         self.arm_btn = None
+        self.say_no = ""            # why the last press did nothing
         self.flash = {}
         self.btn = Button(pygame.Rect(W // 2 - 150, H - 48, 300, 36),
                           "BACK TO THE YARD" if back == "hangar" else "BACK",
                           ("go", None), primary=True)
         self.buy_btn = None
+
+    def open_sections(self):
+        """The tabs this house is allowed to walk into."""
+        return [i for i, s in enumerate(self.SECTIONS)
+                if self.SECTION_HOUSE.get(s[0], CURRENT["house"])
+                == CURRENT["house"]]
 
     def section(self):
         return self.SECTIONS[self.sec]
@@ -10305,8 +11085,13 @@ class Bazaar:
         the frame measures itself rather than assuming a pair."""
         gap = 16
         w = (W - 52 - gap * (n - 1)) // n
-        return pygame.Rect(26 + i * (w + gap), self.HEAD + 4, w,
-                           H - self.HEAD - 62)
+        if n == 1:
+            # one seller does not get the whole window - a counter that
+            # wide reads as a wall with a very small man behind it, and
+            # the room behind him is worth seeing
+            w = min(w, 700)
+        x = 26 + i * (w + gap) if n > 1 else (W - w) // 2
+        return pygame.Rect(x, self.HEAD + 4, w, H - self.HEAD - 62)
 
     def slot_rects(self, r, n):
         """The boards, fitted to what is left under the counter.
@@ -10350,7 +11135,7 @@ class Bazaar:
         return pygame.Rect(W // 2 - 330, H // 2 - 200, 660, 400)
 
     def tab_rect(self, i):
-        n = len(self.SECTIONS)
+        n = max(1, len(self.open_sections()))
         w = min(168, (W - 300) // n)
         return pygame.Rect(W - 24 - n * (w + 6) + i * (w + 6), 44, w, 32)
 
@@ -10368,8 +11153,9 @@ class Bazaar:
         text(surf, sub, 13, (24, 46), FAINT)
         text(surf, "%d MARKS" % marks(), 27, (W - 24, 26), INK, right=True)
         self.tabs = []
-        for i, sn in enumerate(self.SECTIONS):
-            tr = self.tab_rect(i)
+        for j, i in enumerate(self.open_sections()):
+            sn = self.SECTIONS[i]
+            tr = self.tab_rect(j)
             on = i == self.sec
             hot = tr.collidepoint(mouse) and self.open is None
             panel(surf, tr, (34, 36, 48) if (on or hot) else (18, 19, 26),
@@ -10400,7 +11186,7 @@ class Bazaar:
         return PAINT
 
     def good(self, surf, box, w, col, mouse):
-        own = w.kind != "specimen" and bought(w.key)
+        own = w.kind not in ("specimen", "service") and bought(w.key)
         armed = own and w.kind == "contract" and not shelved(w.key)
         have = stock_of(w.key)
         hot = box.collidepoint(mouse) and self.open is None
@@ -10453,6 +11239,7 @@ class Bazaar:
                 "chassis": "A WHOLE MACHINE - pick it when a run begins",
                 "contract": "A CONTRACT - it makes the animal worse, and "
                             "it pays",
+                "service": "OVER THE COUNTER - once, now, into this run",
                 "specimen": "A SPECIMEN - one jar, opened in the street"}
         text(surf, kind[w.kind], 13, (x, r.y + 78), col)
         if w.house is not None:
@@ -10462,14 +11249,14 @@ class Bazaar:
                     HOUSES[other].name.split()[0]), 13,
                  (x, r.y + 94), WARN)
         y = r.y + 106
-        for line in wrap(w.effect, 17, r.right - x - 30):
+        for line in wrap(ware_effect(w), 17, r.right - x - 30):
             text(surf, line, 17, (x, y), (214, 220, 234))
             y += 22
         y += 10
         for line in wrap(w.blurb, 14, r.right - x - 30):
             text(surf, line, 14, (x, y), DIM, bold=False)
             y += 18
-        own = w.kind != "specimen" and bought(w.key)
+        own = w.kind not in ("specimen", "service") and bought(w.key)
         if w.kind == "specimen":
             have = stock_of(w.key)
             text(surf, "%d in the cupboard" % have, 14, (x, r.bottom - 98),
@@ -10497,6 +11284,9 @@ class Bazaar:
                  if on else "in the drawer, doing nothing", 13,
                  (x, r.bottom - 100), BAD if on else FAINT)
         text(surf, "ESC to put it back", 13, (r.x + 26, r.bottom - 30), FAINT)
+        if self.say_no:
+            text(surf, self.say_no, 14, (r.centerx, r.bottom - 30), BAD,
+                 center=True)
 
     def update(self, dt):
         self.t += dt
@@ -10512,6 +11302,20 @@ class Bazaar:
                 SFX.play("click", 0.6)
                 return None
             if self.buy_btn and self.buy_btn.hit(pos):
+                w = WARES[self.open]
+                if w.kind == "service":
+                    # charged only if it actually did something
+                    if self.run is None:
+                        self.say_no = "NOT WHILE THERE IS NOTHING TO WORK ON"
+                        SFX.play("deny", 0.5)
+                    elif apply_service(self.open, self.run):
+                        add_marks(-w.cost)
+                        self.flash[self.open] = 1.0
+                        SFX.play("done", 0.7)
+                    else:
+                        self.say_no = "THERE IS NOTHING WRONG WITH IT"
+                        SFX.play("deny", 0.5)
+                    return None
                 if buy_ware(self.open):
                     self.flash[self.open] = 1.0
                     arm_ware(self.open, True)
@@ -10521,6 +11325,7 @@ class Bazaar:
                 return None
             if not self.panel_rect().collidepoint(pos):
                 self.open = None
+                self.say_no = ""
                 SFX.play("click", 0.4)
             return None
         if self.btn.hit(pos):
@@ -10567,16 +11372,25 @@ class Title:
         self.save = load_save() if save is None else save
         self.armed = 0.0             # the erase, waiting to be meant
         self.demo_house = None
+        self.demo_frame = None
         self.demo = None
         self.build_demo()
 
-    def build_demo(self):
-        """Whatever the chosen slot is building, standing in its own bay."""
+    def build_demo(self, chassis="standard"):
+        """Whatever the chosen slot is building, standing in its own bay.
+
+        The frame is the biggest single fact about a campaign, so the
+        gantry shows the one that save is actually building - three slots
+        on three different machines used to be three identical pictures
+        with a different number under them."""
         self.demo_house = CURRENT["house"]
-        self.demo = Mech()
+        self.demo_frame = chassis
+        self.demo = Mech(chassis)
+        guns = CHASSIS[chassis].guns
         for k, v in (("legs", 2), ("torso", 2), ("l_arm", 2), ("r_arm", 1),
-                     ("head", 2), ("reactor", 2), ("l_wpn", "pile"),
-                     ("r_wpn", "auto"), ("armour", 1)):
+                     ("head", 2), ("reactor", 2), ("armour", 1),
+                     ("l_wpn", guns[0] if guns else "pile"),
+                     ("r_wpn", guns[-1] if guns else "auto")):
             self.demo.install(k, v)
 
     def refresh(self):
@@ -10600,8 +11414,10 @@ class Title:
         run = self.save.get("run") or {}
         was = CURRENT["house"]
         set_house(run.get("house") if run.get("house") in HOUSES else "keal")
-        if self.demo_house != CURRENT["house"]:
-            self.build_demo()
+        frame = run.get("chassis")
+        frame = frame if frame in CHASSIS else "standard"
+        if self.demo_house != CURRENT["house"] or self.demo_frame != frame:
+            self.build_demo(frame)
         draw_gantry(surf, g, _TitleRun(self.demo), self.t)
         set_house(was)
         text(surf, "THE", 28, (74, 96), PAINT)
@@ -11023,7 +11839,7 @@ class App:
                 self.to_title()
 
     def to_shop(self, back):
-        self.bazaar = Bazaar(back)
+        self.bazaar = Bazaar(back, self.run)
         self.state = "shop"
         music("vigil")
 
@@ -11048,6 +11864,9 @@ class App:
             "boost": (k[pygame.K_SPACE] or k[pygame.K_LSHIFT]
                       or k[pygame.K_RSHIFT]),
             "emp": k[pygame.K_e],
+            "lungs": k[pygame.K_l],
+            "scream": k[pygame.K_q],
+            "nuke": k[pygame.K_u],
             "fire_l": k[pygame.K_j] or mb[0],
             "fire_r": k[pygame.K_k] or mb[2],
             "flush": k[pygame.K_v],
