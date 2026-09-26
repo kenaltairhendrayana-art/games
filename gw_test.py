@@ -1675,6 +1675,24 @@ def frames():
           % (G.stat_line(cl).split("  ")[0], cl.reach, cl.sweep,
              f.over, f.t))
 
+    # -- one face per frame, and it is that frame's face -------------------
+    # Every KEAL head used to get the same single lamp, and the overlay
+    # then painted a visor or a big eye somewhere near it - so most of
+    # the frames wore a cyclops dot they had no business with.
+    faces = {c.key: c.style.get("eye", "dot") for c in G.CHASSIS_LIST
+             if G.Mech(c.key).usable("head")}
+    assert faces["standard"] == "dot", faces
+    assert faces["cyclops"] == "cyclops", faces
+    assert len(set(faces.values())) == len(faces), (
+        "two frames share a face: %s" % faces)
+    assert "tank" not in faces, "the tank has a head to put a face on"
+    for key, eye in faces.items():
+        if key == "standard":
+            continue
+        assert eye != "dot", "%s still wears the stock lamp" % key
+    print("  %d faces, all different: %s" % (
+        len(faces), ", ".join("%s %s" % (k, v) for k, v in faces.items())))
+
     # -- and they are different SHAPES, not the same one repainted --------
     # A livery passes the test above on colour alone. This one measures
     # the silhouette: how tall the thing is, how wide, and where the

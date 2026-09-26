@@ -1690,7 +1690,8 @@ CHASSIS_LIST = [
             flags=("horned",),
             tones={"main": (96, 128, 160), "dark": (54, 74, 98),
                    "light": (152, 180, 206), "trim": (196, 84, 72)},
-            style={"head": "cyclops", "shoulder": "spike"},
+            style={"head": "cyclops", "shoulder": "spike",
+                   "eye": "cyclops"},
             prop={"leg": 1.18, "legw": 0.84, "body": 0.92, "wide": 0.88,
                   "head": 0.90, "arm": 1.04}),
 
@@ -1704,7 +1705,8 @@ CHASSIS_LIST = [
             flags=("charge", "slab"),
             tones={"main": (158, 44, 38), "dark": (62, 20, 22),
                    "light": (214, 80, 62), "trim": (255, 150, 74)},
-            style={"head": "warhead", "shoulder": "warplate", "core": True},
+            style={"head": "warhead", "shoulder": "warplate",
+                   "core": True, "eye": "visor"},
             prop={"leg": 0.94, "legw": 1.85, "body": 1.18, "wide": 1.42,
                   "head": 0.76, "arm": 1.30, "all": 1.10}),
 
@@ -1717,7 +1719,8 @@ CHASSIS_LIST = [
             guns=("judgement",), flags=("mends",),
             tones={"main": (198, 186, 150), "dark": (108, 98, 74),
                    "light": (238, 228, 196), "trim": (110, 190, 220)},
-            style={"head": "crown", "shoulder": "pauldron"},
+            style={"head": "crown", "shoulder": "pauldron",
+                   "eye": "lens"},
             prop={"leg": 1.10, "legw": 1.06, "body": 1.08, "wide": 1.12,
                   "head": 0.98, "arm": 1.06, "all": 1.08}),
 
@@ -1749,7 +1752,7 @@ CHASSIS_LIST = [
             flags=("rooted",),
             tones={"main": (110, 118, 126), "dark": (58, 64, 70),
                    "light": (158, 166, 174), "trim": (214, 168, 64)},
-            style={"head": "box", "shoulder": "box"},
+            style={"head": "box", "shoulder": "box", "eye": "band"},
             prop={"leg": 1.0, "legw": 1.0, "body": 1.14, "wide": 1.30,
                   "head": 0.86, "arm": 1.18}),
 
@@ -1762,7 +1765,7 @@ CHASSIS_LIST = [
             flags=("toy",),
             tones={"main": (86, 168, 200), "dark": (44, 104, 136),
                    "light": (150, 214, 236), "trim": (226, 96, 56)},
-            style={"head": "tin", "shoulder": "tin"},
+            style={"head": "tin", "shoulder": "tin", "eye": "dials"},
             prop={"leg": 0.82, "legw": 0.58, "body": 0.62, "wide": 0.70,
                   "head": 1.55, "arm": 0.64, "all": 0.72}),
 ]
@@ -4360,8 +4363,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                                (250, 232, 140))
                 rig.light((ex - 4, ey), 9, RYEZ_ACID, 60)
             else:
-                rig.circle((ex, ey), 3.0, (255, 206, 150))
-                rig.light((ex, ey), 7, (255, 176, 96), 70)
+                draw_face_side(rig, mech, hx, hy, hw, hh, ex, ey)
 
     rig.zone = "body"
     # -- reactor -----------------------------------------------------------
@@ -4442,6 +4444,51 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                   (255, 236, 220), int(150 * f))
 
 
+def draw_face_side(rig, mech, hx, hy, hw, hh, ex, ey):
+    """Whatever this frame has instead of eyes, drawn ON the head.
+
+    Every KEAL machine used to get the same single lamp here and the
+    chassis overlay then painted a visor or a big red eye somewhere near
+    it - so a WAR MACHINE had a visor AND a stray dot, and only the
+    CYCLOPS was actually a cyclops. The face belongs with the head,
+    where it can be placed against the head's own width and height
+    rather than against the trunk."""
+    tones = mech.frame.tones or {}
+    trim = tones.get("trim", (255, 176, 96))
+    light = tones.get("light", (206, 214, 228))
+    kind = mech.frame.style.get("eye", "dot")
+    if kind == "cyclops":                      # one, and it is watching you
+        rig.circle((ex - 2, ey), 5.6, (44, 10, 12))
+        rig.circle((ex - 2, ey), 3.8, (252, 96, 84))
+        rig.circle((ex - 1, ey - 1), 1.4, (255, 226, 216))
+        rig.light((ex - 2, ey), 16, (255, 80, 70), 105)
+    elif kind == "visor":                      # a slot, corner to corner
+        rig.poly([(hx - hw + 4, ey + 4), (hx + hw - 3, ey - 1),
+                  (hx + hw - 3, ey - 7), (hx - hw + 4, ey - 3)], trim)
+        rig.light((hx + hw * 0.3, ey - 1), 18, trim, 90)
+    elif kind == "lens":                       # one good one, two spares
+        rig.circle((ex - 1, ey), 3.4, (30, 34, 40))
+        rig.circle((ex - 1, ey), 2.2, trim)
+        for k in (1, 2):
+            rig.circle((ex - 1 - k * 7, ey + 3), 1.3, shade(trim, 0.8))
+        rig.light((ex - 1, ey), 13, trim, 85)
+    elif kind == "band":                       # a sensor strip, not a face
+        rig.poly([(hx - hw + 3, ey + 2), (hx + hw - 3, ey + 1),
+                  (hx + hw - 3, ey - 4), (hx - hw + 3, ey - 3)],
+                 shade(trim, 0.9))
+        for k in range(3):
+            rig.circle((hx - hw + 7 + k * 7, ey - 1), 1.1, light)
+    elif kind == "dials":                      # two, and they are just dials
+        for k in (0, 1):
+            dx = ex - 1 - k * 9
+            rig.circle((dx, ey), 3.4, (244, 244, 238))
+            rig.circle((dx, ey), 3.4, (60, 60, 66), 1)
+            rig.circle((dx, ey), 1.2, (40, 40, 46))
+    elif kind:                                 # "dot" - the stock lamp
+        rig.circle((ex, ey), 3.0, (255, 206, 150))
+        rig.light((ex, ey), 7, (255, 176, 96), 70)
+
+
 def chassis_overlay(rig, mech, t, lean, hip_y):
     """The bits that make a frame recognisable from across the street.
 
@@ -4475,11 +4522,6 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
                       (lean + sweep * 0.30, hy - 16)], shade(dark, 0.7), 1)
         rig.poly([(lean - 18, hy + 2), (lean + 20, hy - 2),
                   (lean + 22, hy + 14), (lean - 18, hy + 16)], dark)
-        eye = (lean + 8, hy + 8)
-        rig.circle(eye, 7.5, (40, 10, 12))
-        rig.circle(eye, 5.0, (250, 96, 84))
-        rig.circle(eye, 2.0, (255, 220, 210))
-        rig.light(eye, 26, (255, 90, 78), 90)
     elif head == "warhead":                 # a visor and two blunt horns
         rig.poly([(lean - 21, hy - 12), (lean + 25, hy - 16),
                   (lean + 27, hy + 16), (lean - 21, hy + 18)], dark)
@@ -4487,15 +4529,11 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
             rig.poly([(lean + sgn * 6, hy - 14), (lean + sgn * 14, hy - 12),
                       (lean + sw, hy - 40), (lean + sw * 0.5, hy - 18)],
                      shade(main, 0.9))
-        rig.poly([(lean + 3, hy - 6), (lean + 26, hy - 8),
-                  (lean + 26, hy + 3), (lean + 3, hy + 4)], trim)
-        rig.light((lean + 15, hy - 2), 30, trim, 95)
+        # no visor here - see draw_face_side, which puts it on the head
     elif head == "slab":                    # no face, just a visor slot
         rig.poly([(lean - 20, hy - 12), (lean + 24, hy - 16),
                   (lean + 26, hy + 16), (lean - 20, hy + 18)], dark)
-        rig.poly([(lean + 2, hy - 6), (lean + 25, hy - 8),
-                  (lean + 25, hy + 2), (lean + 2, hy + 3)], trim)
-        rig.light((lean + 14, hy - 3), 26, trim, 80)
+        # the visor itself lives on the head, in draw_face_side
     elif head == "crown":                   # a low circlet and a lens
         rig.poly([(lean - 20, hy + 2), (lean + 22, hy - 2),
                   (lean + 24, hy + 16), (lean - 20, hy + 18)], dark)
@@ -4503,22 +4541,16 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
             f = (i - 2) / 2.0
             rig.poly([(lean + f * 11 - 3, hy + 2), (lean + f * 11 + 3, hy + 2),
                       (lean + f * 11, hy - 16 - abs(f) * -6)], light)
-        rig.circle((lean + 12, hy + 8), 5.0, trim)
-        rig.light((lean + 12, hy + 8), 24, trim, 80)
+        # the lens is on the head, in draw_face_side
     elif head == "box":                     # a sensor box bolted on top
         rig.poly([(lean - 16, hy - 2), (lean + 20, hy - 2),
                   (lean + 20, hy + 18), (lean - 16, hy + 18)], dark)
-        rig.poly([(lean + 4, hy + 2), (lean + 18, hy + 2),
-                  (lean + 18, hy + 9), (lean + 4, hy + 9)], trim)
         rig.bar((lean + 2, hy - 2), (lean + 6, hy - 34), 2, light)
     elif head == "tin":                     # a can, two dials and an aerial
         rig.poly([(lean - 17, hy - 6), (lean + 19, hy - 6),
                   (lean + 19, hy + 18), (lean - 17, hy + 18)], main)
         rig.poly([(lean - 17, hy - 6), (lean + 19, hy - 6),
                   (lean + 19, hy + 18), (lean - 17, hy + 18)], dark, 1)
-        for dx in (-4, 9):
-            rig.circle((lean + dx, hy + 4), 4.0, (246, 246, 240))
-            rig.circle((lean + dx, hy + 4), 1.6, (30, 30, 34))
         rig.poly([(lean - 10, hy + 12), (lean + 14, hy + 12),
                   (lean + 14, hy + 15), (lean - 10, hy + 15)], trim)
         wob = math.sin(t * 3.0) * 5
