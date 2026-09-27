@@ -142,6 +142,23 @@ def smoke():
     t2.click(t2.modes[1][0].center)
     t2.draw(surf, mouse)
     snap("title_year")
+    # the record, half done and then all of it
+    some = ["end_stood", "end_datasheet", "season_keal", "season_ryez",
+            "year", "finished", "intact", "swift", "heard"]
+    rec = G.Record({"run": {"day": 214, "mode": "story"},
+                    "best": {"wins": 6, "losses": 3, "best_kills": 17,
+                             "best_city": 100, "won_keal": True,
+                             "won_ryez": True, "story_keal": True,
+                             "awards": some,
+                             "endings": ["stood", "datasheet"]}})
+    rec.t = 1.5
+    rec.draw(surf, mouse)
+    snap("record")
+    rec.save = {"best": {"wins": 11, "losses": 3, "best_kills": 17,
+                         "best_city": 100,
+                         "awards": [a[0] for a in G.AWARDS]}}
+    rec.draw(surf, mouse)
+    snap("record_full")
 
     run = G.Run()
     h = G.Hangar(run)
@@ -844,16 +861,29 @@ def slots():
     t.draw(surf, (0, 0))
     assert G.CURRENT["house"] == "keal", "the title left the house switched"
 
-    # erase takes two presses, and only touches the slot you are on
-    era = next(b for b in t.buttons if b.key[0] == "erase")
-    t.click(era.rect.center)
+    # erase is not on the front door any more - it is on the record,
+    # which is the screen that shows what it would take - and it still
+    # takes two presses and still lands on one drawer only
+    assert "erase" not in [b.key[0] for b in t.buttons]
+    assert t.click(next(b for b in t.buttons
+                        if b.key[0] == "record").rect.center) == "record"
+    rec = G.Record(t.save)
+    rec.draw(surf, (0, 0))
+    era = next(b for b in rec.buttons if b.key[0] == "erase")
+    rec.click(era.rect.center)
     assert not G.slot_card(2)["empty"], "one press wiped a campaign"
-    t.click(era.rect.center)
+    rec.draw(surf, (0, 0))            # armed, and it says so
+    era = next(b for b in rec.buttons if b.key[0] == "erase")
+    assert "SURE" in era.label, era.label
+    rec.click(era.rect.center)
     assert G.slot_card(2)["empty"], "two presses did not"
     assert not G.slot_card(1)["empty"], "erasing 2 took 1 with it"
     assert G.slot_card(3)["run"]["day"] == 4, "erasing 2 took 3 with it"
     assert G.slot_card(2)["marks"] == 0, "an erased slot kept its marks"
-    print("  erase is two presses, and lands on one drawer only")
+    rec.draw(surf, (0, 0))            # and an empty drawer is not erasable
+    assert "erase" not in [b.key[0] for b in rec.buttons]
+    print("  erase is two presses on the record screen, and lands on one "
+          "drawer only")
 
     # closing the game on one drawer reopens on that drawer
     G.set_slot(3)
@@ -1258,6 +1288,34 @@ def yard():
     baz.click((8, 8))                 # anywhere puts it away
     assert baz.said is None
     print("  and the counter hands one over when you ask for it")
+
+    # -- ...and the button is not under the stock -------------------------
+    # AGENT ZACH carries twelve lines. The ware grid was anchored at
+    # `r.y + 306` and so was the TALK button, so on his counter - and on
+    # VASK's, who also carries twelve - the one thing at a counter that is
+    # not shopping was painted over completely. That pixel has now been
+    # guessed three times: 286 sat on the tag line, 306 sat on the button.
+    # It is measured off the button here and checked here.
+    bz = G.Bazaar("title")
+    for sec in G.Bazaar.SECTIONS:
+        sellers = sec[7]
+        for j, (skey, name, _tag, _col, _art) in enumerate(sellers):
+            rr = bz.stall_rect(j, len(sellers))
+            tb = bz.talk_rect(rr)
+            assert rr.contains(tb), "%s TALK is off its own counter" % skey
+            wares = [x for x in G.WARE_LIST if x.seller == skey]
+            boxes = bz.slot_rects(rr, len(wares))
+            over = [b for b in boxes if b.colliderect(tb)]
+            assert not over, (
+                "%s has %d of %d cards over the TALK button"
+                % (skey, len(over), len(wares)))
+            for b in boxes:
+                assert rr.contains(b), "%s has a card off the counter" % skey
+    most = max(len([x for x in G.WARE_LIST if x.seller == s[0]])
+               for sec in G.Bazaar.SECTIONS for s in sec[7])
+    print("  every counter keeps its TALK button clear of its stock, and "
+          "the fullest carries %d" % most)
+
 
     # -- STORY MODE: locked until both sides have been carried home -------
     wipe_meta()
@@ -1937,6 +1995,162 @@ def yard():
     G.write_save(_d)
     print("  the slot counts the rooms a year ended in, and the front "
           "door reads the save it is showing")
+
+    # -- THE RECORD: eighteen things, and every one of them gettable ------
+    # An award nothing can grant is worse than no award at all, so this
+    # does not check the table - it EARNS every line in it and then asks
+    # what the slot thinks.
+    def blank():
+        wipe_meta()
+        d = G.load_save()
+        d["best"] = {}
+        G.write_save(d)
+
+    class _Fight(object):
+        def __init__(self, over="won", t=99.0):
+            self.over, self.t = over, t
+
+    assert len(G.AWARDS) == 18, len(G.AWARDS)
+    keys = [a[0] for a in G.AWARDS]
+    assert len(set(keys)) == len(keys), "two awards share a key"
+    for key, name, note, hidden in G.AWARDS:
+        assert name and name == name.upper(), name
+        assert note and note == note.lower() or note[0].islower(), note
+        assert len(note) > 18, (key, note)
+    for e in G.ENDINGS:
+        assert "end_" + e in G.AWARD_BY, e
+    assert sum(1 for a in G.AWARDS if a[3]) == 1, "more than one is hidden"
+    assert G.AWARD_BY["end_broke"][3], "the true ending is not the hidden one"
+
+    blank()
+    assert G.awards_won() == []
+    assert not G.award("not-an-award")
+    assert G.award("swift") and not G.award("swift"), "it granted twice"
+    assert G.awards_won() == ["swift"]
+
+    # the four rooms
+    blank()
+    for e in G.ENDINGS:
+        G.record_story_ending(e)
+    assert sorted(G.awards_won()) == sorted("end_" + e for e in G.ENDINGS)
+
+    # the ladder, off the record rather than off an event
+    blank()
+    for hk in ("keal", "ryez"):
+        G.set_house(hk)
+        rr = G.Run(hk)
+        rr.integrity = 90.0
+        G.record_end(rr, True)
+    got = G.awards_won()
+    assert "season_keal" in got and "season_ryez" in got, got
+    assert "year" not in got, "a season counted as a year"
+    for hk in ("keal", "ryez"):
+        G.set_house(hk)
+        rr = G.Run(hk, "standard", "story")
+        rr.integrity = 90.0
+        G.record_end(rr, True)
+    got = G.awards_won()
+    assert "year" in got and "both_years" in got, got
+    G.set_house("keal")
+
+    # the work, off a run that is standing there finished
+    blank()
+    G.add_marks(90000)
+    # some of the book gates on other lines and some of it gates on a
+    # weapon having actually FINISHED in a socket, so buying it in dict
+    # order buys about half - go round until nothing else will go in
+    for k in G.WEAPONS:
+        G.record_fitted(k)
+    for _ in range(6):
+        left = [k for k in G.WARES if not G.bought(k)]
+        if not left:
+            break
+        for k in left:
+            G.buy_ware(k)
+    keeps = [k for k, w in G.WARES.items() if w.kind != "specimen"]
+    assert not [k for k in keeps if not G.bought(k)], (
+        "the cupboard cannot be emptied: %s"
+        % [k for k in keeps if not G.bought(k)])
+    r = G.Run("keal", "standard", "story")
+    r.opened = [k for k in G.GEAR_PLANS if G.gear_house_ok(k)]
+    for s in r.mech.sockets():
+        if s in G.HARDPOINTS:
+            # the DEAREST thing the socket will take, not the first
+            # thing offered - `completion` measures value, so a cheap
+            # gun in a full socket is still a socket short of finished
+            opts = G.options_for(s, None, r.mech.frame, None, r.opened)
+            if opts:
+                r.mech.install(s, max(opts, key=lambda w: w.scrap).key)
+        else:
+            r.ceiling[s] = G.TOP_CEILING
+            r.mech.install(s, G.TOP_CEILING)
+    r.mech.mods = [m.key for m in G.module_list(r.mech.frame, r)][:r.mech.bays]
+    r.rushes = 0
+    r.integrity = 100.0
+    got = G.check_awards(r, _Fight("won", 12.0), True)
+    for k in ("finished", "topped", "bays", "plans", "intact", "patient",
+              "swift", "cupboard"):
+        assert k in got, "%s was not earned by a finished run (%s)" % (k, got)
+    assert "bloodied" not in got, "a whole machine counted as a wrecked one"
+    assert r.mech.bays >= 4, r.mech.bays
+
+    # ...and the two that want the run to have gone badly
+    for s in r.mech.sockets():
+        if r.mech.fit[s] is not None:
+            r.mech.hp[s] = r.mech.max_hp(s) * 0.1
+    assert G.mech_health(r.mech) < 0.25
+    assert "bloodied" in G.check_awards(r, _Fight("won", 90.0), False)
+
+    # the people
+    blank()
+    for k in G.TALK:
+        while G.can_talk(k):
+            G.talk_to(k)
+    assert "heard" in G.awards_won(), "the last line granted nothing"
+
+    # everything, and nothing left over
+    blank()
+    left = set(keys) - set(G.awards_won())
+    assert len(left) == len(keys)
+    print("  %d awards, every one of them earned by something the game "
+          "actually does" % len(G.AWARDS))
+
+    # -- and they belong to the SLOT, like everything else ----------------
+    was = G.SLOT[0]
+    blank()
+    G.award("swift")
+    G.set_slot(2 if was != 2 else 3)
+    d = G.load_save()
+    d["best"] = {}
+    G.write_save(d)
+    assert G.awards_won() == [], "the record followed the player, not the save"
+    G.award("patient")
+    assert G.awards_won() == ["patient"]
+    G.set_slot(was)
+    assert G.awards_won() == ["swift"], G.awards_won()
+
+    # -- the screen it is on, and the erase that moved onto it ------------
+    best = {"wins": 4, "losses": 1, "best_kills": 17, "best_city": 100,
+            "awards": keys[:9]}
+    rec = G.Record({"run": {"day": 90}, "best": best})
+    rec.t = 1.0
+    rec.draw(surf, (0, 0))
+    assert len(rec.tile(len(G.AWARDS) - 1).clip(
+        pygame.Rect(0, 0, G.W, G.H))) == 4, "a tile is off the screen"
+    assert rec.tile(len(G.AWARDS) - 1).bottom < G.H - 70, "a tile is under the footer"
+    back = next(b for b in rec.buttons if b.key[0] == "go")
+    assert rec.click(back.rect.center) == "go"
+    # ...and the front door offers it, and no longer offers the erase
+    t = G.Title({"run": {"day": 12}, "best": best})
+    t.draw(surf, (0, 0))
+    lab = [b.key[0] for b in t.buttons]
+    assert "record" in lab, lab
+    assert "erase" not in lab, "the erase is still one click from a campaign"
+    blank()
+    G.set_house("keal")
+    print("  the record is per-slot, draws inside the screen, and the "
+          "erase is two doors in now")
+
 
     wipe_meta()
     G.set_house("keal")
@@ -3148,6 +3362,8 @@ def _pay(run):
         wrecked = 0
         taken = 0.0
         dealt = 0.0
+        t = 60.0                 # `resolve` writes the record now, and
+                                 # the record asks how long it took
         integrity = run.integrity
         kind = G.roster_for(run.house)[run.kaiju_index]
     run.resolve(_Won())
@@ -3350,6 +3566,8 @@ def frames():
         wrecked = 0
         taken = 0.0
         dealt = 0.0
+        t = 60.0                 # `resolve` writes the record now, and
+                                 # the record asks how long it took
         integrity = r.integrity
         kind = G.roster_for("keal")[r.kaiju_index]
     r.resolve(_Won())

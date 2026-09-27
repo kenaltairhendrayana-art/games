@@ -1440,6 +1440,13 @@ def can_talk(skey):
     return heard(skey) < len(TALK.get(skey, ()))
 
 
+def _talked_out():
+    """One counter has just run out of things to say - which may have
+    been the fifteenth."""
+    if heard_everything():
+        award("heard")
+
+
 def talk_to(skey):
     """Take the next line, and remember it across runs and slots - what
     a person told you is not something a new campaign unlearns."""
@@ -1452,6 +1459,7 @@ def talk_to(skey):
     got[skey] = i + 1
     m["heard"] = got
     _meta_put(m)
+    _talked_out()
     return lines[i]
 
 
@@ -3099,6 +3107,20 @@ BASE_CEILING = 3                 # what an ordinary campaign can reach
 TOP_CEILING = 5
 
 
+def run_built(run):
+    """How far along this run's machine is, measured against what THIS
+    run can reach.
+
+    Both halves of that come off the run - how high each socket may go,
+    and which of the year's guns the road has sold it - and they were
+    being passed separately at seven call sites, which is seven chances
+    to pass one and forget the other. One of them did."""
+    if run is None:
+        return 0.0
+    return run.mech.completion(getattr(run, "ceiling", None),
+                               getattr(run, "opened", ()))
+
+
 def ceiling_of(run, socket):
     """The highest rung this run may climb in this socket."""
     if run is None or getattr(run, "mode", "landfall") != "story":
@@ -4131,7 +4153,7 @@ class Mech:
         weapon is not a mech, it is a statue, and the game says so."""
         return self.alive("legs") and self.armed
 
-    def completion(self, caps=None):
+    def completion(self, caps=None, opened=()):
         """How much of the great work is done, 0..1, by value not by count.
 
         `caps` is how high each socket is allowed to go. It matters now
@@ -4155,6 +4177,12 @@ class Mech:
                              for b, u in WEAPON_FAMILIES]
                 pool += [WEAPONS[k].scrap for k, wr in
                          BLUEPRINT_WEAPONS.items() if has_ware(wr)]
+                # ...and the year's, which cost more than anything in the
+                # families. Left out, a GREAT MAUL on both arms read as
+                # 104% BUILT on the brief - `have` for the socket was
+                # larger than the dearest thing the ceiling knew about
+                pool += [WEAPONS[k].scrap for k in STORY_GUNS
+                         if k in opened]
                 if s in AUX_SOCKETS:
                     pool = [WEAPONS[k].scrap for k in AUX_GUNS]
                 worth += max(pool) if pool else 1.0
@@ -8200,8 +8228,7 @@ def mirror_kind(run):
     # the same fight at the end of an ordinary year ran to 108. This is
     # the only fight in the game that reads the player's own machine,
     # and it is the one fight that has to.
-    grade = clamp(run.mech.completion(getattr(run, "ceiling", None)),
-                  0.35, 1.0)
+    grade = clamp(run_built(run), 0.35, 1.0)
     hit = 0.72 + 0.58 * grade
     k = Kind("mirror", lab, "it has watched you do this all year",
              tint, 1.34, MIRROR_HP * (0.62 + 0.88 * grade), 82, MIRROR_DR,
@@ -11231,6 +11258,14 @@ class Run:
         if fight.wrecked:
             lines.append("%d BLOCKS LOST" % fight.wrecked)
         self.kaiju_index += 1
+        # the record, read off the state rather than counted. This is in
+        # `resolve` and not in the App so that a campaign played by the
+        # harness earns the same things a campaign played by a person does
+        self.earned = check_awards(self, fight,
+                                   fight.over == "won"
+                                   and self.integrity > 0
+                                   and self.kaiju_index
+                                   >= len(schedule_for(self.mode)))
         if self.integrity <= 0:
             return "over", lines
         # the LADDER ends the campaign, not the roster. They were the
@@ -11330,6 +11365,166 @@ def record_end(run, won):
     data["best"] = best
     data["run"] = None
     write_save(data)
+    check_awards(run, None, won)
+
+
+# ---------------------------------------------------------------------------
+# THE RECORD
+#
+# Eighteen things a slot can have done, kept next to its wins and losses
+# because they belong to the save and not to the player - three slots are
+# three separate careers and always have been.
+#
+# Every rule READS STATE rather than counting an event. A slot that has
+# both houses' years on its record gets the award for both houses' years
+# the next time anything is checked at all, whether or not anybody was
+# watching when the second one landed - so a crash, a version that did
+# not have the award yet, or a save copied from somewhere else all end up
+# in the same place. The alternative is a counter that has to be right
+# every time forever, and those are only ever right until they are not.
+#
+# `hidden` is for the one that is a spoiler on its own. It is not secret
+# about being there - the tile is on the screen, it just does not say
+# what it wants until it has been done.
+# ---------------------------------------------------------------------------
+AWARDS = (
+    # -- the four rooms a year can end in ---------------------------------
+    ("end_stood", "THE PROGRAMME CONTINUES",
+     "let a year end without going out to the last one", False),
+    ("end_datasheet", "THE NEXT DATASHEET",
+     "beat the last one, and let them keep the measurements", False),
+    ("end_elsewhere", "SOMEBODY ELSE'S TURN",
+     "beat the last one, having burned what they drew you from", False),
+    ("end_broke", "THE SCHEDULE ENDS",
+     "there is a fourth way out and somebody has told you about it", True),
+    # -- the ladder --------------------------------------------------------
+    ("season_keal", "A SEASON, IN STEEL",
+     "carry a KEAL campaign to the end of the ladder", False),
+    ("season_ryez", "A SEASON, GROWN",
+     "carry a RYEZ campaign to the end of the ladder", False),
+    ("year", "THREE HUNDRED AND SIXTY-FIVE",
+     "finish the long campaign", False),
+    ("both_years", "BOTH SIDES OF IT",
+     "finish the long campaign with each company", False),
+    # -- the work ----------------------------------------------------------
+    ("finished", "THE GREAT WORK",
+     "take a machine onto the road with nothing left to build", False),
+    ("topped", "AS HIGH AS IT GOES",
+     "hold every body socket at the fifth rung at once", False),
+    ("bays", "EVERY BAY FULL",
+     "go out with four bays and something in all of them", False),
+    ("plans", "EVERYTHING THE ROAD HAD",
+     "buy every set of plans your house is offered in one year", False),
+    # -- the road ----------------------------------------------------------
+    ("intact", "NOT ONE BLOCK",
+     "finish a campaign with the city still whole", False),
+    ("swift", "BEFORE IT REACHED THE STREET",
+     "put a landfall down inside thirty seconds", False),
+    ("bloodied", "STILL STANDING",
+     "win a landfall with under a quarter of the machine left", False),
+    ("patient", "NOT ONCE",
+     "finish a campaign without rushing a single job", False),
+    # -- the people --------------------------------------------------------
+    ("heard", "FIFTEEN PEOPLE",
+     "hear every counter in the game out to the end of what it knows",
+     False),
+    ("cupboard", "THE WHOLE CUPBOARD",
+     "own every line in the book that stays bought", False),
+)
+AWARD_BY = {a[0]: a for a in AWARDS}
+
+
+def awards_won(best=None):
+    """In table order, so the screen never reshuffles itself."""
+    best = best if best is not None else (load_save().get("best") or {})
+    got = best.get("awards") or []
+    return [k for k, _n, _d, _h in AWARDS if k in got]
+
+
+def award(key):
+    """Write one down. True the first time only."""
+    return bool(_award_all((key,)))
+
+
+def _award_all(keys):
+    """Several at once, in one read and one write. `check_awards` can
+    hand over eighteen and this is the end of a landfall, which is
+    already the busiest moment the save file has."""
+    keys = [k for k in keys if k in AWARD_BY]
+    if not keys:
+        return []
+    data = load_save()
+    best = data.get("best", {})
+    got = [k for k in (best.get("awards") or []) if k in AWARD_BY]
+    new = [k for k in keys if k not in got]
+    if not new:
+        return []
+    best["awards"] = got + new
+    data["best"] = best
+    write_save(data)
+    return new
+
+
+def mech_health(mech):
+    """What fraction of the whole machine is still there."""
+    live = [s for s in mech.sockets() if mech.fit[s] is not None]
+    top = sum(mech.max_hp(s) for s in live)
+    return (sum(mech.hp[s] for s in live) / top) if top > 0 else 1.0
+
+
+def check_awards(run=None, fight=None, won=None):
+    """Everything this slot has earned, as of now.
+
+    Called at the two moments that mean anything - the end of a landfall
+    and the end of a campaign - and once more whenever somebody runs a
+    counter out of things to say. Returns the ones that were NEW, so a
+    caller can put them on the screen."""
+    best = load_save().get("best") or {}
+    up = []
+
+    def give(k):
+        up.append(k)
+
+    if best.get("won_keal"):
+        give("season_keal")
+    if best.get("won_ryez"):
+        give("season_ryez")
+    if best.get("story_keal") or best.get("story_ryez"):
+        give("year")
+    if best.get("story_keal") and best.get("story_ryez"):
+        give("both_years")
+    for k in (best.get("endings") or []):
+        give("end_" + k)
+    if heard_everything():
+        give("heard")
+    # a jar is drunk and gone, so it is never OWNED - a cupboard that
+    # counted the specimens could not be emptied by anybody
+    if all(bought(k) for k, w in WARES.items() if w.kind != "specimen"):
+        give("cupboard")
+
+    if run is not None:
+        m = run.mech
+        body = [s for s in m.sockets() if s not in HARDPOINTS]
+        if run_built(run) > 0.999:
+            give("finished")
+        if body and all(m.fit[s] == TOP_CEILING for s in body):
+            give("topped")
+        if m.bays >= 4 and len(m.mods) >= m.bays:
+            give("bays")
+        mine = [k for k in GEAR_PLANS if gear_house_ok(k)]
+        if getattr(run, "mode", "landfall") == "story" and mine \
+                and all(k in getattr(run, "opened", ()) for k in mine):
+            give("plans")
+        if won and run.integrity >= 100.0:
+            give("intact")
+        if won and not run.rushes:
+            give("patient")
+    if fight is not None and fight.over == "won":
+        if fight.t < 30.0:
+            give("swift")
+        if run is not None and mech_health(run.mech) < 0.25:
+            give("bloodied")
+    return _award_all(up)
 
 
 # ---------------------------------------------------------------------------
@@ -11599,6 +11794,7 @@ def record_story_ending(key):
     best["endings"] = seen
     data["best"] = best
     write_save(data)
+    award("end_" + key)
 
 
 def endings_seen(best=None):
@@ -12185,7 +12381,7 @@ class Hangar:
                  GOOD if run.integrity > 50 else
                  (WARN if run.integrity > 22 else BAD)),
                 (word("built", "BUILT"),
-                 "%d%%" % round(run.mech.completion(run.ceiling) * 100),
+                 "%d%%" % round(run_built(run) * 100),
                  CORE)]
         x = r.right - 14
         for label, val, col in reversed(cols):
@@ -12877,9 +13073,7 @@ class Brief:
 
         panel(surf, p, (16, 18, 25), LINE, 6)
         text(surf, "%s - %d%% %s" % (frame_label(m),
-                                      round(m.completion(
-                                          getattr(run, "ceiling", None))
-                                          * 100),
+                                      round(run_built(run) * 100),
                                       word("built", "BUILT")),
              19, (p.x + 14, p.y + 10), PAINT)
         ls = []
@@ -15108,6 +15302,22 @@ class Bazaar:
     def section(self):
         return self.SECTIONS[self.sec]
 
+    TALK_Y = 306                     # under the tag line
+    TALK_H = 22
+
+    def talk_rect(self, r):
+        """Where the TALK button is, said ONCE.
+
+        It used to be a literal here and the same literal in slot_rects,
+        which meant the ware grid started on exactly the pixel the button
+        started on - so on a counter with enough stock to fill the space,
+        AGENT ZACH's twelve, the button was painted over completely and
+        the one thing you can do at a counter that is not shopping
+        vanished. Same family as the hit-area that blanked a panel: two
+        things wanting the same pixels and only one of them knowing."""
+        return pygame.Rect(r.centerx - 74, r.y + self.TALK_Y, 148,
+                           self.TALK_H)
+
     def stall_rect(self, i, n=2):
         """Three counters fit in the Capital where two fit elsewhere, so
         the frame measures itself rather than assuming a pair."""
@@ -15131,9 +15341,11 @@ class Bazaar:
         his face. So neither the column count nor the card height is a
         constant any more - both are solved for the band that is actually
         free, and the card draws itself proportionally."""
-        # below the counter AND below the seller's tag line, which the
-        # old 286 sat exactly on top of once Zach carried twelve lines
-        top = r.y + 306
+        # below the counter, below the seller's tag line, and below the
+        # TALK button - the old 286 sat on the tag line and 306 sat on
+        # the button, so this is measured off the button rather than
+        # guessed for a third time
+        top = self.talk_rect(r).bottom + 8
         avail = r.bottom - 12 - top
         best = None
         for cols in (2, 3, 4):
@@ -15200,7 +15412,7 @@ class Bazaar:
             text(surf, name, 22, (r.centerx, r.y + 15), ink, center=True)
             text(surf, tag, 13, (r.centerx, r.y + 292), dim, center=True)
             # the one thing you could never do at a counter in this game
-            tb = pygame.Rect(r.centerx - 74, r.y + 306, 148, 22)
+            tb = self.talk_rect(r)
             more = can_talk(skey)
             tone = col if more else LINE
             hot = tb.collidepoint(mouse) and self.open is None \
@@ -15849,15 +16061,15 @@ class Title:
                                    "THE HENDRAS - %d MARKS" % marks(),
                                    ("shop", None), tone=ALLOY_C))
         y += 51
-        self.buttons.append(Button(pygame.Rect(74, y, 170, 46), "QUIT",
+        # THE RECORD, and QUIT beside it. The erase button used to be
+        # here, one misplaced click from a campaign; it is on the record
+        # screen now, which is the screen that shows what it would take.
+        got = len(awards_won(self.save.get("best") or {}))
+        self.buttons.append(Button(
+            pygame.Rect(74, y, 170, 46), "RECORD %d/%d" % (got, len(AWARDS)),
+            ("record", None), tone=GOOD if got == len(AWARDS) else PAINT))
+        self.buttons.append(Button(pygame.Rect(252, y, 170, 46), "QUIT",
                                    ("quit", None), tone=BAD))
-        card = slot_card(SLOT[0])
-        if not card["empty"]:
-            lab = ("ERASE - SURE?" if self.armed > 0
-                   else "ERASE SAVE %d" % SLOT[0])
-            self.buttons.append(Button(pygame.Rect(252, y, 170, 46), lab,
-                                       ("erase", None),
-                                       tone=BAD, primary=self.armed > 0))
         for b in self.buttons:
             b.hover(mouse)
             if not b.key[0].startswith("slot"):
@@ -15978,18 +16190,114 @@ class Title:
                             self.mode = "landfall"
                         SFX.play("click", 0.5)
                     return None
-                if key == "erase":
-                    if self.armed > 0:
-                        erase_slot(SLOT[0])
-                        self.refresh()
-                        self.armed = 0.0
-                        SFX.play("wreck", 0.5)
-                    else:
-                        self.armed = 3.0
-                        SFX.play("deny", 0.4)
-                    return None
                 SFX.play("click", 0.6)
                 return key
+        return None
+
+
+class Record:
+    """What this slot has done, and the only place it can be erased.
+
+    The erase button used to sit on the front door beside QUIT, which is
+    one misplaced click from a campaign. It is two screens in now and
+    still wants pressing twice, and it lives here because this is the
+    screen that shows what would be lost."""
+
+    COLS = 3
+    ROWS = 6
+
+    def __init__(self, save=None):
+        self.t = 0.0
+        self.save = load_save() if save is None else save
+        self.armed = 0.0
+        self.buttons = []
+
+    def best(self):
+        return self.save.get("best") or {}
+
+    def update(self, dt):
+        self.t += dt
+        self.armed = max(0.0, self.armed - dt)
+
+    def tile(self, i):
+        gap = 14
+        w = (W - 80 - gap * (self.COLS - 1)) // self.COLS
+        h = 78
+        return pygame.Rect(40 + (i % self.COLS) * (w + gap),
+                           152 + (i // self.COLS) * (h + 8), w, h)
+
+    def draw(self, surf, mouse):
+        surf.fill(BG)
+        sky(surf, self.t * 0.12)
+        ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        ov.fill((8, 9, 14, 190))
+        surf.blit(ov, (0, 0))
+        best = self.best()
+        got = set(awards_won(best))
+        text(surf, "THE RECORD", 34, (40, 30), PAINT)
+        text(surf, "SAVE %d" % SLOT[0], 16, (40, 74), FAINT)
+        n = len(AWARDS)
+        text(surf, "%d OF %d" % (len(got), n), 30, (W - 40, 32),
+             GOOD if len(got) == n else INK, right=True)
+        bar(surf, pygame.Rect(W - 240, 72, 200, 8),
+            len(got) / float(n), GOOD if len(got) == n else PAINT)
+        line = ("finished: %d    lost: %d    best run: %d %s    "
+                "best city: %d%%"
+                % (best.get("wins", 0), best.get("losses", 0),
+                   best.get("best_kills", 0), word("kaiju", "KAIJU"),
+                   round(best.get("best_city", 0))))
+        text(surf, line, 15, (40, 108), DIM)
+        for i, (key, name, note, hidden) in enumerate(AWARDS):
+            r = self.tile(i)
+            on = key in got
+            shy = hidden and not on
+            panel(surf, r, (24, 30, 28) if on else (17, 18, 25),
+                  GOOD if on else (LINE if not shy else (48, 40, 62)), 6,
+                  2 if on else 1)
+            # the mark, so a full tile reads as full from across the room
+            mk = pygame.Rect(r.right - 26, r.y + 10, 14, 14)
+            panel(surf, mk, GOOD if on else (22, 23, 31),
+                  GOOD if on else LINE, 3)
+            lab = name if not shy else "?" * 9
+            text(surf, lab, fit(lab, 17, r.w - 44), (r.x + 12, r.y + 9),
+                 INK if on else (DIM if not shy else (120, 104, 156)))
+            for k, ln in enumerate(wrap(note, 12, r.w - 24)[:2]):
+                text(surf, ln, 12, (r.x + 12, r.y + 36 + k * 15),
+                     (140, 176, 148) if on else FAINT, bold=False)
+        self.buttons = []
+        self.buttons.append(Button(pygame.Rect(W // 2 - 170, H - 58, 340, 42),
+                                   "BACK TO THE FRONT DOOR", ("go", None),
+                                   primary=True))
+        card = slot_card(SLOT[0])
+        if not card["empty"]:
+            lab = ("ERASE SAVE %d - SURE?" % SLOT[0] if self.armed > 0
+                   else "ERASE SAVE %d" % SLOT[0])
+            self.buttons.append(Button(pygame.Rect(W - 250, H - 58, 210, 42),
+                                       lab, ("erase", None), tone=BAD,
+                                       primary=self.armed > 0))
+        for b in self.buttons:
+            b.hover(mouse)
+            b.draw(surf, 17)
+        if self.armed > 0:
+            text(surf, "the campaign, the marks and everything on this "
+                 "screen", 13, (40, H - 46), BAD)
+
+    def click(self, pos):
+        for b in self.buttons:
+            if not b.hit(pos):
+                continue
+            if b.key[0] == "erase":
+                if self.armed > 0:
+                    erase_slot(SLOT[0])
+                    self.save = load_save()
+                    self.armed = 0.0
+                    SFX.play("wreck", 0.5)
+                else:
+                    self.armed = 3.0
+                    SFX.play("deny", 0.4)
+                return None
+            SFX.play("click", 0.6)
+            return b.key[0]
         return None
 
 
@@ -16044,8 +16352,7 @@ class Ending:
                      ("PUT DOWN", str(r.killed)),
                      ("CITY LEFT", "%d%%" % int(r.integrity)),
                      (word("built", "BUILT"),
-                      "%d%%" % round(r.mech.completion(
-                          getattr(r, "ceiling", None)) * 100))]
+                      "%d%%" % round(run_built(r) * 100))]
             x = W // 2 - 300
             for a, b in stats:
                 text(surf, b, 24, (x, max(y + 16, 316)), PAINT, center=True)
@@ -16076,7 +16383,7 @@ class Ending:
                 "%d of them came ashore. You put %d down."
                 % (r.kaiju_index, r.killed),
                 "The machine was %d%% finished." %
-                round(r.mech.completion(getattr(r, "ceiling", None)) * 100),
+                round(run_built(r) * 100),
                 "It was always going to be close.",
             ]
         for i, s in enumerate(lines):
@@ -16089,7 +16396,7 @@ class Ending:
                  (word("spent", "SCRAP SPENT"), str(r.spent)),
                  (word("built", "BUILT"),
                   "%d%%" % round(
-                      r.mech.completion(getattr(r, "ceiling", None)) * 100))]
+                      run_built(r) * 100))]
         x = W // 2 - 300
         for a, b in stats:
             text(surf, b, 26, (x, 276), PAINT, center=True)
@@ -16117,6 +16424,7 @@ class App:
         self.title = Title()
         self.choose = None
         self.bazaar = None
+        self.record = None
         self.run = None
         self.hangar = None
         self.fight = None
@@ -16324,6 +16632,16 @@ class App:
                 self.pick("continue" if self.title.save.get("run") else "new")
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 self.running = False
+        elif self.state == "record":
+            act = None
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                act = self.record.click(ev.pos)
+            elif ev.type == pygame.KEYDOWN and ev.key in (pygame.K_ESCAPE,
+                                                          pygame.K_SPACE,
+                                                          pygame.K_RETURN):
+                act = "go"
+            if act == "go":
+                self.to_title()
         elif self.state == "shop":
             act = None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -16475,6 +16793,9 @@ class App:
             self.state = "choose"
         elif act == "continue":
             self.begin_run(self.title.save.get("run"))
+        elif act == "record":
+            self.record = Record(self.title.save)
+            self.state = "record"
         elif act == "quit":
             self.running = False
 
@@ -16516,6 +16837,9 @@ class App:
         elif self.state == "frame":
             self.frames.t += dt
             self.frames.draw(s, mouse)
+        elif self.state == "record":
+            self.record.update(dt)
+            self.record.draw(s, mouse)
         elif self.state == "shop":
             self.bazaar.update(dt)
             self.bazaar.draw(s, mouse)
