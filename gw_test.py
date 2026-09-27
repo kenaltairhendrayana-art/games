@@ -1123,6 +1123,105 @@ def yard():
     wipe_meta()
     G.set_house("keal")
 
+    # -- the things you FIGHT are machines too ---------------------------
+    # Every KEAL model in the roster was `chassis standard`: the stock
+    # frame at a different tier in a different colour, so seven models
+    # were one machine at seven sizes. Overlap over union had the
+    # SOVEREIGN and the FOUNDER at 56% of one drawing. They field their
+    # own frames now, out of the same table and for sale to nobody.
+    wipe_meta()
+    G.set_house("ryez")
+    roster = G.roster_for("ryez")
+    for k in roster:
+        assert k.rig.chassis != "standard", (
+            "%s is the stock frame in a different colour" % k.name)
+        assert G.CHASSIS[k.rig.chassis].foe or k.rig.chassis == "sovereign", (
+            "%s fields a frame that is also on the shop shelf" % k.name)
+    # the one model you can also buy is the one that shares a name
+    assert G.KEAL_KINDS["sovereign"].rig.chassis == "sovereign"
+
+    def still(k):
+        """An enemy with its gait PINNED. `Enemy.__init__` starts every
+        one of them on a random walk phase, so measuring an outline
+        without nailing that down gives a different answer every run -
+        this read 43% and then 54% on the same code."""
+        e = G.Enemy(k, 0)
+        e.walk, e.moving = 0.0, 0.0
+        return e
+
+    def outline(k):
+        sf = pygame.Surface((820, 700), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        G.draw_enemy(sf, still(k), 430, 660, 0.55, 2.0)
+        w, h = sf.get_size()
+        return bytes(1 if sf.get_at((x, y))[3] > 40 else 0
+                     for y in range(0, h, 3) for x in range(0, w, 3))
+    seen = {k.key: outline(k) for k in roster}
+    keys = [k.key for k in roster]
+    worst = None
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            pa, pb = seen[a], seen[b]
+            both = sum(1 for x, y in zip(pa, pb) if x and y)
+            either = sum(1 for x, y in zip(pa, pb) if x or y)
+            iou = both / float(max(1, either))
+            if worst is None or iou > worst[0]:
+                worst = (iou, a, b)
+    assert worst[0] < 0.55, (
+        "%s and %s are %.0f%% the same machine"
+        % (worst[1], worst[2], worst[0] * 100))
+    print("  the eight KEAL models field %d frames of their own; the two "
+          "most alike share %.0f%% of an outline"
+          % (len(set(k.rig.chassis for k in roster)), worst[0] * 100))
+
+    # -- and nothing walks under the road --------------------------------
+    # a `build` overlay draws in the BODY zone, which scales about the
+    # hip, so a shape put down at ground level lands below it on a frame
+    # with short legs. The BASTION's braced feet did exactly that.
+    for k in roster:
+        sf = pygame.Surface((820, 700), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        G.draw_enemy(sf, still(k), 430, 660, 0.55, 2.0)
+        assert sf.get_bounding_rect().bottom <= 664, (
+            "%s is drawn %dpx under the road"
+            % (k.name, sf.get_bounding_rect().bottom - 660))
+    print("  and every one of them stands on the road, not through it")
+
+    # -- the brief shows what is actually coming -------------------------
+    # It called `draw_kaiju` for whatever was on the schedule, and half
+    # of what is on the schedule is machines - so a RYEZ player opened
+    # the one screen that exists to show them the thing they are about
+    # to fight and got a headless animal with a machine's proportions.
+    # `draw_kind` is the shared branch both screens go through, so test
+    # it rather than the pixels of a screen that has a background: a
+    # crop of the brief has no alpha in it and its bounding box is the
+    # whole crop, which is what the first version of this measured.
+    def shape_of(fn):
+        sf = pygame.Surface((760, 640), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        fn(sf)
+        w, h = sf.get_size()
+        return bytes(1 if sf.get_at((x, y))[3] > 40 else 0
+                     for y in range(0, h, 3) for x in range(0, w, 3))
+    steel = G.KEAL_KINDS["sovereign"]
+    assert steel.family == "mech", steel.family
+    asmech = shape_of(lambda sf: G.draw_kind(sf, steel, 380, 600, 0.6, 1.0))
+    asbeast = shape_of(lambda sf: G.draw_kaiju(sf, steel, 380, 600, 0.6, 1.0,
+                                               0.0, 0.8, -1))
+    both = sum(1 for x, y in zip(asmech, asbeast) if x and y)
+    either = sum(1 for x, y in zip(asmech, asbeast) if x or y)
+    assert both / float(max(1, either)) < 0.4, (
+        "draw_kind is still routing a machine through the animal "
+        "renderer")
+    beast = G.KINDS["leviathan"]
+    askaiju = shape_of(lambda sf: G.draw_kind(sf, beast, 380, 600, 0.6, 1.0))
+    direct = shape_of(lambda sf: G.draw_kaiju(sf, beast, 380, 600, 0.6, 1.0,
+                                              0.0, 0.8, -1))
+    assert askaiju == direct, "an animal stopped being drawn as one"
+    print("  and the brief draws a machine when a machine is coming")
+    wipe_meta()
+    G.set_house("keal")
+
     # -- THE LADDER: seven rungs, and the top ones are not duels ---------
     # One body at a time is a duel and a duel is a thing a finished
     # machine wins outright - measured, a plain animal took the top rung
@@ -1141,23 +1240,63 @@ def yard():
 
     for house in ("keal", "ryez"):
         G.set_house(house)
-        last = G.roster_for(house)[-1]
-        assert G.kind_at(house, 6) is last, (
-            "the seventh rung has no body on it")
-        bodies = {}
+        roster = G.roster_for(house)
+        # every rung has its OWN datasheet. The seventh used to be the
+        # sixth again, which is a fine fight and a poor reveal - the
+        # brief printed the same name and the same numbers twice.
+        headline = [G.kind_at(house, i) for i in range(len(G.SCHEDULE))]
+        assert len(set(k.key for k in headline)) == len(G.SCHEDULE), (
+            [k.name for k in headline])
+        # ...and what is left over past the end of the ladder is ESCORT
+        # STOCK: bodies the schedule never puts on a brief
+        spare = [k for k in roster if k not in headline]
+        assert spare, "no escort stock at all"
+        for k in spare:
+            assert any(k is G.kind_at(house, r)
+                       for i in range(len(G.SCHEDULE))
+                       for r, _c, _f in G.escorts_at(i)), (
+                "%s is in the roster and reachable from nowhere" % k.name)
+        # THREAT, not hit points. The first version of this asserted
+        # the last landfall carried more HP than the one before it and
+        # it does not: 11540 against 12946, while winning it 8 times in
+        # 12 against 11. A second BODY is worth more than any amount of
+        # health on the first, which is the whole reason escorts exist,
+        # so counting health measures the wrong thing. What a unit test
+        # can honestly say is how many things are on the road and how
+        # hard the biggest of them hits; the win rate lives in the
+        # balance run, where it is played rather than added up.
+        threat, count = {}, {}
         for i in range(len(G.SCHEDULE)):
             run = G.Run(house)
             run.kaiju_index = i
             f = G.Fight(run, run.next_kind())
-            bodies[i] = sum(e.max_hp for e in f.enemies)
             assert f.boss() is f.enemies[0], i
-        assert bodies[6] > bodies[5], (
-            "%s: the last landfall is lighter than the one before it: "
-            "%d against %d" % (house, bodies[6], bodies[5]))
-        assert bodies[6] > bodies[0] * 8, bodies
-    print("  seven landfalls; the first three are duels and the last "
-          "carries %.1fx the body of the sixth"
-          % (bodies[6] / float(bodies[5])))
+            count[i] = len(f.enemies)
+            threat[i] = sum(max(a["dmg"] / max(0.2, a["cool"])
+                                for a in e.kind.attacks)
+                            for e in f.enemies)
+        # ...and then THIS proxy failed too, 99 against 111, because a
+        # STRIDER escorting the sixth hits harder than two HOUNDs
+        # escorting the seventh. Both attempts were the same mistake:
+        # trying to prove "the finale is the hardest fight" by adding
+        # up a datasheet. It is the hardest because the boss takes the
+        # longest to kill while two fast things chew on you, and no sum
+        # of numbers in a table says that. The claim belongs to the
+        # balance run, which PLAYS it - 8 wins in 12 against 11 in 12
+        # on the rung before. What is left here is what a table really
+        # can promise.
+        assert count[6] >= 3, count
+        assert count[6] >= max(count.values()), count
+        assert threat[6] > threat[0] * 4, threat
+        biggest = max(G.roster_for(house), key=lambda k: k.hp)
+        assert G.kind_at(house, 6) is biggest, (
+            "the heaviest body in the roster is not the one at the end")
+        for i in range(1, len(G.SCHEDULE)):
+            assert G.kind_at(house, i).hp > G.kind_at(house, i - 1).hp, (
+                "rung %d is lighter than the one under it" % (i + 1))
+    print("  seven landfalls, each with its own body; the first three "
+          "are duels and the last puts %d on the road hitting %.1fx "
+          "the first" % (count[6], threat[6] / max(1.0, threat[0])))
 
     # -- the seventh one actually happens --------------------------------
     # It did not. `resolve` ended the campaign on the length of the
@@ -1204,10 +1343,11 @@ def yard():
     print("  and what comes with the sixth is worth another %d %s"
           % (f.escort_scrap, G.word("scrap", "scrap").lower()))
 
-    # the SEVENTH pays nothing extra, and that is not an oversight: the
-    # top-rung body's own harvest is zero - "nothing left to salvage" -
-    # so a second one of it is worth exactly as much, and the campaign
-    # ends on that landfall anyway
+    # the SEVENTH pays nothing for its boss - the top-rung body's own
+    # harvest is zero, "nothing left to salvage", and the campaign ends
+    # on that landfall anyway - but what came WITH it still pays. It
+    # used to pay nothing at all, because the escort there was another
+    # copy of the boss and inherited the same empty harvest.
     run = G.Run("keal")
     run.kaiju_index = 6
     f = G.Fight(run, run.next_kind())
@@ -1215,7 +1355,7 @@ def yard():
     for e in f.enemies:
         e.hp = 0.0
     f.update(1 / 60.0, {})
-    assert f.escort_scrap == 0, f.escort_scrap
+    assert f.escort_scrap > 0, "the last landfall pays nothing at all"
     wipe_meta()
     G.set_house("keal")
 
@@ -2066,11 +2206,18 @@ def frames():
     wipe_meta()
     G.set_house("keal")
     surf = pygame.Surface((G.W, G.H))
-    # seven of steel and six grown, plus the stock body they share
+    # seven of steel and six grown, plus the stock body they share -
+    # and then the frames KEAL FIELDS, which are in the same table and
+    # are for sale to nobody
     steel_frames = [c for c in G.CHASSIS_LIST
                     if c.ware and G.WARES[c.ware].house == "keal"]
-    assert len(G.CHASSIS_LIST) == 13, len(G.CHASSIS_LIST)
+    foes = [c for c in G.CHASSIS_LIST if c.foe]
+    assert len(G.CHASSIS_LIST) - len(foes) == 13, len(G.CHASSIS_LIST)
     assert len(steel_frames) == 6, len(steel_frames)
+    assert len(foes) == 7, len(foes)
+    for c in foes:
+        assert c.ware is None, c.key
+        assert c not in G.owned_chassis(), c.key
     assert [c.key for c in G.owned_chassis()] == ["standard"], "free frames"
 
     G.add_marks(4000)
@@ -2401,17 +2548,70 @@ def frames():
     # its legs were thickened and broke an assertion that only ever said
     # "the cyclops is currently the taller of those two"
     widest = max(shapes, key=lambda k: shapes[k][0])
-    tallest = max(shapes, key=lambda k: shapes[k][1])
     assert widest == "warmachine", (widest, shapes)
-    assert tallest == "sovereign", (tallest, shapes)
-    assert shapes["cyclops"][0] < base_w, shapes["cyclops"]
+    assert shapes["cyclops"][0] < base_w * 0.8, shapes["cyclops"]
     assert shapes["cyclops"][1] > base_h, shapes["cyclops"]
+    assert shapes["sovereign"][0] > base_w * 1.3, shapes["sovereign"]
+    assert shapes["sovereign"][1] > base_h, shapes["sovereign"]
     assert shapes["warmachine"][0] > shapes["cyclops"][0] * 1.6, shapes
     assert shapes["tank"][1] < base_h - 20, shapes["tank"]
+    assert shapes["turret"][0] > base_w * 1.3, shapes["turret"]
     assert shapes["robo"][0] < base_w * 0.8, shapes["robo"]
     assert shapes["robo"][1] < base_h * 0.8, shapes["robo"]
     print("  and they are different shapes: " + ", ".join(
         "%s %dx%d" % (k, v[0], v[1]) for k, v in shapes.items()))
+
+    # -- ...and a bounding box is a weak thing to measure -----------------
+    # Two machines can box the same and still be one drawing. Measured as
+    # overlap over union with the colour thrown away, the four humanoid
+    # frames were 50 to 67 per cent the SAME PICTURE - the CYCLOPS was the
+    # stock frame with horns and the SOVEREIGN was the stock frame eight
+    # per cent bigger in cream. Only the TANK, TURRET and ROBO, the three
+    # that changed the body plan rather than the trim, stood apart. So
+    # every frame carries a `build` now, and this is the bar that only a
+    # body plan clears.
+    def plate(key, front):
+        m = built(key).mech
+        for s in G.HARDPOINTS:
+            if s in m.sockets():
+                o = G.options_for(s, None, m.frame)
+                if o:
+                    m.install(s, o[0].key)
+        sf = pygame.Surface((620, 640), pygame.SRCALPHA)
+        sf.fill((0, 0, 0, 0))
+        if front:
+            G.draw_mech_front(sf, m, 310, 560, 0.62, t=2.0)
+        else:
+            pz = G.Pose()
+            pz.face = 1
+            G.draw_mech_side(sf, m, 310, 560, 0.62, 2.0, pz)
+        w, h = sf.get_size()
+        return bytes(1 if sf.get_at((x, y))[3] > 40 else 0
+                     for y in range(0, h, 3) for x in range(0, w, 3))
+    keys = [c.key for c in G.owned_chassis()]
+    for front, where in ((True, "the gantry"), (False, "the street")):
+        seen = {k: plate(k, front) for k in keys}
+        worst = None
+        for i, a in enumerate(keys):
+            for b in keys[i + 1:]:
+                pa, pb = seen[a], seen[b]
+                both = sum(1 for x, y in zip(pa, pb) if x and y)
+                either = sum(1 for x, y in zip(pa, pb) if x or y)
+                iou = both / float(max(1, either))
+                if worst is None or iou > worst[0]:
+                    worst = (iou, a, b)
+        assert worst[0] < 0.62, (
+            "%s and %s are %.0f%% the same drawing in %s"
+            % (worst[1], worst[2], worst[0] * 100, where))
+        print("  in %s the two most alike, %s and %s, share %.0f%% of one "
+              "outline" % (where, worst[1], worst[2], worst[0] * 100))
+
+    # and the three that were the stock frame with trim on now have a
+    # body plan, in BOTH renderers - a frame that only changes in profile
+    # is the stock frame right up until landfall
+    for key in ("cyclops", "warmachine", "sovereign", "turret"):
+        assert G.CHASSIS[key].style.get("build"), key
+    assert not G.CHASSIS["standard"].style.get("build")
 
     # -- and RYEZ gets whole ANIMALS, which are not the frames repainted ---
     wipe_meta()

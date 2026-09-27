@@ -2256,11 +2256,11 @@ ZONE_OF = {"legs": "legs", "head": "head",
 class Chassis:
     __slots__ = ("key", "name", "ware", "blurb", "effect", "sockets",
                  "mult", "guns", "own_only", "flags", "tones", "style",
-                 "prop")
+                 "prop", "foe")
 
     def __init__(self, key, name, ware, blurb, effect, sockets=None,
                  mult=None, guns=(), own_only=False, flags=(), tones=None,
-                 style=None, prop=None):
+                 style=None, prop=None, foe=False):
         self.key = key
         self.name = name
         self.ware = ware             # None for the frame everybody starts on
@@ -2283,6 +2283,12 @@ class Chassis:
         self.tones = tones           # a repaint, passed to draw_mech_side
         self.style = style or {}     # silhouette bits laid over the base
         self.prop = prop or None     # and how the body itself is shaped
+        # A frame the OTHER side fields. Every KEAL model in the enemy
+        # roster was `chassis standard` - the stock frame at a different
+        # tier in a different colour - so the machines you fight were
+        # the one machine seven times. These give them a body each, and
+        # `owned_chassis` drops them so they never reach the picker.
+        self.foe = foe
 
     def has(self, flag):
         return flag in self.flags
@@ -2307,9 +2313,9 @@ CHASSIS_LIST = [
             tones={"main": (96, 128, 160), "dark": (54, 74, 98),
                    "light": (152, 180, 206), "trim": (196, 84, 72)},
             style={"head": "cyclops", "shoulder": "spike",
-                   "eye": "cyclops"},
-            prop={"leg": 1.18, "legw": 0.84, "body": 0.92, "wide": 0.88,
-                  "head": 0.90, "arm": 1.04}),
+                   "eye": "cyclops", "build": "blade"},
+            prop={"leg": 1.34, "legw": 0.60, "body": 0.84, "wide": 0.68,
+                  "head": 0.80, "arm": 1.14}),
 
     Chassis("warmachine", "WAR MACHINE", "ch_warmachine",
             "It was not designed. It was welded over something older until "
@@ -2319,12 +2325,16 @@ CHASSIS_LIST = [
                   "vent": 1.05, "melee": 1.30, "spread": 1.5},
             guns=("cleaver", "crusher", "rendclaw"),
             flags=("charge", "slab"),
-            tones={"main": (172, 40, 34), "dark": (44, 13, 16),
-                   "light": (232, 88, 60), "trim": (255, 146, 62)},
+            # Near-black with the heat showing through, rather than
+            # red all over: the body reads as unlit mass and every
+            # bright thing on it is something that is actually on.
+            tones={"main": (74, 21, 22), "dark": (26, 9, 12),
+                   "light": (216, 52, 40), "trim": (255, 146, 62),
+                   "plate": (98, 28, 26), "hollow": (74, 21, 22)},
             style={"head": "warhead", "shoulder": "warplate",
-                   "core": True, "eye": "cowl"},
-            prop={"leg": 0.94, "legw": 1.85, "body": 1.18, "wide": 1.42,
-                  "head": 0.76, "arm": 1.30, "all": 1.10}),
+                   "core": True, "eye": "cowl", "build": "brawler"},
+            prop={"leg": 0.86, "legw": 2.15, "body": 1.04, "wide": 1.52,
+                  "head": 0.58, "arm": 1.58, "all": 1.10}),
 
     Chassis("sovereign", "SOVEREIGN", "ch_sovereign",
             "The one they built after they stopped asking what it cost. "
@@ -2336,9 +2346,9 @@ CHASSIS_LIST = [
             tones={"main": (198, 186, 150), "dark": (108, 98, 74),
                    "light": (238, 228, 196), "trim": (110, 190, 220)},
             style={"head": "crown", "shoulder": "pauldron",
-                   "eye": "lens"},
-            prop={"leg": 1.10, "legw": 1.06, "body": 1.08, "wide": 1.12,
-                  "head": 0.98, "arm": 1.06, "all": 1.08}),
+                   "eye": "lens", "build": "hero"},
+            prop={"leg": 0.98, "legw": 1.24, "body": 1.12, "wide": 1.36,
+                  "head": 1.00, "arm": 1.02, "all": 1.12}),
 
     Chassis("tank", "TITAN TANK", "ch_tank",
             "No head, no eyes, no argument. Whatever it is pointed at "
@@ -2368,9 +2378,10 @@ CHASSIS_LIST = [
             flags=("rooted",),
             tones={"main": (110, 118, 126), "dark": (58, 64, 70),
                    "light": (158, 166, 174), "trim": (214, 168, 64)},
-            style={"head": "box", "shoulder": "box", "eye": "band"},
-            prop={"leg": 1.0, "legw": 1.0, "body": 1.14, "wide": 1.30,
-                  "head": 0.86, "arm": 1.18}),
+            style={"head": "box", "shoulder": "box", "eye": "band",
+                   "build": "emplacement"},
+            prop={"leg": 1.0, "legw": 1.0, "body": 0.92, "wide": 1.44,
+                  "head": 0.86, "arm": 1.22}),
 
     # -----------------------------------------------------------------------
     # THE STRAINS. Novak sells FRAMES and they are told apart by what they
@@ -2455,6 +2466,43 @@ CHASSIS_LIST = [
             prop={"leg": 0.96, "legw": 1.08, "body": 1.06, "wide": 1.16,
                   "head": 1.10, "arm": 0.96}),
 
+    # -----------------------------------------------------------------
+    # WHAT KEAL FIELDS. Not for sale, never in the picker - these exist
+    # so the models you FIGHT are seven machines instead of one machine
+    # at seven sizes. Side view only: an enemy is never seen head on.
+    # -----------------------------------------------------------------
+    Chassis("f_picket", "KL-1 PICKET", None, "", "", foe=True,
+            style={"head": "box", "eye": "band", "build": "mast"},
+            prop={"leg": 1.14, "legw": 0.62, "body": 0.80, "wide": 0.70,
+                  "head": 0.90, "arm": 0.86}),
+    Chassis("f_dragoon", "KL-3 DRAGOON", None, "", "", foe=True,
+            style={"head": "box", "build": "rack", "eye": "band"},
+            prop={"leg": 1.22, "legw": 0.72, "body": 0.90, "wide": 0.84,
+                  "head": 0.82, "arm": 0.96}),
+    Chassis("f_bastion", "KL-7 BASTION", None, "", "", foe=True,
+            style={"head": "slab", "shoulder": "box", "build": "wall"},
+            prop={"leg": 0.66, "legw": 1.58, "body": 0.86, "wide": 1.58,
+                  "head": 0.70, "arm": 1.16}),
+    Chassis("f_harrier", "KL-9 HARRIER", None, "", "", foe=True,
+            style={"head": "cyclops", "build": "skirmisher",
+                   "eye": "cyclops"},
+            prop={"leg": 1.30, "legw": 0.66, "body": 0.88, "wide": 0.80,
+                  "head": 0.84, "arm": 1.10}),
+    Chassis("f_matron", "KL-12 MATRON", None, "", "", foe=True,
+            style={"head": "crown", "shoulder": "pauldron",
+                   "build": "carrier", "eye": "lens"},
+            prop={"leg": 1.16, "legw": 1.10, "body": 1.28, "wide": 1.02,
+                  "head": 0.88, "arm": 1.04}),
+    Chassis("f_founder", "KL-0 FOUNDER", None, "", "", foe=True,
+            style={"head": "warhead", "shoulder": "warplate",
+                   "build": "patchwork", "eye": "cowl"},
+            prop={"leg": 0.80, "legw": 1.62, "body": 0.96, "wide": 1.52,
+                  "head": 0.64, "arm": 1.36}),
+    Chassis("f_runner", "KL-4 RUNNER", None, "", "", foe=True,
+            style={"head": "slab", "eye": "band", "build": "sprint"},
+            prop={"leg": 0.96, "legw": 0.72, "body": 0.70, "wide": 0.92,
+                  "head": 0.66, "arm": 1.06}),
+
     Chassis("robo", "LITTLE ROBO", "ch_robo",
             "Tin, a key in its back, and two feet that go one after the "
             "other. Somebody thought this was funny.",
@@ -2491,7 +2539,7 @@ def chassis_of(key):
 def owned_chassis():
     """Every frame this slot can start a run on, stock one first."""
     return [c for c in CHASSIS_LIST
-            if c.ware is None or has_ware(c.ware)]
+            if not c.foe and (c.ware is None or has_ware(c.ware))]
 
 
 
@@ -4115,6 +4163,428 @@ def _tone(name, dmg, wrecked, tones=None):
     return c
 
 
+def frame_build_side(rig, mech, t, lean, hip_y, main, dark, light, trim,
+                     limbs=None, stance=None):
+    """The BODY of a frame, in profile - not what is bolted to it.
+
+    Measured as a colour-stripped silhouette, the four humanoid frames
+    overlapped each other by 50 to 67 per cent: the CYCLOPS was the
+    stock frame with horns, the SOVEREIGN was the stock frame eight per
+    cent larger in cream, and only the TANK, TURRET and ROBO - the three
+    that changed the BODY PLAN rather than the trim - came out as their
+    own machines. This is the fix the strains already got: shapes that
+    move the outline, not decoration laid on top of it."""
+    st = mech.frame.style
+    build = st.get("build")
+    if not build:
+        return
+    tt = mech.fit["torso"] or 1
+    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
+    sh_y = body_top + 46
+    waist = -hip_y - 46
+    front = 34 + (6 if tt == 3 else 0)
+    back = -34 - (6 if tt == 3 else 0)
+
+    if build == "blade":
+        # THIN AND SHARP. A wasp waist, fins off every trailing edge and
+        # a crest that goes up rather than out. Nothing on it is a slab.
+        rig.poly([(lean + back + 2, waist - 26), (lean + front - 6, waist - 22),
+                  (lean + front - 12, waist + 14), (lean + back + 8, waist + 10)],
+                 shade(dark, 1.2))
+        for i, (bx, by, ln, up) in enumerate((
+                (back + 4, sh_y + 6, 54, 30), (back - 2, sh_y + 30, 44, 8),
+                (back + 6, waist + 4, 40, -10))):
+            fin = [(lean + bx, by - 5), (lean + bx + 8, by + 3),
+                   (lean + bx - ln, by + up), (lean + bx - ln * 0.6, by - 10)]
+            rig.poly(fin, shade(light, 0.94 - i * 0.06))
+            rig.poly(fin, shade(dark, 1.1), 1)
+        for k in (0, 1):                     # blades down the shins
+            y0 = -hip_y + 26 + k * 46
+            rig.poly([(lean - 6, y0), (lean + 4, y0 + 4),
+                      (lean - 30, y0 + 34), (lean - 22, y0 + 6)],
+                     shade(light, 0.9))
+        rig.poly([(lean - 2, body_top - 2), (lean + 10, body_top + 4),
+                  (lean + 4, body_top - 54), (lean - 8, body_top - 26)], trim)
+
+    elif build == "brawler":
+        # ALL ARM. One hunched slab across the back, and a cuff on each
+        # FOREARM - on the forearm, which is posed, rather than at two
+        # fixed points in the middle of the torso. The first pass drew
+        # the fists in body coordinates and they came out as a pair of
+        # striped crates strapped to its belly, with the real arms
+        # somewhere behind them.
+        hump = [(lean + back - 6, sh_y + 4), (lean - 2, sh_y - 26),
+                (lean + front - 4, sh_y - 8), (lean + front + 2, sh_y + 30),
+                (lean + back - 10, sh_y + 34)]
+        rig.poly(hump, shade(main, 0.9))
+        rig.poly(hump, shade(dark, 1.1), 2)
+        for side, sc in (("l", 0.74), ("r", 1.0)):
+            got = (limbs or {}).get(side)
+            if got is None:
+                continue
+            _sh, elb, hand, w = got
+            d = unit(hand - elb)
+            nrm = Vector2(-d.y, d.x)
+            a = elb - d * w * 0.4
+            b = hand + d * w * 0.5
+            cuff = [_t(a + nrm * w * 1.9), _t(b + nrm * w * 1.5),
+                    _t(b - nrm * w * 1.5), _t(a - nrm * w * 1.9)]
+            rig.poly(cuff, shade(main, sc))
+            rig.poly(cuff, shade(dark, sc * 1.1), 2)
+            for i in range(3):               # knuckle ridges, along it
+                q = a + (b - a) * (0.24 + i * 0.26)
+                rig.bar(_t(q + nrm * w * 1.6), _t(q - nrm * w * 1.6),
+                        w * 0.22, shade(trim, sc * 0.9))
+        # ...and legs under all of it. The upper body was carrying a
+        # hunch, two cuffs and a furnace on a pair of ordinary shins.
+        # the heat, running down everything it is made of. A strip
+        # along each limb and a lamp in the chest, all of it emissive -
+        # this frame is meant to read as a dark mass with fire in it.
+        hot, core = (236, 62, 40), (255, 206, 168)
+        for got in (limbs or {}).values():
+            _s2, elb, hnd, w2 = got
+            d2 = unit(hnd - elb)
+            n2 = Vector2(-d2.y, d2.x)
+            a2 = elb + n2 * w2 * 1.2
+            b2 = hnd + n2 * w2 * 0.9
+            rig.bar(_t(a2), _t(b2), w2 * 0.20, hot)
+            rig.bar(_t(a2), _t(b2), w2 * 0.07, core)
+            rig.light(_t((a2 + b2) * 0.5), w2 * 2.4, (255, 88, 44), 80)
+        cx_, cy_ = lean + 20, sh_y + 30
+        beat = 0.86 + 0.14 * math.sin(t * 3.4)
+        rig.circle((cx_, cy_), 15 * beat, hot)
+        rig.circle((cx_, cy_), 8 * beat, (255, 246, 226))
+        rig.light((cx_, cy_), 96 * beat, (255, 96, 44), 150)
+        rig.light((cx_, cy_), 42 * beat, (255, 208, 150), 130)
+        hz2 = rig.zone
+        rig.zone = "legs"
+        for hip, knee, ankle, dx, sc in (stance or []):
+            for a, b, wa, wb in ((hip, knee, 21.0, 17.0),
+                                 (knee, ankle, 18.0, 14.0)):
+                d = unit(b - a)
+                nrm = Vector2(-d.y, d.x)
+                a2 = a + d * 3.0
+                b2 = b - d * 3.0
+                plate = [_t(a2 + nrm * wa + Vector2(dx, 0)),
+                         _t(b2 + nrm * wb + Vector2(dx, 0)),
+                         _t(b2 - nrm * wb + Vector2(dx, 0)),
+                         _t(a2 - nrm * wa + Vector2(dx, 0))]
+                rig.poly(plate, shade(main, sc))
+                rig.poly(plate, shade(dark, sc * 1.1), 2)
+            d = unit(knee - hip)
+            nrm = Vector2(-d.y, d.x)
+            kn = knee + Vector2(dx, 0)
+            rig.circle(_t(kn), 19.0, shade(main, sc * 0.92))
+            rig.circle(_t(kn), 19.0, shade(dark, sc * 1.1), 2)
+            rig.bar(_t(kn + nrm * 15), _t(kn - nrm * 15), 4.0,
+                    shade(trim, sc * 0.9))
+            for a3, b3 in ((hip, knee), (knee, ankle)):   # heat, down it
+                d3 = unit(b3 - a3)
+                n3 = Vector2(-d3.y, d3.x)
+                p3 = a3 + n3 * 13 + Vector2(dx, 0)
+                q3 = b3 + n3 * 11 + Vector2(dx, 0)
+                rig.bar(_t(p3), _t(q3), 3.0, shade(hot, sc))
+                rig.bar(_t(p3), _t(q3), 1.1, shade(core, sc))
+                rig.light(_t((p3 + q3) * 0.5), 26, (255, 88, 44),
+                          int(64 * sc))
+            fd = unit(ankle - knee)
+            fn = Vector2(-fd.y, fd.x)
+            ft = ankle + Vector2(dx, 0)
+            rig.poly([_t(ft + fn * 15 - fd * 4), _t(ft + fn * 17 + fd * 10),
+                      _t(ft - fn * 15 + fd * 10), _t(ft - fn * 13 - fd * 4)],
+                     shade(dark, sc * 1.2))
+        rig.zone = hz2
+
+    if build == "mast":
+        # A FRAME, A GUN AND A CAMERA. Most of what it is for is up on
+        # the pole: a sensor head on a mast twice the height of the
+        # body, and an open frame under it because nobody expects it
+        # back and nobody armoured it.
+        mx_ = lean + back + 6
+        rig.bar((mx_, sh_y + 6), (mx_ - 8, body_top - 96), 3.0,
+                shade(light, 0.9))
+        head = [(mx_ - 20, body_top - 92), (mx_ + 4, body_top - 100),
+                (mx_ + 8, body_top - 72), (mx_ - 16, body_top - 64)]
+        rig.poly(head, shade(main, 1.05))
+        rig.poly(head, shade(dark, 1.2), 1)
+        rig.circle((mx_ - 6, body_top - 82), 3.4, trim)
+        rig.light((mx_ - 6, body_top - 82), 18, trim, 70)
+        for i in range(3):                   # open frame, no plate on it
+            y0 = sh_y + 16 + i * 24
+            rig.bar((lean + back + 2, y0), (lean + front - 6, y0 - 6),
+                    2.2, shade(dark, 1.3))
+        rig.bar((lean + back + 2, sh_y + 10), (lean + front - 6, waist + 14),
+                2.4, shade(dark, 1.25))
+
+    elif build == "sprint":
+        # SENT IN THREES. Crouched forward over its own toes, shin
+        # guards swept back, and nothing on it that is not going
+        # somewhere.
+        rig.poly([(lean + front - 18, sh_y - 6), (lean + front + 12, sh_y + 6),
+                  (lean + front + 6, sh_y + 30), (lean + front - 20, sh_y + 20)],
+                 shade(light, 0.94))
+        for dy, sc in ((0, 0.8), (14, 1.0)):
+            rig.poly([(lean + back - 2, waist + dy + 4),
+                      (lean + back + 18, waist + dy),
+                      (lean + back - 16, waist + dy + 40),
+                      (lean + back - 26, waist + dy + 28)],
+                     shade(main, sc))
+        rig.poly([(lean + back - 4, sh_y + 4), (lean + front - 10, sh_y - 4),
+                  (lean + front - 14, sh_y + 20), (lean + back - 8, sh_y + 26)],
+                 shade(dark, 1.22))
+
+    elif build == "rack":
+        # IT LOBS THEM OVER. A rack on the back, pointing up and back,
+        # and it is the reason you keep moving.
+        box = [(lean + back - 34, sh_y - 10), (lean + back + 6, sh_y - 22),
+               (lean + back + 14, sh_y + 26), (lean + back - 28, sh_y + 34)]
+        rig.poly(box, shade(main, 0.9))
+        rig.poly(box, shade(dark, 1.15), 2)
+        for i in range(3):
+            for k in (0, 1):
+                q = (lean + back - 26 + k * 16, sh_y - 6 + i * 13)
+                rig.circle(q, 4.4, shade(dark, 1.3))
+                rig.circle(q, 2.4, shade(trim, 0.95))
+        for i in (0, 1):                     # the tubes, angled up and back
+            b = (lean + back - 20 + i * 14, sh_y - 16 - i * 4)
+            rig.bar(b, (b[0] - 30, b[1] - 34), 4.0, shade(light, 0.9))
+        rig.poly([(lean + back - 2, waist - 6), (lean + front - 10, waist - 10),
+                  (lean + front - 14, waist + 18), (lean + back - 6, waist + 22)],
+                 shade(dark, 1.2))
+
+    elif build == "wall":
+        # HIT IT UNTIL IT STOPS. One slab, as tall as the torso, held on
+        # the near side, and everything behind it is bracing.
+        slab = [(lean + front - 4, sh_y - 24), (lean + front + 26, sh_y - 16),
+                (lean + front + 30, waist + 22), (lean + front - 2, waist + 16)]
+        rig.poly(slab, shade(main, 1.04))
+        rig.poly(slab, shade(dark, 1.2), 3)
+        for i in range(4):
+            y0 = sh_y - 6 + i * 22
+            rig.bar((lean + front + 2, y0), (lean + front + 26, y0 + 4),
+                    2.4, shade(trim, 0.85))
+        rig.poly([(lean + back - 22, sh_y + 2), (lean + back + 12, sh_y - 8),
+                  (lean + back + 16, sh_y + 40), (lean + back - 18, sh_y + 46)],
+                 shade(dark, 1.18))
+        # no braced feet down at ground level: this overlay draws in
+        # the BODY zone, which scales about the hip, so a shape at y=-20
+        # on a frame with short legs ends up under the road
+
+    elif build == "skirmisher":
+        # IT IS NOT INTERESTED IN YOU. Two nacelles swept off the back,
+        # angled down, and a body that leans into wherever it is going.
+        for dy, sc in ((-16, 0.78), (6, 1.0)):
+            nac = [(lean + back - 6, sh_y + dy), (lean + back + 16, sh_y + dy - 6),
+                   (lean + back + 10, sh_y + dy + 22), (lean + back - 12, sh_y + dy + 26)]
+            rig.poly(nac, shade(main, sc))
+            rig.poly(nac, shade(dark, sc * 1.15), 2)
+            tip = (lean + back - 34, sh_y + dy + 40)
+            rig.poly([(lean + back - 10, sh_y + dy + 14), tip,
+                      (lean + back - 6, sh_y + dy + 28)], shade(dark, sc))
+            rig.circle((tip[0] + 4, tip[1] - 4), 5.0, shade(trim, sc))
+            rig.light((tip[0] + 4, tip[1] - 4), 22, trim, int(70 * sc))
+        rig.poly([(lean + front - 16, sh_y - 8), (lean + front + 14, sh_y + 4),
+                  (lean + front + 8, sh_y + 34), (lean + front - 18, sh_y + 26)],
+                 shade(light, 0.92))
+
+    elif build == "carrier":
+        # IT BRINGS ITS OWN CREW. A hangar on the back with the doors
+        # open and two of them still in the rack.
+        bay = [(lean + back - 44, sh_y - 14), (lean + back + 8, sh_y - 22),
+               (lean + back + 14, sh_y + 34), (lean + back - 40, sh_y + 42)]
+        rig.poly(bay, shade(main, 0.88))
+        rig.poly(bay, shade(dark, 1.2), 2)
+        rig.poly([(lean + back - 42, sh_y - 8), (lean + back + 8, sh_y - 16),
+                  (lean + back + 8, sh_y + 2), (lean + back - 42, sh_y + 10)],
+                 (16, 18, 24))
+        for i in (0, 1):                     # little ones, still racked
+            q = (lean + back - 30 + i * 20, sh_y - 2 + i * 2)
+            rig.poly([(q[0] - 6, q[1] - 5), (q[0] + 6, q[1] - 7),
+                      (q[0] + 5, q[1] + 6), (q[0] - 6, q[1] + 7)],
+                     shade(light, 0.92))
+            rig.circle((q[0] + 1, q[1]), 1.8, shade(trim, 1.0))
+        rig.poly([(lean + back - 44, sh_y + 14), (lean + back + 12, sh_y + 8),
+                  (lean + back - 20, sh_y + 44)], shade(dark, 1.28))
+
+    elif build == "patchwork":
+        # WELDED OVER SOMETHING OLDER. Nothing on it matches, nothing on
+        # it is square to anything else, and the ribs of the first frame
+        # are still in there.
+        for i, (dx, dy, w_, h_, a) in enumerate((
+                (back - 12, sh_y - 16, 40, 34, 0.10),
+                (back + 22, sh_y + 6, 34, 46, -0.14),
+                (front - 20, sh_y - 22, 36, 30, 0.18),
+                (back + 4, waist - 12, 46, 32, -0.08))):
+            c = math.cos(a)
+            s_ = math.sin(a)
+            pts = []
+            for ox, oy in ((0, 0), (w_, 0), (w_, h_), (0, h_)):
+                pts.append((lean + dx + ox * c - oy * s_,
+                            dy + ox * s_ + oy * c))
+            rig.poly(pts, shade(main, 0.84 + (i % 3) * 0.10))
+            rig.poly(pts, shade(dark, 1.2), 2)
+            for k in range(3):               # rivets, because of course
+                rig.circle((pts[0][0] + 6 + k * (w_ - 14) / 2.0,
+                            pts[0][1] + 5), 2.0, shade(dark, 1.4))
+        for i in range(4):                   # the old frame, showing
+            x0 = lean + back + 6 + i * 11
+            rig.bar((x0, sh_y + 46), (x0 - 4, waist - 4), 2.6,
+                    shade(dark, 1.35))
+        rig.poly([(lean + back - 16, sh_y - 30), (lean + front + 8, sh_y - 38),
+                  (lean + front + 12, sh_y - 12), (lean + back - 18, sh_y - 4)],
+                 shade(light, 0.86))
+
+    elif build == "emplacement":
+        # IT IS NOT A MACHINE THAT STANDS, it is one that was PUT here:
+        # outriggers braced into the road, an ammo drum on the back and
+        # a mantlet across the front. Measured, it was the widest thing
+        # left overlapping the WAR MACHINE, because two wide masses at
+        # the same height are the same silhouette whatever is on them.
+        for dx, sc in ((back - 30, 0.8), (front + 6, 1.0)):
+            leg = [(lean + dx, waist + 6), (lean + dx + 26, waist + 2),
+                   (lean + dx + 44, -14), (lean + dx + 20, -14)]
+            rig.poly(leg, shade(main, sc))
+            rig.poly(leg, shade(dark, sc), 2)
+            rig.poly([(lean + dx + 14, -20), (lean + dx + 52, -20),
+                      (lean + dx + 52, -4), (lean + dx + 14, -4)],
+                     shade(dark, sc * 1.2))
+        drum = [(lean + back - 34, sh_y + 6), (lean + back + 4, sh_y - 4),
+                (lean + back + 8, sh_y + 52), (lean + back - 30, sh_y + 58)]
+        rig.poly(drum, shade(main, 0.84))
+        rig.poly(drum, shade(dark, 1.15), 2)
+        for i in range(4):
+            y0 = sh_y + 6 + i * 13
+            rig.bar((lean + back - 30, y0), (lean + back + 4, y0 - 3),
+                    1.8, shade(trim, 0.9))
+        mant = [(lean + front - 8, sh_y - 4), (lean + front + 22, sh_y + 4),
+                (lean + front + 20, sh_y + 46), (lean + front - 10, sh_y + 42)]
+        rig.poly(mant, shade(main, 1.05))
+        rig.poly(mant, shade(dark, 1.1), 2)
+
+    elif build == "hero":
+        # THE CHEST IS THE MACHINE. A broad lit core, a collar that goes
+        # out to the shoulders, and skirts over the hips.
+        collar = [(lean + back - 12, sh_y - 30), (lean + front + 10, sh_y - 36),
+                  (lean + front + 16, sh_y + 2), (lean + back - 16, sh_y + 8)]
+        rig.poly(collar, shade(main, 1.06))
+        rig.poly(collar, shade(dark, 1.15), 2)
+        cx_, cy_ = lean + 8, sh_y + 40
+        beat = 0.84 + 0.16 * math.sin(t * 3.0)
+        rig.poly([(cx_ - 30, cy_ - 28), (cx_ + 28, cy_ - 22),
+                  (cx_ + 32, cy_ + 26), (cx_ - 32, cy_ + 20)],
+                 shade(main, 0.94))
+        rig.poly([(cx_ - 30, cy_ - 28), (cx_ + 28, cy_ - 22),
+                  (cx_ + 32, cy_ + 26), (cx_ - 32, cy_ + 20)],
+                 shade(dark, 1.1), 2)
+        rig.circle((cx_, cy_ - 1), 17, shade(dark, 0.7))
+        rig.circle((cx_, cy_ - 1), 13 * beat, trim)
+        rig.circle((cx_, cy_ - 1), 7 * beat, (240, 250, 255))
+        rig.light((cx_, cy_ - 1), 60 * beat, trim, 120)
+        for dx in (back - 6, front - 4):     # hip skirts
+            rig.poly([(lean + dx, waist - 4), (lean + dx + 24, waist - 8),
+                      (lean + dx + 20, waist + 52), (lean + dx - 2, waist + 46)],
+                     shade(main, 0.88 if dx < 0 else 1.0))
+            rig.poly([(lean + dx, waist - 4), (lean + dx + 24, waist - 8),
+                      (lean + dx + 20, waist + 52), (lean + dx - 2, waist + 46)],
+                     shade(dark, 1.1), 1)
+
+
+def frame_build_front(rig, mech, t, main, dark, light, trim):
+    """The same three, head on. A frame that only changes in profile is
+    the stock frame right up until landfall - which is the note already
+    written at the top of `chassis_overlay_front`, and this is the part
+    of it that was never done."""
+    st = mech.frame.style
+    build = st.get("build")
+    if not build:
+        return
+
+    if build == "blade":
+        for sgn in (-1, 1):                  # fins, out and back
+            for i, (bx, by, ln) in enumerate(((52, -310, 54),
+                                              (60, -276, 42),
+                                              (44, -208, 34))):
+                fin = [(sgn * bx, by), (sgn * (bx + 10), by + 10),
+                       (sgn * (bx + ln), by + 34), (sgn * (bx + 6), by - 6)]
+                rig.poly(fin, shade(light, 0.94 - i * 0.05))
+                rig.poly(fin, shade(dark, 1.1), 1)
+            rig.poly([(sgn * 20, -170), (sgn * 30, -166),
+                      (sgn * 44, -104), (sgn * 26, -120)],
+                     shade(light, 0.9))
+        rig.poly([(-7, -392), (7, -392), (4, -452), (-4, -452)], trim)
+        rig.poly([(-30, -262), (30, -262), (20, -232), (-20, -232)],
+                 shade(dark, 1.2))
+
+    elif build == "brawler":
+        # ALL ARM, and drawn in the ARMS zone so it scales with the limb
+        # it belongs to. In the body zone it scaled by `wide` while the
+        # real arm scaled by `wide` AND `arm`, so on a frame this broad
+        # the two came apart and the forearms landed across the chest -
+        # which, with a hump plate behind the shoulder overlay and three
+        # stripes on every panel, is what "messy" looked like.
+        # a slab over the stock collar first. That collar is a pale
+        # highlight every frame shares and it reads as a bright seam
+        # across the chest once the shoulder plate moves off it
+        chest = [(-66, -306), (66, -306), (58, -246), (-58, -246)]
+        rig.poly(chest, shade(main, 0.9))
+        rig.poly(chest, shade(dark, 1.18), 2)
+        beat = 0.86 + 0.14 * math.sin(t * 3.4)
+        hot, core = (236, 62, 40), (255, 206, 168)
+        rig.light((0, -276), 104 * beat, (255, 96, 44), 140)
+        hz = rig.zone
+        rig.zone = "arms"
+        for sgn in (-1, 1):
+            gaunt = [(sgn * 56, -268), (sgn * 124, -254),
+                     (sgn * 118, -140), (sgn * 60, -152)]
+            rig.poly(gaunt, shade(main, 1.0 if sgn > 0 else 0.88))
+            rig.poly(gaunt, shade(dark, 1.2), 2)
+            rig.poly([(sgn * 62, -234), (sgn * 120, -226),
+                      (sgn * 119, -219), (sgn * 61, -227)], hot)
+            rig.poly([(sgn * 63, -231), (sgn * 119, -224),
+                      (sgn * 119, -222), (sgn * 62, -229)], core)
+            rig.light((sgn * 92, -226), 44, (255, 96, 44), 100)
+            rig.poly([(sgn * 61, -176), (sgn * 119, -168),
+                      (sgn * 118, -162), (sgn * 60, -170)],
+                     shade(dark, 1.3))
+            for i in range(3):               # knuckles, well inside it
+                rig.circle((sgn * (74 + i * 15), -154), 3.0,
+                           shade(dark, 1.4))
+        rig.zone = hz
+
+    elif build == "emplacement":
+        for sgn in (-1, 1):                  # outriggers, into the road
+            rig.poly([(sgn * 34, -196), (sgn * 74, -190),
+                      (sgn * 104, -30), (sgn * 66, -30)], shade(main, 0.92))
+            rig.poly([(sgn * 34, -196), (sgn * 74, -190),
+                      (sgn * 104, -30), (sgn * 66, -30)], shade(dark, 1.1), 2)
+            rig.poly([(sgn * 56, -36), (sgn * 118, -36),
+                      (sgn * 118, -8), (sgn * 56, -8)], shade(dark, 1.2))
+        mant = [(-70, -302), (70, -302), (64, -238), (-64, -238)]
+        rig.poly(mant, shade(main, 1.05))
+        rig.poly(mant, shade(dark, 1.1), 2)
+        for i in range(4):
+            rig.bar((-58 + i * 32, -292), (-58 + i * 32, -248), 2.2,
+                    shade(trim, 0.9))
+
+    elif build == "hero":
+        beat = 0.84 + 0.16 * math.sin(t * 3.0)
+        collar = [(-84, -330), (84, -330), (74, -292), (-74, -292)]
+        rig.poly(collar, shade(main, 1.06))
+        rig.poly(collar, shade(dark, 1.15), 2)
+        chest = [(-46, -296), (46, -296), (40, -226), (-40, -226)]
+        rig.poly(chest, shade(main, 0.94))
+        rig.poly(chest, shade(dark, 1.1), 2)
+        rig.circle((0, -262), 20, shade(dark, 0.7))
+        rig.circle((0, -262), 15 * beat, trim)
+        rig.circle((0, -262), 8 * beat, (240, 250, 255))
+        rig.light((0, -262), 66 * beat, trim, 120)
+        for sgn in (-1, 1):                  # skirts over the hips
+            sk = [(sgn * 16, -206), (sgn * 58, -202),
+                  (sgn * 50, -140), (sgn * 12, -146)]
+            rig.poly(sk, shade(main, 1.0 if sgn > 0 else 0.9))
+            rig.poly(sk, shade(dark, 1.1), 1)
+
+
 def chassis_overlay_front(rig, mech, t):
     """The same recognisable bits as `chassis_overlay`, seen head-on.
 
@@ -4136,6 +4606,8 @@ def chassis_overlay_front(rig, mech, t):
     # and drew everything down around the waist
     hy = -366
     sy = -318
+    # the BODY first, then what is bolted to it
+    frame_build_front(rig, mech, t, main, dark, light, trim)
 
     head = st.get("head")
     if head == "cyclops":                        # horns out and back, one eye
@@ -4211,18 +4683,16 @@ def chassis_overlay_front(rig, mech, t):
                       (sgn * 72, sy + 34), (sgn * 34, sy + 28)], dark, 2)
             for i in range(3):
                 rig.circle((sgn * (44 + i * 11), sy + 6), 2.6, trim)
-    elif sh == "warplate":                       # slabs, spiked along the top
+    elif sh == "warplate":                       # a spiked collar, inboard
         for sgn in (-1, 1):
-            plate = [(sgn * 34, sy - 18), (sgn * 78, sy - 8),
-                     (sgn * 76, sy + 36), (sgn * 32, sy + 30)]
+            plate = [(sgn * 22, sy - 20), (sgn * 60, sy - 10),
+                     (sgn * 58, sy + 26), (sgn * 20, sy + 20)]
             rig.poly(plate, main)
             rig.poly(plate, dark, 2)
-            for i in range(3):
-                px = sgn * (42 + i * 13)
-                rig.poly([(px - 5, sy - 13), (px + 5, sy - 12),
-                          (px + sgn * 2, sy - 34)], light)
-            rig.poly([(sgn * 40, sy + 2), (sgn * 70, sy + 8),
-                      (sgn * 70, sy + 15), (sgn * 40, sy + 9)], trim)
+            for i in range(2):
+                px = sgn * (32 + i * 16)
+                rig.poly([(px - 5, sy - 15), (px + 5, sy - 13),
+                          (px + sgn * 2, sy - 36)], light)
     elif sh == "box":                            # crates welded on
         for sgn in (-1, 1):
             rig.poly([(sgn * 36, sy - 8), (sgn * 70, sy - 8),
@@ -5836,6 +6306,10 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                      tones)
 
     legs_t = mech.fit["legs"]
+    # where the legs ended up, for the same reason the arms are kept:
+    # a leg is POSED, so armour laid on it has to be laid on the joints
+    # the kinematics produced rather than at a fixed spot on the body
+    stance = []
     hip_y = LEG_GEOM[legs_t][0] if legs_t else 190
     tt0 = mech.fit["torso"] or 1
     rig.hip = -float(hip_y)
@@ -5850,11 +6324,12 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
         trim = (mech.frame.tones or {}).get("trim")
         # a frame with thick legs has to stand WIDER as well, or the near
         # and far leg overlap into one red mass and the walk disappears
-        spread = 1.0 + ((mech.frame.prop or {}).get("legw", 1.0) - 1.0) * 0.7
+        spread = 1.0 + ((mech.frame.prop or {}).get("legw", 1.0) - 1.0) * 0.9
         for i, (dx, sh) in enumerate(((-13 * spread, 0.62),
                                       (11 * spread, 1.0))):
             hip, knee, ankle = _leg_points(legs_t, pose.walk + i * math.pi,
                                            pose.moving)
+            stance.append((hip, knee, ankle, dx, sh))
             draw_leg_side(rig, legs_t, hip, knee, ankle, dx,
                           main, dark, light, sh, trim)
     else:
@@ -5967,6 +6442,10 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
 
     rig.zone = "arms"
     # -- arms and what is bolted to them ----------------------------------
+    # where each one ends up, for any overlay that wants to put armour
+    # ON a limb rather than at a fixed point on the body - an arm here
+    # is POSED, so a static shape cannot follow it
+    limbs = {}
     for side, depth in (("l", 0.62), ("r", 1.0)):
         asock = "l_arm" if side == "l" else "r_arm"
         at = mech.fit[asock]
@@ -5999,6 +6478,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                                math.sin(ang + fore)) * L2
         if wpn is not None and wpn.kind in ("gun", "salvo", "beam"):
             hand -= unit(hand - elbow) * recoil * 11.0
+        limbs[side] = (sh, elbow, hand, w)
         rig.bar((sh.x, sh.y), (elbow.x, elbow.y), w, ac, w - 1, shade(ac, 0.6))
         rig.bar((elbow.x, elbow.y), (hand.x, hand.y), w - 1, ac, w - 2,
                 shade(ac, 0.6))
@@ -6020,7 +6500,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                 draw_aux_side(rig, mech, pose, side,
                               shade(c, 0.86 if side == "la" else 1.0), lean)
     rig.zone = "body"
-    chassis_overlay(rig, mech, t, lean, hip_y)
+    chassis_overlay(rig, mech, t, lean, hip_y, limbs, stance)
     if pose.brace and mech.alive("l_arm") or pose.brace and mech.alive("r_arm"):
         # the guard: whatever arms are left, held across the front
         gx = front + 18 + lean
@@ -6086,7 +6566,7 @@ def draw_face_side(rig, mech, hx, hy, hw, hh, ex, ey):
         rig.light((ex, ey), 7, (255, 176, 96), 70)
 
 
-def chassis_overlay(rig, mech, t, lean, hip_y):
+def chassis_overlay(rig, mech, t, lean, hip_y, limbs=None, stance=None):
     """The bits that make a frame recognisable from across the street.
 
     The renderer underneath is the same one for every machine in the game,
@@ -6107,6 +6587,8 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
     body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
     hy = body_top - 4 + lean * 1.6          # roughly where a head sits
     sh_y = body_top + 46                    # and where the shoulders are
+    frame_build_side(rig, mech, t, lean, hip_y, main, dark, light, trim,
+                     limbs, stance)
 
     head = st.get("head")
     if head == "cyclops":                   # two horns and one eye
@@ -6197,17 +6679,16 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
                      (dx + lean - 22, sh_y + 28)]
             rig.poly(plate, shade(main, sc))
             rig.poly(plate, shade(dark, sc), 2)
-            for i in range(3):                 # spines along the sweep
-                f = i / 2.0
-                px = dx + lean - 6 + f * 26
+            # two spines, not three. Two shoulders at three apiece is
+            # six of them in a row across the top and it reads as a
+            # fence rather than as armour.
+            for i in range(2):                 # spines along the sweep
+                f = i / 1.0
+                px = dx + lean - 4 + f * 22
                 py = sh_y - 4 - f * 7
                 rig.poly([(px - 4, py + 2), (px + 5, py + 1),
-                          (px + 4 + f * 7, py - 24 - f * 5)],
+                          (px + 4 + f * 6, py - 17 - f * 4)],
                          shade(light, sc))
-            rig.poly([(dx + lean - 13, sh_y + 11),
-                      (dx + lean + 24, sh_y + 16),
-                      (dx + lean + 23, sh_y + 22),
-                      (dx + lean - 13, sh_y + 17)], shade(trim, sc))
     elif sh == "box":                       # crates, welded where arms meet
         for dx, sc in ((-18, 0.74), (15, 1.0)):
             rig.poly([(dx + lean - 16, sh_y - 8), (dx + lean + 18, sh_y - 8),
@@ -6246,6 +6727,21 @@ def chassis_overlay(rig, mech, t, lean, hip_y):
                  (255, 200, 126))
         rig.circle((cx_, cy_), 8.0 * beat, (255, 242, 212))
         rig.light((cx_, cy_), 70 * beat, (255, 110, 48), 132)
+
+def draw_kind(surf, kind, x, gy, scale, t, walk=0.0, moving=0.8,
+              face=-1, maw=0.0):
+    """A datasheet's body, whole and doing nothing.
+
+    The BRIEF called `draw_kaiju` for whatever was coming, and half of
+    what comes is machines - so a RYEZ player opened the one screen in
+    the game that exists to show them what they are about to fight and
+    saw a headless blue animal with a machine's proportions. It had
+    been doing that for every KEAL model in the roster. Both callers go
+    through the branch `draw_enemy` has always had."""
+    e = Enemy(kind, 0.0)
+    e.walk, e.moving, e.maw = walk, moving, maw
+    draw_enemy(surf, e, x, gy, scale, t, 0.0, face)
+
 
 def weapon_muzzle(mech, pose, side, sx, gy, scale):
     """Where a shot comes out, in screen coordinates. The fight needs this
@@ -6502,7 +6998,7 @@ def draw_weapon_side(rig, w, hand, d, colour, pose, side):
 # passes every test that only asks whether something was drawn.
 # ---------------------------------------------------------------------------
 POISE = {"spitter": 1.1, "bulwark": 1.7, "strider": 1.25, "brood": 1.8,
-         "leviathan": 2.6}
+         "leviathan": 2.6, "cathedral": 2.9, "hound": 0.72}
 
 
 class Kind:
@@ -6595,6 +7091,38 @@ BESTIARY = [
          (118, 62, -246, 2, 250, 86, -0.62, 40, 2, 2, 190, 1, 0),
          "Everything the others were, at once, and it has been waiting for "
          "the rest to soften us up."),
+    # THE SEVENTH RUNG has its own body now. It used to be the LEVIATHAN
+    # again, which is a fine fight and a poor reveal - the brief printed
+    # the same name and the same datasheet twice.
+    Kind("cathedral", "CATHEDRAL", "the last one was not the last one",
+         (128, 102, 152), 1.32,
+         9200, 44, 10,
+         [atk("swipe", 348, 0.72, 118, 2.2, lunge=1),
+          atk("slam", 380, 1.25, 168, 4.4, shake=1, lunge=1),
+          atk("beam", 1800, 1.50, 48, 5.6, hold=2.2),
+          atk("roar", 0, 0.95, 0, 10.0, stun=1),
+          atk("spawn", 0, 1.50, 0, 15.0, brood=2)],
+         0, 0, 5.4, 40,
+         # a TOWER, not a bigger hill. The first pass gave it the
+         # LEVIATHAN's proportions one size up and the two came out 52%
+         # the same drawing - which is the complaint the strains and
+         # the frames both already had. Short body, long legs, and the
+         # head goes up instead of forward: 34% now.
+         (84, 92, -378, 2, 386, 44, -1.30, 44, 3, 2, 108, 1, 1),
+         "It does not walk so much as arrive. Nobody wrote it down "
+         "because nobody expected to be asked about it afterwards."),
+    # ...and one that never headlines. Past the end of the ladder is
+    # ESCORT STOCK: bodies the schedule never puts on a brief, drawn on
+    # by `ESCORTS` to stand beside something bigger. A fast light one is
+    # worth far more there than another slab, because the whole point of
+    # company is that you cannot deal with all of it at once.
+    Kind("hound", "HOUND", "they do not arrive alone", (152, 92, 62),
+         0.62, 1500, 148, 1,
+         [atk("swipe", 226, 0.42, 34, 1.5, lunge=1)],
+         300, 1, 1.6, 8,
+         (58, 24, -104, 2, 108, 34, -0.30, 18, 1, 0, 96, 0, 0),
+         "Quick, low and not worth a shell on its own. That is the "
+         "arithmetic it is counting on."),
 ]
 KINDS = {k.key: k for k in BESTIARY}
 
@@ -6849,7 +7377,8 @@ def draw_kaiju(surf, kind, sx, gy, scale, t, walk=0.0, moving=1.0, face=-1,
 MECH_BODY = (95, 70, -250, 2, 200, 0, 0.0, 0, 0, 0, 0, 0, 0)
 
 
-def _machine(src, key, name, title, hide, scale, build, note):
+def _machine(src, key, name, title, hide, scale, build, note,
+             chassis=None):
     """One KEAL model, wearing an animal's statistics."""
     k = Kind(key, name, title, hide, scale, src.hp, src.speed, src.dr,
              src.attacks, src.scrap, src.alloy, src.wreck, src.rampage,
@@ -6857,7 +7386,9 @@ def _machine(src, key, name, title, hide, scale, build, note):
     k.family = "mech"
     k.build = build
     k.poise = src.poise
-    m = Mech()
+    # by convention the frame KEAL fields for a model is "f_" + its key
+    frame = chassis or ("f_" + key)
+    m = Mech(frame if frame in CHASSIS else "standard")
     for socket, fit in build.items():
         m.install(socket, fit)
     k.rig = m
@@ -6901,7 +7432,23 @@ KEAL_ROSTER = [
              {"legs": 3, "torso": 3, "head": 3, "armour": 3, "l_arm": 3,
               "l_wpn": "ripper", "r_arm": 3, "r_wpn": "sun"},
              "Everything the others were, on one frame, and it has been in "
-             "the shed the whole time waiting for them to soften us up."),
+             "the shed the whole time waiting for them to soften us up.",
+             chassis="sovereign"),   # the one model you can also BUY
+    # the two rosters are stat-matched rung for rung on purpose - the
+    # houses share ONE table - so a new animal needs its machine
+    _machine(BESTIARY[6], "founder", "KL-0 FOUNDER",
+             "the last one was not the last one", (150, 138, 120), 1.34,
+             {"legs": 3, "torso": 3, "head": 3, "armour": 3, "l_arm": 3,
+              "l_wpn": "pile", "r_arm": 3, "r_wpn": "sun",
+              "l_aux": "auxflare", "r_aux": "auxflare"},
+             "The first frame they ever finished, and they never stopped "
+             "welding things to it. There is a plaque somewhere under "
+             "all that."),
+    _machine(BESTIARY[7], "runner", "KL-4 RUNNER",
+             "they do not arrive alone", (150, 152, 120), 0.64,
+             {"legs": 2, "torso": 1, "head": 1, "r_arm": 1, "r_wpn": "fist"},
+             "Cheap, quick and sent in threes. Shooting one is a fair "
+             "trade for whoever signed the order."),
 ]
 KEAL_KINDS = {k.key: k for k in KEAL_ROSTER}
 
@@ -9126,12 +9673,15 @@ SCHEDULE = (7, 15, 24, 34, 45, 57, 70)
 ESCORTS = ((),                    # 1st - it comes alone, and it should
            (),                    # 2nd - still alone
            (),                    # 3rd - still a duel
-           ((0, 1),),             # 4th - and now it does not come alone
-           ((1, 1),),             # 5th
-           ((3, 1), (1, 1)),      # 6th
-           ((5, 1, 1.0),))        # 7th - the top rung, twice, and the
-                                  #       second one is not a lesser
-                                  #       example of anything
+           ((7, 1),),             # 4th - and now it does not come alone
+           ((1, 1), (7, 1)),      # 5th
+           ((3, 1), (7, 1)),      # 6th
+           ((7, 2),))             # 7th
+# The seventh had a full-strength LEVIATHAN walking in beside the
+# CATHEDRAL, which is a lovely sentence and 0 wins in 10. At 62% of its
+# health it was still 0 in 10. What the finale can carry is two of the
+# fast ones, and that is the whole lesson of this table: a second BODY
+# is worth far more than any amount of hit points on the first.
 ESCORT_HP = 0.78                  # an escort is a lesser example of one
 ESCORT_PAY = 0.55                 # ...and it pays like one
 
@@ -10944,8 +11494,8 @@ class Brief:
         ov = pygame.Surface((W, H), pygame.SRCALPHA)
         ov.fill((8, 9, 14, 150))
         surf.blit(ov, (0, 0))
-        draw_kaiju(surf, k, W - 380, H - 120, 0.92, self.t, self.t * 2.0, 1.0,
-                   -1, 0.0, 0.0, 0.0, 0.35 + 0.25 * math.sin(self.t * 2))
+        draw_kind(surf, k, W - 380, H - 120, 0.92, self.t, self.t * 2.0,
+                  1.0, -1, 0.35 + 0.25 * math.sin(self.t * 2))
         text(surf, "LANDFALL", 20, (60, 44), BAD)
         text(surf, k.name, 66, (60, 66), INK)
         text(surf, k.title.upper(), 20, (60, 136), PAINT)
@@ -11186,22 +11736,8 @@ class Choose:
         draw_mech_front(surf, self.demo[key], r.centerx - 108, r.bottom - 40,
                         0.33, {}, self.t)
         foe = roster_for(key)[5]
-        if foe.family == "bio":
-            draw_kaiju(surf, foe, r.centerx + 132, r.bottom - 40, 0.30,
-                       self.t, self.t * 1.6, 0.7, -1)
-        else:
-            pose = Pose()
-            pose.face = -1
-            pose.walk = self.t * 1.6
-            pose.moving = 0.7
-            tint = foe.hide
-            draw_mech_side(surf, foe.rig, r.centerx + 132, r.bottom - 40,
-                           0.30 * foe.scale, self.t, pose,
-                           tones={"main": tint, "dark": shade(tint, 0.6),
-                                  "light": shade(tint, 1.3),
-                                  "trim": mix(tint, KEAL_GOLD, 0.55),
-                                  "plate": mix(tint, (150, 136, 112), 0.5),
-                                  "hollow": tint})
+        draw_kind(surf, foe, r.centerx + 132, r.bottom - 40, 0.30,
+                  self.t, self.t * 1.6, 0.7, -1)
         set_house("keal")
         text(surf, "YOU BUILD" if key == "keal" else "YOU GROW", 12,
              (r.centerx - 108, r.bottom - 26), FAINT, center=True)
