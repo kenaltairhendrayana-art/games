@@ -2210,10 +2210,208 @@ def _build_lab():
     return s
 
 
+def _build_onslaught():
+    """ONSLAUGHT - the back half of the year, from the eighth landfall on.
+
+    LANDFALL is a chug with a gap in it, written for one animal walking up
+    a road. By the tenth month there are four bodies on that road and the
+    same eight bars underneath them read as wallpaper. This one is built
+    the other way round: the low line never stops, and what moves is the
+    horn stack over it.
+
+    Rhythmically it is 3+3+2 rather than straight eighths, so it does not
+    read as LANDFALL taken faster - which is what the first pass was, and
+    the fingerprint said so before anybody had to admit it.
+
+    SIXTEEN bars, not eight. At 164bpm eight bars is twelve seconds and a
+    late landfall runs to a hundred and thirty, so the loop came round ten
+    times in one fight. The second half is not more of the first: bars
+    nine and ten drop the engine out entirely and leave the horns hanging
+    over a pad, which is the only thing in the piece that makes the return
+    in bar eleven land."""
+    bpm, bars = 164.0, 16
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 1.6)
+    # phrygian: the flat second is the whole colour of it
+    roots = (33, 33, 34, 33, 40, 38, 34, 33,
+             33, 34, 33, 33, 41, 40, 36, 33)
+    # the horn stack, in fourths, climbing and falling back
+    call = ((0, 5, 7), (0, 5, 7), (1, 5, 8), (0, 5, 7),
+            (0, 7, 12), (0, 5, 10), (1, 5, 8), (0, 5, 7),
+            (0, 7, 12), (1, 8, 13), (0, 7, 12), (0, 7, 12),
+            (0, 7, 16), (1, 8, 15), (0, 5, 12), (0, 7, 12))
+    tresillo = (0.0, 0.75, 1.5, 2.0, 2.75, 3.5)      # 3+3+2, twice a bar
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        # bars nine and ten: the floor goes out from under it
+        hole = b in (8, 9)
+        s.note("pad", r - 24, t, beat * 4.2, 0.20 if hole else 0.14)
+        for step in call[b]:
+            s.note("horn", r + 24 + step, t + beat * 0.5, beat * 3.2,
+                   0.16 if hole else 0.13)
+        if hole:
+            s.drum("kick", t, 0.30)
+            if b == 9:                               # the run back in
+                for k in range(6):
+                    s.drum("snare", t + beat * 2.5 + k * beat * 0.25,
+                           0.10 + k * 0.045)
+            continue
+        for off in tresillo:
+            te = t + off * beat
+            s.note("saw", r - 12, te, beat * 0.40, 0.23)
+            s.note("saw", r, te, beat * 0.40, 0.14)
+        for e in range(4):
+            s.drum("kick", t + e * beat, 0.38 if e in (0, 2) else 0.24)
+        s.drum("snare", t + beat, 0.34)
+        s.drum("snare", t + beat * 3, 0.34)
+        if b in (3, 7, 15):                          # the fill into the turn
+            for k in range(4):
+                s.drum("snare", t + beat * 3.5 + k * beat * 0.125,
+                       0.16 + k * 0.05)
+        for e in range(8):
+            s.drum("hat", t + e * beat * 0.5, 0.13 if e % 2 else 0.18)
+        if b >= 10:
+            # the counter-line, only in the last third, only once the
+            # engine has come back - the piece has to have somewhere left
+            # to go at forty seconds in
+            for k, off in enumerate((12, 15, 19)):
+                s.note("bell", r + 12 + off, t + beat * (0.5 + k * 0.75),
+                       beat * 1.4, 0.11 if k else 0.14)
+        if b % 4 == 0:
+            s.drum("clank", t, 0.24)
+    return s
+
+
+def _build_mirror():
+    """THE LAST LANDFALL - your own yard, walking up the road at you.
+
+    This is THE YARD's root line, note for note, with a war kit under it
+    and the tempo doubled. That is not an economy: the thing on the road
+    on day 365 is the machine you spent a year building, and the music it
+    arrives to should be the music you built it to. The bell figure is the
+    yard's (0, 7, 12) as well, taken at twice the speed.
+
+    One horn is detuned nine cents against the other. It is close enough
+    to read as one instrument and wrong enough that nobody settles."""
+    bpm, bars = 92.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 2.0)
+    roots = (33, 33, 31, 36, 33, 33, 28, 31)          # THE YARD, unchanged
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        # the hammer that used to be a yard sound, on every half-beat
+        s.drum("clank", t + beat * 0.06, 0.22)
+        s.drum("kick", t, 0.40)
+        s.drum("kick", t + beat * 1.5, 0.28)
+        s.drum("kick", t + beat * 2, 0.40)
+        s.drum("snare", t + beat * 2, 0.32)
+        if b % 2 == 1:
+            s.drum("snare", t + beat * 3.5, 0.24)
+        for e in range(8):                            # double-time over it
+            s.drum("hat", t + e * beat * 0.5, 0.10 if e % 2 else 0.15)
+        s.note("pad", r - 12, t, beat * 4.4, 0.19)
+        s.note("pad", r - 5, t + 0.05, beat * 4.2, 0.11)
+        for e in range(4):                            # the low line, moving
+            s.note("saw", r, t + e * beat, beat * 0.46,
+                   0.24 if e == 0 else 0.15)
+        # the yard's bell figure, at twice the speed and an octave down
+        if b % 2 == 1:
+            for k, off in enumerate((0, 7, 12)):
+                s.note("bell", r + 12 + off, t + beat * (0.5 + k * 0.375),
+                       beat * 1.2, 0.13)
+        # two horns, nine cents apart, holding the fifth
+        s.note("horn", r + 19, t + beat * 0.25, beat * 3.4, 0.12)
+        s.note("horn", r + 19, t + beat * 0.25, beat * 3.4, 0.10,
+               detune=0.0052)
+    return s
+
+
+def _build_rooms():
+    """THE ROOMS - a cutscene, and somebody telling you something.
+
+    Almost nothing, because there are words over it. A clock figure that
+    repeats without going anywhere, a pad holding a major second against
+    itself, and one low hit a bar. No bells: the LAB already owns bells at
+    odd intervals, and two pieces that are both slow and both unresolved
+    have to be different in the part you actually hear."""
+    bpm, bars = 54.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 2.4)
+    roots = (36, 36, 34, 36, 36, 35, 33, 34)
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        s.note("pad", r - 12, t, beat * 4.5, 0.21)
+        # the major second, held. It is not a chord, it is a wait.
+        s.note("pad", r - 10, t + 0.06, beat * 4.2, 0.13)
+        # the clock: two notes, the same two notes, every bar
+        for k in range(4):
+            s.note("pluck", r + 12 + (0 if k % 2 else 7),
+                   t + k * beat, beat * 0.7,
+                   0.17 if k == 0 else 0.11)
+        s.drum("kick", t, 0.24)
+        if b % 4 == 3:
+            # one thing changes, once, and then it goes back
+            s.note("horn", r + 7, t + beat * 2, beat * 2.2, 0.12)
+    return s
+
+
+def _build_ending():
+    """THE END OF IT - the last screen, either way it went.
+
+    The only piece in the game that RESOLVES. Everything else is a loop
+    that admits it is a loop; this one walks down to the tonic in bar
+    eight and sits there, because the thing it plays under is the only
+    screen that is not waiting for the player to do something."""
+    bpm, bars = 58.0, 8
+    beat = 60.0 / bpm
+    s = Score(bars * 4 * beat + 2.6)
+    roots = (36, 41, 38, 43, 36, 34, 31, 36)
+    # a horn choir in thirds, moving once a bar
+    voice = ((0, 7, 16), (0, 7, 15), (0, 9, 16), (0, 7, 14),
+             (0, 7, 16), (0, 5, 12), (0, 7, 15), (0, 7, 12))
+    for b in range(bars):
+        t = b * 4 * beat
+        r = roots[b]
+        s.note("pad", r - 12, t, beat * 4.5, 0.20)
+        s.note("pad", r - 5, t + 0.05, beat * 4.2, 0.12)
+        for i, step in enumerate(voice[b]):
+            s.note("horn", r + 12 + step, t + 0.02 * i, beat * 3.6,
+                   0.13 if i == 0 else 0.09)
+        s.drum("kick", t, 0.26)                       # a drum a long way off
+        s.drum("kick", t + beat * 2.5, 0.14)
+        if b in (0, 4):
+            s.note("bell", r + 24, t + beat * 0.5, beat * 3.0, 0.15)
+        if b == 7:
+            s.note("bell", r + 24, t + beat * 2, beat * 2.6, 0.13)
+            s.note("bell", r + 31, t + beat * 2.5, beat * 2.2, 0.09)
+    return s
+
+
 TRACKS = {"yard": _build_yard, "landfall": _build_landfall,
           "vigil": _build_vigil, "market": _build_market,
           "capital": _build_capital, "office": _build_office,
-          "lab": _build_lab}
+          "lab": _build_lab, "onslaught": _build_onslaught,
+          "mirror": _build_mirror, "rooms": _build_rooms,
+          "ending": _build_ending}
+
+
+def fight_music(run):
+    """Which loop a landfall arrives to.
+
+    A season is seven fights and one piece of music is enough for them.
+    A year is seventeen, and the same eight bars under all of them turns
+    into wallpaper somewhere around the tenth - so the year escalates: the
+    rungs it shares with the season keep LANDFALL, the back half gets
+    ONSLAUGHT, and the last day gets its own."""
+    mode = getattr(run, "mode", "landfall")
+    if run is None or mode != "story":
+        return "landfall"
+    if run.kaiju_index >= len(STORY_LADDER):
+        return "mirror"
+    return "onslaught" if run.kaiju_index >= len(SCHEDULE) else "landfall"
 _music = {}
 _baked = {}                          # name -> rendered bytes, from a worker
 _playing = [None]
@@ -15945,6 +16143,10 @@ class App:
         self.hangar = Hangar(self.run)
         self.state = "hangar"
         music("yard")
+        if self.run.mode == "story":
+            # a year opens in a room, and the room wants its own loop
+            # before the room opens rather than eight seconds into it
+            prebake(("rooms",))
         save_run(self.run)
         # a run resumed on the morning of a landfall goes straight out
         nl = self.run.next_landfall
@@ -15977,7 +16179,7 @@ class App:
         self.scene = Cutscene(r, beats)
         self.scene_back = back
         self.state = "scene"
-        music("vigil")
+        music("rooms")
         return True
 
     def scene_done(self):
@@ -15991,6 +16193,7 @@ class App:
             record_end(r, True)
             record_story_ending(st)
             self.state = "end"
+            music("ending")
             return
         if self.scene_back == "hangar":
             self.hangar = Hangar(r)
@@ -16000,13 +16203,19 @@ class App:
         self.to_brief()
 
     def to_brief(self):
-        prebake(("landfall",))
+        tune = fight_music(self.run)
+        # the fight's loop, and the one waiting on the other side of a
+        # last landfall either way it goes
+        want = [tune]
+        if self.run.kaiju_index >= len(schedule_for(self.run.mode)) - 1:
+            want.append("ending")
+        prebake(want)
         kind = self.run.next_kind()
         if kind is None:
             return
         self.brief = Brief(self.run, kind)
         self.state = "brief"
-        music("landfall")
+        music(tune)
         SFX.play("alarm", 0.7)
 
     def to_fight(self):
@@ -16014,7 +16223,7 @@ class App:
         self.state = "fight"
         self.speed = 1
         self.paused = False
-        music("landfall")
+        music(fight_music(self.run))
 
     def finish_fight(self):
         ending, lines = self.run.resolve(self.fight)
@@ -16066,6 +16275,7 @@ class App:
                 record_story_ending(st)
             self.ending_screen = Ending(self.run, won, st)
             self.state = "end"
+            music("ending")
         elif post_open(self.run):
             # on the ground, while it is still cooling. Only ever here.
             self.posts = FieldPosts(self.run)

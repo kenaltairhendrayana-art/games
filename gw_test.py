@@ -4150,6 +4150,45 @@ def score():
         len(G.Bazaar.SECTION_MUSIC), "two counters share a tune"
     print("  and all %d counters have one of their own"
           % len(G.Bazaar.SECTION_MUSIC))
+
+    # -- and the year does not play the same eight bars seventeen times ---
+    # Four loops went in for this. A season is seven fights and one piece
+    # of music is enough for them; a year is seventeen, and the same loop
+    # under all of them is wallpaper by the tenth.
+    for nm in ("onslaught", "mirror", "rooms", "ending"):
+        assert nm in G.TRACKS, nm
+    season = G.Run("keal")
+    assert G.fight_music(None) == "landfall"
+    for i in range(len(G.SCHEDULE)):
+        season.kaiju_index = i
+        assert G.fight_music(season) == "landfall", i
+    year = G.Run("keal", "standard", "story")
+    heard = []
+    for i in range(len(G.STORY_SCHEDULE)):
+        year.kaiju_index = i
+        heard.append(G.fight_music(year))
+    assert heard[:len(G.SCHEDULE)] == ["landfall"] * len(G.SCHEDULE), heard
+    assert heard[-1] == "mirror", heard[-1]
+    assert set(heard[len(G.SCHEDULE):-1]) == {"onslaught"}, heard
+    assert len(set(heard)) == 3, heard
+    print("  the year climbs through %d loops and the last day has one of "
+          "its own" % len(set(heard)))
+
+    # THE MIRROR is built out of THE YARD on purpose - the thing on the
+    # road on the last day is the machine you spent a year building - so
+    # it is the one pair allowed to be close, and it still has to be a
+    # different piece
+    def _rendered(nm):
+        sc = G.TRACKS[nm]()
+        sc.finish()              # a Score is lazy; an unrendered one is
+        return sc.buf            # silence, and two silences match exactly
+    ym = _fingerprint(_rendered("yard"), G.Score.RATE)
+    mm = _fingerprint(_rendered("mirror"), G.Score.RATE)
+    d = sum(abs(x - y) for x, y in zip(ym, mm)) / len(ym)
+    assert d > 0.10, "the mirror is the yard in a hat (%.3f)" % d
+    print("  the last landfall quotes the yard and is still %.3f away "
+          "from it" % d)
+
     print("\nscore ok")
 
 
