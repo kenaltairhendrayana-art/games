@@ -552,6 +552,18 @@ RYEZ_PARTS = {
     ("wpn", "storm"): "QUILL STORM", ("wpn", "tempest"): "QUILL TEMPEST",
     ("wpn", "mortar"): "BILE MORTAR", ("wpn", "bombard"): "BILE BOMBARD",
     ("wpn", "tether"): "SNARE LINE", ("wpn", "harpoon"): "DRAG TONGUE",
+    # the fourth and fifth rungs, which only a year ever reaches. They
+    # went in without names for a while and a RYEZ player at rung four
+    # was told they had grown a set of GYRO STRIDERS.
+    ("legs", 4): "GYRE HAUNCHES", ("legs", 5): "TIDE LIMBS",
+    ("torso", 4): "VOIDED TRUNK", ("torso", 5): "KEEL SPINE",
+    ("head", 4): "ABYSS SIGHT", ("head", 5): "THE ORACLE EYE",
+    ("l_arm", 4): "RAM FORELIMB", ("l_arm", 5): "TITAN FORELIMB",
+    ("r_arm", 4): "RAM FORELIMB", ("r_arm", 5): "TITAN FORELIMB",
+    ("reactor", 4): "PAIRED HEARTS", ("reactor", 5): "SUN ORGAN",
+    ("armour", 4): "SHEDDING SCALE", ("armour", 5): "ABYSS PLATE",
+    ("wpn", "quiver"): "SPORE VOLLEY", ("wpn", "breach"): "BONE SPIKE",
+    ("wpn", "maul"): "TIDE LIMB",
 }
 
 RYEZ_MODULES = {
@@ -561,6 +573,7 @@ RYEZ_MODULES = {
     "flush": "COLD BLOOD", "link": "DEPTH EYES", "shock": "STING HIDE",
     "stride": "SPRUNG TENDONS", "hoist": "EXTRA SAC",
     "baffles": "SUNKEN HEART", "spotter": "OUTRIDER",
+    "archive": "THE SCENT", "hunger": "DEEP HUNGER",
 }
 
 RYEZ_YARD = {1: "SECOND TANK", 2: "NIGHT FEED", 3: "GENE VATS"}
@@ -665,6 +678,9 @@ RYEZ_MOD_BLURB = {
     "hoist": "Only worth the site if there is a pod cluster on the arm.",
     "baffles": "The one organ you cannot fight without, moved deep.",
     "spotter": "A small one that rides above the fight and tells you.",
+    "archive": "It has been downwind of one all year. It knows the "
+               "seams.",
+    "hunger": "It does not stop when the thing stops moving.",
 }
 
 RYEZ_MOD_EFFECT = {
@@ -674,6 +690,7 @@ RYEZ_MOD_EFFECT = {
     "hoist": "a pod cluster throws one more",
     "flush": "V dumps the whole heat load - once per landfall",
     "sinks": "shedding +30%, ceiling -14%",
+    "hunger": "a body eaten mends it whole, and pays 35% and 2 genome more",
 }
 
 RYEZ_YARD_BLURB = {
@@ -1313,6 +1330,166 @@ def has_ware(key):
         return False
     w = WARES.get(key)
     return w is None or w.house is None or w.house == CURRENT["house"]
+
+
+# ---------------------------------------------------------------------------
+# WHAT THEY KNOW
+#
+# Nine people stand behind counters in this game and until now none of
+# them could be asked anything. Each has a short stack of lines, handed
+# over one per visit, and every stack ends on something the person is
+# not supposed to say out loud.
+#
+# Read end to end they say the same thing from nine directions: the
+# landfalls are not a war between two companies. Both companies are
+# being sent targets, on a schedule somebody else writes, and the thing
+# being built at the end of it is a copy of whatever the player brought.
+# That is the story, and it is told entirely by shopkeepers, because the
+# shop is the only screen in this game where nothing is trying to kill
+# you and a person will actually talk.
+#
+# The last line of every stack is a HINT. Hearing all nine is what opens
+# the door to the true ending - see `heard_everything`.
+# ---------------------------------------------------------------------------
+TALK = {
+    "sarah": [
+        "I draw what people ask for. I have drawn the same three things "
+        "for eleven years and nobody has asked for a fourth.",
+        "Your lot and their lot order off the same page. Different "
+        "letterhead, same page, same order of items.",
+        "The schedule reached me before it reached you. I was asked to "
+        "have stock ready for dates I had not been told about yet.",
+        "The order sheet has no company on it. Not KEAL, not RYEZ, not "
+        "the coast authority. Just a number and a date.",
+    ],
+    "jack": [
+        "It grows if you feed it. Everything does. That is not the "
+        "clever part and it never was.",
+        "I get sent samples. I did not ask for them and the crate has "
+        "no sender on it.",
+        "The samples match what walks ashore. Two weeks early, every "
+        "time, without fail.",
+        "Somebody is growing both sides out of the same stock. I would "
+        "like to meet them. I would not shake their hand.",
+    ],
+    "mike": [
+        "Anything bolts to anything, if you are prepared to be "
+        "unpopular about how.",
+        "The serial plates on the salvage are ours. Not ours as in "
+        "KEAL. Ours as in this yard, this bench, my handwriting.",
+        "I stopped filing the recovery reports eight months ago. "
+        "Nobody has asked me for one.",
+    ],
+    "zoe": [
+        "I sign for it, so I read it. You would be amazed how few "
+        "people read the thing they are signing.",
+        "The funding line is not a KEAL line. It never has been. I "
+        "assumed somebody above me knew that.",
+        "There is one account paying both companies. I know the "
+        "number. I do not know the name on it and I have stopped "
+        "asking.",
+    ],
+    "novak": [
+        "A frame is an argument about what you expect to be hit by. "
+        "Everything else on it is upholstery.",
+        "We did not design the SOVEREIGN. We were sent the drawings "
+        "finished and told to put our name on them.",
+        "Whatever drew those has watched a great many fights. More "
+        "fights than have happened.",
+    ],
+    "genk": [
+        "I can move the date. I have never been able to move what the "
+        "date is for.",
+        "I do not work for KEAL. I would like that on the record every "
+        "single time you ask me anything.",
+        "The evacuation orders come back to me countersigned. They come "
+        "back before I have sent them.",
+    ],
+    "zach": [
+        "I do not say how. That is the entire service and you are "
+        "paying for it.",
+        "You have never once asked who pays me. That is the smartest "
+        "thing about you.",
+        "Ask me on the last day. Not before. I will answer once and "
+        "then I will be somewhere else.",
+    ],
+    "vask": [
+        "It is better if you do not know what is in it. I mean that "
+        "kindly.",
+        "The tanks are not mine. I rent them. In nine years I have "
+        "never met the owner or seen a bill.",
+        "The thing I am growing is not the thing I was asked to grow. "
+        "I want you to notice that I told you.",
+    ],
+    "hauk": [
+        "Shape is a decision. Everything after it is consequence.",
+        "I am given a target profile and asked to hit it. The profile "
+        "is your animal. It has been for a while.",
+        "They are building a copy of you, and they are nearly finished. "
+        "I helped. I am telling you because I helped.",
+    ],
+}
+
+
+def heard(skey):
+    """How many of this one's lines have been handed over."""
+    return int(meta().get("heard", {}).get(skey, 0))
+
+
+def can_talk(skey):
+    return heard(skey) < len(TALK.get(skey, ()))
+
+
+def talk_to(skey):
+    """Take the next line, and remember it across runs and slots - what
+    a person told you is not something a new campaign unlearns."""
+    lines = TALK.get(skey, ())
+    i = heard(skey)
+    if i >= len(lines):
+        return None
+    m = dict(meta())
+    got = dict(m.get("heard", {}))
+    got[skey] = i + 1
+    m["heard"] = got
+    _meta_put(m)
+    return lines[i]
+
+
+def last_line(skey):
+    lines = TALK.get(skey, ())
+    return lines[-1] if lines else None
+
+
+def heard_everything():
+    """Every stack emptied. This is the door to the true ending: nine
+    people each tell you a ninth of it, and nothing else in the game
+    ever says it out loud."""
+    return all(not can_talk(k) for k in TALK)
+
+
+def hints_heard():
+    return sum(1 for k in TALK if not can_talk(k))
+
+
+def story_open(best=None):
+    """Both houses carried to the end of the ladder at least once.
+
+    `best` lets a screen ask about the record it is SHOWING rather than
+    the record on disk. They are the same slot in the running game, but
+    the title draws a save it was handed and the lock has to agree with
+    the numbers printed under it."""
+    best = best if best is not None else (load_save().get("best") or {})
+    return bool(best.get("won_keal")) and bool(best.get("won_ryez"))
+
+
+def story_locked_because(best=None):
+    best = best if best is not None else (load_save().get("best") or {})
+    need = [h for h in ("keal", "ryez") if not best.get("won_" + h)]
+    if not need:
+        return None
+    if len(need) == 2:
+        return "WIN A CAMPAIGN AS EACH COMPANY FIRST"
+    return "WIN A CAMPAIGN AS %s FIRST" % HOUSES[need[0]].name
 
 
 def stock_of(key):
@@ -2477,16 +2654,16 @@ CHASSIS_LIST = [
                   "head": 0.90, "arm": 0.86}),
     Chassis("f_dragoon", "KL-3 DRAGOON", None, "", "", foe=True,
             style={"head": "box", "build": "rack", "eye": "band"},
-            prop={"leg": 1.22, "legw": 0.72, "body": 0.90, "wide": 0.84,
+            prop={"leg": 1.00, "legw": 0.86, "body": 0.94, "wide": 1.02,
                   "head": 0.82, "arm": 0.96}),
     Chassis("f_bastion", "KL-7 BASTION", None, "", "", foe=True,
             style={"head": "slab", "shoulder": "box", "build": "wall"},
-            prop={"leg": 0.66, "legw": 1.58, "body": 0.86, "wide": 1.58,
+            prop={"leg": 0.80, "legw": 1.46, "body": 0.90, "wide": 1.30,
                   "head": 0.70, "arm": 1.16}),
     Chassis("f_harrier", "KL-9 HARRIER", None, "", "", foe=True,
             style={"head": "cyclops", "build": "skirmisher",
                    "eye": "cyclops"},
-            prop={"leg": 1.30, "legw": 0.66, "body": 0.88, "wide": 0.80,
+            prop={"leg": 1.30, "legw": 0.62, "body": 0.88, "wide": 0.70,
                   "head": 0.84, "arm": 1.10}),
     Chassis("f_matron", "KL-12 MATRON", None, "", "", foe=True,
             style={"head": "crown", "shoulder": "pauldron",
@@ -2502,6 +2679,19 @@ CHASSIS_LIST = [
             style={"head": "slab", "eye": "band", "build": "sprint"},
             prop={"leg": 0.96, "legw": 0.72, "body": 0.70, "wide": 0.92,
                   "head": 0.66, "arm": 1.06}),
+
+    Chassis("f_lance", "KL-6 LANCE", None, "", "", foe=True,
+            style={"head": "box", "eye": "band", "build": "longshot"},
+            prop={"leg": 1.54, "legw": 0.48, "body": 0.72, "wide": 0.52,
+                  "head": 0.78, "arm": 1.04}),
+    Chassis("f_redoubt", "KL-8 REDOUBT", None, "", "", foe=True,
+            style={"head": "slab", "shoulder": "box", "build": "bulwark"},
+            prop={"leg": 0.48, "legw": 1.90, "body": 1.06, "wide": 1.76,
+                  "head": 0.62, "arm": 1.02}),
+    Chassis("f_mite", "KL-2 MITE", None, "", "", foe=True,
+            style={"head": "box", "eye": "band"},
+            prop={"leg": 0.74, "legw": 0.96, "body": 0.62, "wide": 0.82,
+                  "head": 1.12, "arm": 0.78}),
 
     Chassis("robo", "LITTLE ROBO", "ch_robo",
             "Tin, a key in its back, and two feet that go one after the "
@@ -2638,6 +2828,84 @@ CATALOGUE = {
 CATALOGUE["r_arm"] = [
     Part("r_arm", p.tier, p.name, p.scrap, p.alloy, p.days, p.hp, p.blurb,
          **p.stats) for p in CATALOGUE["l_arm"]]
+
+
+
+# ---------------------------------------------------------------------------
+# THE FOURTH AND FIFTH RUNGS
+#
+# Ten weeks does not need them; a year does. Nothing in the ordinary
+# campaign can reach these - a socket has a CEILING and it starts at
+# three, and the only place that lifts one is a field post, which only
+# opens in story mode. That is what makes the long game long: the ladder
+# does not get taller by itself, you have to go and buy the rungs.
+# ---------------------------------------------------------------------------
+STORY_PARTS = {
+    "legs": [
+        Part("legs", 4, "GYRO STRIDERS", 1100, 4, 8, 780,
+             "It keeps its feet through things that put buildings down.",
+             speed=286, boost=1),
+        Part("legs", 5, "LONG WALKERS", 2000, 7, 10, 1120,
+             "Built for the whole coast. It arrives before the warning "
+             "does.", speed=344, boost=1),
+    ],
+    "torso": [
+        Part("torso", 4, "SPACED CORE", 1150, 5, 9, 1900,
+             "Three hulls with nothing between them, which is the point.",
+             ),
+        Part("torso", 5, "KEEL FRAME", 2100, 8, 11, 2900,
+             "A ship's spine with a machine built round it. Nothing "
+             "bends it.", ),
+    ],
+    "head": [
+        Part("head", 4, "DEEP SIGHT", 1000, 4, 7, 300,
+             "Sees the wind-up, the weight shift and which way it "
+             "intends to go.",
+             spread=0.12, warn=0.72, crit=0.30, dmg=1.22),
+        Part("head", 5, "ORACLE", 1900, 7, 9, 420,
+             "It is reading the fight two moves out and it is usually "
+             "right.",
+             spread=0.07, warn=0.88, crit=0.40, dmg=1.32),
+    ],
+    "l_arm": [
+        Part("l_arm", 4, "RAM ARM", 980, 4, 8, 640,
+             "Every joint in it is a cylinder waiting to be let go.",
+             cycle=0.58, melee=1.72),
+        Part("l_arm", 5, "TITAN ARM", 1850, 6, 10, 900,
+             "It does not swing so much as fall on things, on purpose.",
+             cycle=0.50, melee=2.05),
+    ],
+    "reactor": [
+        Part("reactor", 4, "TWIN HEART", 1050, 6, 8, 380,
+             "Two cores out of phase. One is always cold.",
+             heat=330, vent=42),
+        Part("reactor", 5, "SUN CELL", 2000, 9, 10, 520,
+             "The thing that runs it is the thing they were warned "
+             "about.", heat=440, vent=56),
+    ],
+    "armour": [
+        Part("armour", 4, "ABLATIVE WEAVE", 1050, 5, 8, 760,
+             "It comes off in sheets, which is what it is for.", dr=27),
+        Part("armour", 5, "DEEP PLATE", 1950, 8, 10, 1080,
+             "Off something that was never meant to be salvaged.",
+             dr=38),
+    ],
+}
+STORY_PARTS["r_arm"] = [
+    Part("r_arm", q.tier, q.name, q.scrap, q.alloy, q.days, q.hp, q.blurb,
+         **q.stats) for q in STORY_PARTS["l_arm"]]
+for _s, _rows in STORY_PARTS.items():
+    CATALOGUE[_s].extend(_rows)
+
+BASE_CEILING = 3                 # what an ordinary campaign can reach
+TOP_CEILING = 5
+
+
+def ceiling_of(run, socket):
+    """The highest rung this run may climb in this socket."""
+    if run is None or getattr(run, "mode", "landfall") != "story":
+        return BASE_CEILING
+    return int(run.ceiling.get(socket, BASE_CEILING))
 
 
 # ---------------------------------------------------------------------------
@@ -2888,6 +3156,25 @@ WEAPON_LIST = [
            170, 0.0, 40.0, 1150,
            "Goes through the first one and into whatever is behind it.",
            base="lance", pierce=1),
+
+    # -- THE DEEP YARD, and nowhere else -------------------------------------
+    # Three guns drawn for a year rather than a season. They are not the
+    # top of any family - they answer the three things the long campaign
+    # adds that the short one does not have: escorts on the road, a
+    # datasheet that braces, and ten free weeks to build something absurd.
+    Weapon("quiver", "VOLLEY QUIVER", "salvo", 820, 4, 7, 260,
+           38, 2.20, 46.0, 1600,
+           "Ten small ones at once. It is for the things that come with "
+           "it, not the thing itself.",
+           shots=10, splash=96, speed=900, stagger=0.06),
+    Weapon("breach", "BREACHING LANCE", "gun", 880, 4, 7, 250,
+           132, 1.05, 17.0, 1700,
+           "Through the plate, and then through what the plate was for.",
+           speed=2200, stagger=0.20, pierce=1, slow=0.30, slow_t=1.8),
+    Weapon("maul", "THE GREAT MAUL", "melee", 940, 5, 8, 320,
+           286, 2.05, 21.0, 330,
+           "It is not carried so much as arranged. Then it is dropped.",
+           stagger=0.62, knock=110.0, sweep=3),
 ]
 WEAPONS = {w.key: w for w in WEAPON_LIST}
 # families laid out for the shop: the base, then its refit
@@ -2913,8 +3200,49 @@ BLUEPRINT_MODULES = {"emp": "mod_emp", "aux": "mod_aux",
 # has no spare organ site, which of the grown bodies means hers.
 MODULE_NEEDS_SITE = ("greatsac",)
 
+# ---------------------------------------------------------------------------
+# THE YEAR'S GEAR
+#
+# Six things that do not exist in a ten-week campaign at all, and do not
+# exist in a long one either until a field post has sold you the plans.
+# `None` means both houses; a house key means only that one - the rack
+# has five rows and seventeen cards already fill them.
+#
+# They are bought out of the RUN, not out of marks, for the same reason
+# the ceilings are: on the road, everything competes with a part.
+# ---------------------------------------------------------------------------
+STORY_GUNS = {"quiver": None, "breach": None, "maul": None}
+# THE ARCHIVE went in as KEAL's, which measured badly rather than reading
+# badly: it is the only counter to the thing on the last day, and without
+# it a RYEZ year ends in a 78-second grind with nothing to bring to it.
+# It is also the wrong half of the story to make a company secret - Hauk
+# hands you the drawings in person on day 181. So both houses get the
+# drawings, and the bay each house does NOT share is the one about how it
+# is fed: a radio set on a hull, or a gut.
+STORY_MODULES = {"relay": "keal", "archive": None, "hunger": "ryez"}
+STORY_GEAR = dict(STORY_GUNS)
+STORY_GEAR.update(STORY_MODULES)
 
-def module_list(frame=None):
+
+def gear_house_ok(key):
+    """Whether this house is ever offered it at all."""
+    h = STORY_GEAR.get(key)
+    return h is None or h == CURRENT["house"]
+
+
+def gear_open(run, key):
+    """Bought, from the post that sells it."""
+    return key in getattr(run, "opened", ())
+
+
+def story_gear_for(run, table):
+    """What this run could still be sold off `table`, in order."""
+    if not post_open(run):
+        return []
+    return [k for k in table if gear_house_ok(k) and not gear_open(run, k)]
+
+
+def module_list(frame=None, run=None):
     """The rack, minus anything nobody has drawn for you yet. `has_ware`
     and not `bought`, so a bay full of KEAL electronics is simply not
     offered to a house that grows its soldiers.
@@ -2926,9 +3254,18 @@ def module_list(frame=None):
     nothing. That is the same mistake as hiding a shop counter, and it
     has now been made three times in this file. The card stays, greyed,
     and `module_why` says what is missing."""
-    return [m for m in MODULE_LIST
-            if m.key not in BLUEPRINT_MODULES
-            or has_ware(BLUEPRINT_MODULES[m.key])]
+    out = []
+    for m in MODULE_LIST:
+        ware = BLUEPRINT_MODULES.get(m.key)
+        if ware is not None and not has_ware(ware):
+            continue
+        # the year's bays are not in a ten-week rack at all, and the
+        # other house's is never in yours
+        if m.key in STORY_MODULES and not (post_open(run)
+                                           and gear_house_ok(m.key)):
+            continue
+        out.append(m)
+    return out
 
 
 def locked_modules():
@@ -2938,6 +3275,8 @@ def locked_modules():
     something that does not exist for them."""
     n = 0
     for m in MODULE_LIST:
+        if m.key in STORY_MODULES:
+            continue            # the Hendras do not sell the year's
         ware = BLUEPRINT_MODULES.get(m.key)
         if ware is None or has_ware(ware):
             continue
@@ -2947,19 +3286,26 @@ def locked_modules():
     return n
 
 
-def module_fits(mod, frame):
+def module_fits(mod, frame, run=None):
     """Can this frame actually carry it? A TITAN TANK has two spare
     mounts as well and it is a machine - there is nothing in it for a
     sac to grow in."""
+    if mod.key in STORY_MODULES and not gear_open(run, mod.key):
+        return False
     if mod.key not in MODULE_NEEDS_SITE:
         return True
     frame = frame or CHASSIS["standard"]
     return bool("l_aux" in frame.sockets and (frame.style or {}).get("beast"))
 
 
-def module_why(mod, frame):
+def module_why(mod, frame, run=None):
     """Why it is greyed out, in the words of the house looking at it."""
-    if module_fits(mod, frame):
+    if mod.key in STORY_MODULES and not gear_open(run, mod.key):
+        # the card stays on the rack and says where the plans are. The
+        # alternative - hiding it until it is bought - is the mistake
+        # this file has now made three times.
+        return "THE DEEP YARD SELLS THE PLANS"
+    if module_fits(mod, frame, run):
         return None
     return "NEEDS A SPARE %s" % sock_label("l_wpn").split()[-1]
 
@@ -2987,7 +3333,7 @@ def part_of(socket, fit):
 AUX_GUNS = ("auxpod", "auxflare")    # what will fit on a small mount
 
 
-def options_for(socket, fit, frame=None):
+def options_for(socket, fit, frame=None, cap=None, opened=()):
     """What the yard could put in this socket next, given what is in it.
 
     A body socket offers only the tier above what it holds. A hardpoint
@@ -3027,10 +3373,14 @@ def options_for(socket, fit, frame=None):
         for key, ware in BLUEPRINT_WEAPONS.items():
             if fit != key and has_ware(ware):
                 out.append(WEAPONS[key])
+        for key in STORY_GUNS:
+            if fit != key and key in opened:
+                out.append(WEAPONS[key])
         return out
     table = CATALOGUE.get(socket, ())
     nxt = (fit or 0) + 1
-    return [table[nxt - 1]] if nxt <= len(table) else []
+    top = len(table) if cap is None else min(len(table), cap)
+    return [table[nxt - 1]] if nxt <= top else []
 
 
 
@@ -3135,6 +3485,25 @@ MODULE_LIST = [
     Module("spotter", "SPOTTER DRONE", 320, 1, 4,
            "sensors and wind-up warning with no head at all",
            "It sits above the fight and tells you what is coming."),
+    # -- THE DEEP YARD -------------------------------------------------------
+    # Three bays for a year. Only two of them are ever in one rack: the
+    # ARCHIVE is a thing a company with a drawing office does with a
+    # stolen drawing, and DEEP HUNGER is a thing an animal does with a
+    # corpse, and neither house can do the other's. That is not squeamish-
+    # ness about flavour, it is the rack's row budget - seventeen cards
+    # is five rows at four across and there is no sixth row in the
+    # overlay.
+    Module("relay", "FIELD RELAY", 620, 3, 5,
+           "everything on the road is a quarter off",
+           "A set on the hull that talks to the convoy before you get "
+           "there."),
+    Module("archive", "THE ARCHIVE", 700, 4, 6,
+           "nothing steps aside from you, and plates up do half the good",
+           "Their own drawings, in a rack behind the seat. You know "
+           "where the seams are."),
+    Module("hunger", "DEEP HUNGER", 700, 4, 6,
+           "a body eaten mends it whole, and pays 35% and 2 genome more",
+           "It does not stop when the thing stops moving."),
 ]
 MODULES = {m.key: m for m in MODULE_LIST}
 # the ones you press, and on what
@@ -3564,8 +3933,13 @@ class Mech:
         weapon is not a mech, it is a statue, and the game says so."""
         return self.alive("legs") and self.armed
 
-    def completion(self):
+    def completion(self, caps=None):
         """How much of the great work is done, 0..1, by value not by count.
+
+        `caps` is how high each socket is allowed to go. It matters now
+        that the catalogue runs to five: measured against the whole
+        table, an ordinary ten-week campaign could never reach 100% and
+        the brief would call a finished machine two-thirds built.
 
         Measured against THIS frame rather than the stock nine, or a TITAN
         TURRET could never finish (no legs to fit) and a TITAN TANK would
@@ -3592,8 +3966,10 @@ class Mech:
                                        if w.base else 0)
             else:
                 table = CATALOGUE.get(s, ())
+                top = (caps or {}).get(s, BASE_CEILING)
+                table = table[:max(1, top)]
                 worth += sum(p.scrap for p in table) or 1.0
-                fitted = self.fit[s] or 0
+                fitted = min(self.fit[s] or 0, len(table))
                 have += sum(p.scrap for p in table[:fitted])
         return clamp(have / max(1.0, worth), 0.0, 1.0)
 
@@ -3833,24 +4209,49 @@ def mirror(pts):
 # Each returns [(points, tone)] where tone names a shade, not a colour, so
 # one part can be drawn in steel, in rust or in ghost grey without the
 # shape knowing anything about it.
+def five(a, b, c):
+    """A three-rung shape table, continued to five.
+
+    Every proportion in this file was written as a 1-2-3 tuple indexed
+    by `tier - 1`. That was true for as long as a socket stopped at
+    three. The long campaign puts rungs four and five on the same
+    sockets, and twenty-four of these tuples would have thrown
+    IndexError the moment anybody finished one - the fourth and fifth
+    rungs of the whole game could not be DRAWN.
+
+    The two new rungs carry on the run the first three describe: the
+    step from two to three, taken again and opened out a little, which
+    is what the parts themselves do. Nested tuples are continued
+    component by component, so `leg_geom` and `bio_hand` keep their
+    shape."""
+    if isinstance(a, tuple):
+        cols = [five(*v) for v in zip(a, b, c)]
+        return tuple(zip(*cols))
+    d = c + (c - b) * 1.25
+    e = d + (d - c) * 1.15
+    whole = all(isinstance(v, int) for v in (a, b, c))
+    return (a, b, c, int(round(d)), int(round(e))) if whole else (a, b, c,
+                                                                  d, e)
+
+
 def shape_legs(tier):
-    hip_x = (30, 34, 40)[tier - 1]
-    tw = (11, 15, 17)[tier - 1]
-    sw = (10, 13, 14)[tier - 1]
-    fw = (22, 26, 30)[tier - 1]
-    knee = (-118, -122, -130)[tier - 1]
+    hip_x = five(30, 34, 40)[tier - 1]
+    tw = five(11, 15, 17)[tier - 1]
+    sw = five(10, 13, 14)[tier - 1]
+    fw = five(22, 26, 30)[tier - 1]
+    knee = five(-118, -122, -130)[tier - 1]
     out = []
     for sgn in (-1, 1):
         cx = hip_x * sgn
         thigh = [(cx - tw, -198), (cx + tw, -198), (cx + tw - 2, knee),
                  (cx - tw + 2, knee)]
         shin = [(cx - sw, knee + 4), (cx + sw, knee + 4),
-                (cx + sw + (4 if tier == 3 else 0), -42),
-                (cx - sw - (4 if tier == 3 else 0), -42)]
+                (cx + sw + (4 if tier >= 3 else 0), -42),
+                (cx - sw - (4 if tier >= 3 else 0), -42)]
         foot = [(cx - fw, -40), (cx + fw, -40), (cx + fw - 3, -6),
                 (cx - fw + 3, -6)]
         out += [(thigh, "main"), (shin, "main"), (foot, "dark")]
-        kr = (9, 11, 13)[tier - 1]              # the knee, as an octagon
+        kr = five(9, 11, 13)[tier - 1]              # the knee, as an octagon
         out.append(([(cx + math.cos(a) * kr, knee + 2 + math.sin(a) * kr)
                      for a in (i * TAU / 8 for i in range(8))], "dark"))
         if tier >= 2:                         # a piston up the outside
@@ -3858,7 +4259,7 @@ def shape_legs(tier):
                          (cx + sgn * (tw + 6), -190),
                          (cx + sgn * (sw + 6), knee + 10),
                          (cx + sgn * (sw + 2), knee + 10)], "light"))
-        if tier == 3:                         # calf blocks, a wider stance
+        if tier >= 3:                         # calf blocks, a wider stance
             out.append(([(cx - sw - 7, knee - 6), (cx + sw + 7, knee - 6),
                          (cx + sw + 7, -78), (cx - sw - 7, -78)], "dark"))
     if tier >= 2:                             # the hip yoke ties them together
@@ -3878,7 +4279,7 @@ def shape_torso(tier):
     out.append(([(-sh + 10, -326), (sh - 10, -326), (sh - 18, -292),
                  (-sh + 18, -292)], "light"))          # collar
     out.append(([(-30, -236), (30, -236), (26, -206), (-26, -206)], "dark"))
-    if tier == 3:                             # outer yokes, a wider outline
+    if tier >= 3:                             # outer yokes, a wider outline
         for sgn in (-1, 1):
             out.append(([(sgn * (sh - 4), -338), (sgn * (sh + 16), -326),
                          (sgn * (sh + 12), -286), (sgn * (sh - 6), -282)],
@@ -3901,9 +4302,9 @@ def shape_head(tier):
 
 def shape_arm(tier, side):
     sgn = -1 if side == "l" else 1
-    w = (9, 12, 15)[tier - 1]
-    sx = (66, 76, 88)[tier - 1] * sgn
-    ex = (74, 86, 98)[tier - 1] * sgn
+    w = five(9, 12, 15)[tier - 1]
+    sx = five(66, 76, 88)[tier - 1] * sgn
+    ex = five(74, 86, 98)[tier - 1] * sgn
     out = [([(sx - w * sgn, -326), (sx + w * sgn, -326),
              (ex + w * sgn, -258), (ex - w * sgn, -258)], "main"),
            ([(ex - w * sgn, -252), (ex + w * sgn, -252),
@@ -3912,7 +4313,7 @@ def shape_arm(tier, side):
         out.insert(0, ([(sx - 18 * sgn, -344), (sx + 20 * sgn, -336),
                         (sx + 18 * sgn, -306), (sx - 16 * sgn, -312)],
                        "dark"))
-    if tier == 3:                             # a forearm that means it
+    if tier >= 3:                             # a forearm that means it
         out.append(([(ex - (w + 6) * sgn, -238), (ex + (w + 6) * sgn, -238),
                      (ex + (w + 5) * sgn, -196), (ex - (w + 5) * sgn, -196)],
                     "light"))
@@ -3922,7 +4323,7 @@ def shape_arm(tier, side):
 def arm_hand(tier, side):
     """Where a weapon hangs. The shop and the fight both ask for this."""
     sgn = -1 if side == "l" else 1
-    return ((74, 86, 98)[tier - 1] * sgn, -186)
+    return (five(74, 86, 98)[tier - 1] * sgn, -186)
 
 
 def shape_armour(tier):
@@ -3939,7 +4340,7 @@ def shape_armour(tier):
         for sgn in (-1, 1):
             out.append(([(sgn * 26, -208), (sgn * 47, -202), (sgn * 43, -152),
                          (sgn * 26, -158)], "plate"))    # thigh guards
-    if tier == 3:
+    if tier >= 3:
         for sgn in (-1, 1):
             out.append(([(sgn * 56, -340), (sgn * 94, -322), (sgn * 88, -286),
                          (sgn * 54, -296)], "plate"))    # shoulder caps
@@ -4136,7 +4537,7 @@ def part_shape(socket, fit, arm_tier=1, strain=None):
     if socket in AUX_SOCKETS:
         return shape_aux(fit, "l" if socket == "l_aux" else "r")
     if socket == "reactor":
-        r = (11, 15, 19)[fit - 1]
+        r = five(11, 15, 19)[fit - 1]
         if bio:                              # a heart, deep in the trunk
             hx, hy = HEART_AT
             return [([(hx - r * 1.15 * math.cos(a),
@@ -4179,11 +4580,11 @@ def frame_build_side(rig, mech, t, lean, hip_y, main, dark, light, trim,
     if not build:
         return
     tt = mech.fit["torso"] or 1
-    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
+    body_top = -336 if tt >= 3 else (-330 if tt == 2 else -324)
     sh_y = body_top + 46
     waist = -hip_y - 46
-    front = 34 + (6 if tt == 3 else 0)
-    back = -34 - (6 if tt == 3 else 0)
+    front = 34 + (6 if tt >= 3 else 0)
+    back = -34 - (6 if tt >= 3 else 0)
 
     if build == "blade":
         # THIN AND SHARP. A wasp waist, fins off every trailing edge and
@@ -4315,6 +4716,40 @@ def frame_build_side(rig, mech, t, lean, hip_y, main, dark, light, trim,
                     2.2, shade(dark, 1.3))
         rig.bar((lean + back + 2, sh_y + 10), (lean + front - 6, waist + 14),
                 2.4, shade(dark, 1.25))
+
+    elif build == "longshot":
+        # IT NEVER GETS ANY CLOSER. A barrel longer than the body it is
+        # bolted to, braced on a strut, and a dish looking past you.
+        bx = lean + front - 4
+        rig.bar((bx, sh_y + 10), (bx + 96, sh_y - 2), 5.0,
+                shade(light, 0.92))
+        rig.bar((bx + 40, sh_y + 6), (bx + 34, sh_y + 40), 2.6,
+                shade(dark, 1.3))
+        rig.poly([(bx + 86, sh_y - 8), (bx + 100, sh_y - 4),
+                  (bx + 86, sh_y + 4)], shade(main, 1.05))
+        dx_ = lean + back - 4
+        rig.poly([(dx_ - 18, sh_y - 22), (dx_ + 2, sh_y - 30),
+                  (dx_ + 6, sh_y - 6), (dx_ - 14, sh_y + 2)],
+                 shade(main, 0.92))
+        rig.circle((dx_ - 6, sh_y - 14), 4.0, shade(trim, 0.9))
+
+    elif build == "bulwark":
+        # A DOOR WITH LEGS. One slab the full height of it with a slit
+        # to see through, and nothing else worth drawing.
+        slab = [(lean + front - 10, sh_y - 30), (lean + front + 28, sh_y - 20),
+                (lean + front + 32, waist + 40), (lean + front - 8, waist + 32)]
+        rig.poly(slab, shade(main, 1.06))
+        rig.poly(slab, shade(dark, 1.25), 3)
+        rig.poly([(lean + front + 2, sh_y - 8), (lean + front + 28, sh_y - 2),
+                  (lean + front + 28, sh_y + 6), (lean + front + 2, sh_y)],
+                 (14, 16, 22))
+        rig.poly([(lean + front + 4, sh_y - 5), (lean + front + 26, sh_y),
+                  (lean + front + 26, sh_y + 3), (lean + front + 4, sh_y - 2)],
+                 shade(trim, 0.9))
+        for i in range(3):
+            y0 = waist - 26 + i * 22
+            rig.bar((lean + front - 6, y0), (lean + front + 28, y0 + 6),
+                    2.2, shade(dark, 1.35))
 
     elif build == "sprint":
         # SENT IN THREES. Crouched forward over its own toes, shin
@@ -4907,7 +5342,7 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
     # the core light, which is the only thing on the machine that is alive
     if mech.alive("reactor") and lit:
         tier = mech.fit["reactor"]
-        r = (11, 15, 19)[tier - 1]
+        r = five(11, 15, 19)[tier - 1]
         bio = CURRENT["house"] == "ryez"
         beat = abs(math.sin(t * 2.6)) ** 3.0
         pulse = (0.80 + 0.45 * beat) if bio else (0.86 + 0.14 * math.sin(t * 2.2))
@@ -4919,7 +5354,7 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
         rig.light((CX, CY), r * 1.1 * pulse, CORE_C, 34)
     if mech.alive("head") and lit and not strain_hides(mech, "head"):
         tier = mech.fit["head"]
-        eye = (-356, -366, -370)[tier - 1]
+        eye = five(-356, -366, -370)[tier - 1]
         if grown:                          # an eye on the side of a skull
             e, hs = head_eye(tier)
             rig.circle((e.x, e.y), hs * 0.20, (250, 232, 140))
@@ -5021,9 +5456,9 @@ LEG_PLAN = {"hollow":  (1.18, 1.22, 0.58, 0.34, 1.20),   # long, thin, splayed
 
 def leg_geom(tier, plan=None):
     """(upper, lower, width, splay) for one leg of this tier."""
-    up, low, w, splay = ((72.0, 96.0, 9.0, 0.40),
-                         (84.0, 108.0, 12.0, 0.46),
-                         (98.0, 122.0, 14.0, 0.54))[tier - 1]
+    up, low, w, splay = five((72.0, 96.0, 9.0, 0.40),
+                             (84.0, 108.0, 12.0, 0.46),
+                             (98.0, 122.0, 14.0, 0.54))[tier - 1]
     p = LEG_PLAN.get(plan)
     if p:
         up, low, w, splay = up * p[0], low * p[1], w * p[2], splay + p[3]
@@ -5086,7 +5521,7 @@ def bio_tail(tier, wag=0.0):
     vertebrae hanging off the back of it."""
     cy = (TRUNK_TOP + TRUNK_BELLY) * 0.5
     ry = (TRUNK_BELLY - TRUNK_TOP) * 0.5
-    grow = (0.86, 1.0, 1.12)[tier - 1]
+    grow = five(0.86, 1.0, 1.12)[tier - 1]
     out = []
     seg = 6
     prev = Vector2(TRUNK_BACK + 8, cy + 6)
@@ -5106,7 +5541,7 @@ def bio_trunk(tier):
     cy = (TRUNK_TOP + TRUNK_BELLY) * 0.5
     rx = (TRUNK_FRONT - TRUNK_BACK) * 0.5
     ry = (TRUNK_BELLY - TRUNK_TOP) * 0.5
-    grow = (0.86, 1.0, 1.12)[tier - 1]
+    grow = five(0.86, 1.0, 1.12)[tier - 1]
     body = _blob(cx, cy, rx * grow, ry * grow, 18, 0.10, 1.4)
     if tier == 1:                              # ribs, and you can see through
         return [(body, "hollow")]
@@ -5116,7 +5551,7 @@ def bio_trunk(tier):
         x = lerp(TRUNK_BACK, TRUNK_FRONT, f)
         h = ry * grow * (0.62 - abs(f - 0.5) * 0.4)
         out.append((_blob(x, cy + 8, 13, h, 10, 0.12, x), "dark"))
-    if tier == 3:                              # a heavier shoulder mass
+    if tier >= 3:                              # a heavier shoulder mass
         out.append((_blob(TRUNK_FRONT - 30, cy - 6, 28, ry * 0.62, 12, 0.12,
                           3.0), "dark"))
     return out
@@ -5142,14 +5577,14 @@ NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
 def neck_head(tier, rear=0.0, plan=None):
     """The neck as a chain and the skull on the end. `rear` lifts it, which
     is what a wind-up looks like on an animal."""
-    reach = (50.0, 60.0, 70.0)[tier - 1]
-    rise = (-0.42, -0.50, -0.56)[tier - 1] - rear * 0.5
+    reach = five(50.0, 60.0, 70.0)[tier - 1]
+    rise = five(-0.42, -0.50, -0.56)[tier - 1] - rear * 0.5
     p = NECK_PLAN.get(plan)
     if p:
         reach, rise = reach * p[0], rise + p[1]
     root = Vector2(*NECK_ROOT)
     tip = root + Vector2(math.cos(rise), math.sin(rise)) * reach
-    return root, tip, (27.0, 33.0, 39.0)[tier - 1]
+    return root, tip, five(27.0, 33.0, 39.0)[tier - 1]
 
 
 def bio_head(tier, rear=0.0):
@@ -5186,7 +5621,7 @@ def bio_head(tier, rear=0.0):
             b = hc + nrm * hs * 0.6 * k - d * hs * 0.25
             out.append(([_t(b), _t(b + nrm * hs * 1.5 * k - d * hs * 0.7),
                          _t(b + nrm * hs * 0.5 * k + d * hs * 0.2)], "dark"))
-    if tier == 3:                              # a crest down the skull
+    if tier >= 3:                              # a crest down the skull
         b = hc - d * hs * 0.5
         out.append(([_t(b + nrm * hs * 0.8),
                      _t(b + nrm * hs * 2.0 - d * hs * 0.1),
@@ -5204,7 +5639,7 @@ def head_eye(tier, rear=0.0):
 def bio_hand(tier, side, reach=0.0):
     """The tip of a forelimb, where an organ grows. `reach` throws it
     forward, which is what a strike looks like on something with claws."""
-    up, low = ((52.0, 46.0), (62.0, 54.0), (74.0, 64.0))[tier - 1]
+    up, low = five((52.0, 46.0), (62.0, 54.0), (74.0, 64.0))[tier - 1]
     dx = -12.0 if side == "l" else 10.0
     root = Vector2(TRUNK_FRONT - 18 + dx, TRUNK_BELLY - 34)
     a = math.sin(clamp(reach, 0.0, 1.0) * math.pi)
@@ -5218,7 +5653,7 @@ def bio_hand(tier, side, reach=0.0):
 def bio_arm_posed(tier, side, reach=0.0):
     """The forelimb, optionally thrown forward into a strike."""
     root, elb, hand = bio_hand(tier, side, reach)
-    w = (8.0, 11.0, 14.0)[tier - 1]
+    w = five(8.0, 11.0, 14.0)[tier - 1]
     sh = "dark" if side == "l" else "main"
     out = [(_taper(root.x, root.y, elb.x, elb.y, w, w * 0.82, w * 0.3), sh),
            (_taper(elb.x, elb.y, hand.x, hand.y, w * 0.8, w * 0.5,
@@ -5227,7 +5662,7 @@ def bio_arm_posed(tier, side, reach=0.0):
     if tier >= 2:
         out.insert(0, (_blob(root.x, root.y - 4, w * 2.2, w * 1.6, 11, 0.12,
                              2.0), "dark"))
-    if tier == 3:
+    if tier >= 3:
         out.append((_blob((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5,
                           w * 1.5, w * 1.1, 10, 0.1, 5.0), "light"))
     return out
@@ -5235,7 +5670,7 @@ def bio_arm_posed(tier, side, reach=0.0):
 
 def bio_arm(tier, side):
     root, elb, hand = bio_hand(tier, side)
-    w = (8.0, 11.0, 14.0)[tier - 1]
+    w = five(8.0, 11.0, 14.0)[tier - 1]
     sh = "dark" if side == "l" else "main"
     out = [(_taper(root.x, root.y, elb.x, elb.y, w, w * 0.82, w * 0.3), sh),
            (_taper(elb.x, elb.y, hand.x, hand.y, w * 0.8, w * 0.5,
@@ -5244,7 +5679,7 @@ def bio_arm(tier, side):
     if tier >= 2:
         out.insert(0, (_blob(root.x, root.y - 4, w * 2.2, w * 1.6, 11, 0.12,
                              2.0), "dark"))
-    if tier == 3:
+    if tier >= 3:
         out.append((_blob((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5,
                           w * 1.5, w * 1.1, 10, 0.1, 5.0), "light"))
     return out
@@ -5267,7 +5702,7 @@ def bio_armour(tier):
             out.append(([(x - 19, -178), (x + 5, -184), (x + 20, -168),
                          (x + 13, -138), (x - 8, -134), (x - 20, -152)],
                         "plate"))
-    if tier == 3:                              # a sail, and a tail club
+    if tier >= 3:                              # a sail, and a tail club
         for i in range(5):                     # a ridge of spines, not a dome
             f = i / 4.0
             x = lerp(TRUNK_BACK + 16, TRUNK_FRONT - 36, f)
@@ -6029,7 +6464,7 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
         rig.zone = "body"
     if mech.fit["reactor"] is not None:
         rt = mech.fit["reactor"]
-        rr = (11, 15, 19)[rt - 1]
+        rr = five(11, 15, 19)[rt - 1]
         alive = mech.alive("reactor")
         heat = mech.heat_frac
         c = HEART if alive else (70, 62, 66)
@@ -6160,10 +6595,17 @@ class Side:
         blit_glow(self.surf, self.p(*c), r * self.s, colour, strength)
 
 
-# joint heights, by leg tier
+# joint heights, by leg tier. Rungs four and five only exist in the long
+# campaign - and they were MISSING here for a while, so the first player
+# to finish a set of GYRO STRIDERS would have taken a KeyError into the
+# gantry. Every `tier == 3` in the drawing code was the same bug wearing
+# a quieter coat: the best legs in the game drew as the second-best ones,
+# with no calf blocks and no shin guard.
 LEG_GEOM = {1: (196, 78, 76, 8, 9, 20),
             2: (204, 82, 80, 11, 12, 25),
-            3: (216, 88, 86, 13, 14, 30)}
+            3: (216, 88, 86, 13, 14, 30),
+            4: (230, 96, 94, 16, 17, 36),
+            5: (248, 106, 103, 19, 20, 43)}
 #            hip  thigh shin  w1  w2  foot
 
 
@@ -6341,8 +6783,8 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
     # -- torso -------------------------------------------------------------
     rig.zone = "body"
     tt = mech.fit["torso"] or 1
-    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
-    back = -34 - (6 if tt == 3 else 0)
+    body_top = -336 if tt >= 3 else (-330 if tt == 2 else -324)
+    back = -34 - (6 if tt >= 3 else 0)
     front = 30 + (8 if tt >= 2 else 0)
     body = [(back + lean, -hip_y + 4), (front + lean, -hip_y - 2),
             (front + 6 + lean * 1.4, body_top + 40),
@@ -6389,7 +6831,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
             rig.poly([(back - 6, -hip_y - 54), (back + 12, -hip_y - 58),
                       (back + 8, -hip_y - 6), (back - 10, -hip_y - 2)],
                      shade(ac, 0.84))
-        if at == 3:
+        if at >= 3:
             rig.poly([(back + 2, body_top + 6), (front + 4, body_top + 2),
                       (front + 2, body_top + 22), (back, body_top + 26)],
                      shade(ac, 1.1))
@@ -6399,8 +6841,8 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
     if mech.fit["head"] is not None:
         ht = mech.fit["head"]
         hc = tone("head", "main")
-        hw = (17, 21, 23)[ht - 1]
-        hh = (30, 40, 46)[ht - 1]
+        hw = five(17, 21, 23)[ht - 1]
+        hh = five(30, 40, 46)[ht - 1]
         hx = front - 12 + lean * 1.8
         hy = body_top
         rig.poly([(hx - hw, hy), (hx + hw, hy - 2),
@@ -6408,7 +6850,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
         rig.poly([(hx - hw, hy), (hx + hw, hy - 2),
                   (hx + hw - 3, hy - hh), (hx - hw + 2, hy - hh + 2)],
                  shade(hc, 0.6), 1)
-        if ht == 3:
+        if ht >= 3:
             rig.poly([(hx - hw - 2, hy - hh + 4), (hx - hw - 16, hy - hh - 12),
                       (hx - hw - 4, hy - hh - 2)], shade(hc, 0.72))
         if mech.alive("head"):
@@ -6426,7 +6868,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
     # -- reactor -----------------------------------------------------------
     if mech.fit["reactor"] is not None:
         rt = mech.fit["reactor"]
-        rr = (9, 12, 15)[rt - 1]
+        rr = five(9, 12, 15)[rt - 1]
         rx, ry = back + 22 + lean, body_top + 58
         alive = mech.alive("reactor")
         col = (HEART if bio else CORE) if alive else (70, 70, 78)
@@ -6452,7 +6894,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
         if at is None:
             continue
         ac = shade(tone(asock, "main"), depth)
-        w = (8, 11, 13)[at - 1]
+        w = five(8, 11, 13)[at - 1]
         # the far arm sits back and low, or the two of them read as one
         near = side == "r"
         sh = Vector2(back + (22 if near else 8) + lean * 1.3,
@@ -6584,7 +7026,7 @@ def chassis_overlay(rig, mech, t, lean, hip_y, limbs=None, stance=None):
     light = tones.get("light", (198, 204, 216))
     trim = tones.get("trim", (220, 160, 90))
     tt = mech.fit["torso"] or 1
-    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
+    body_top = -336 if tt >= 3 else (-330 if tt == 2 else -324)
     hy = body_top - 4 + lean * 1.6          # roughly where a head sits
     sh_y = body_top + 46                    # and where the shoulders are
     frame_build_side(rig, mech, t, lean, hip_y, main, dark, light, trim,
@@ -6765,8 +7207,8 @@ def weapon_muzzle(mech, pose, side, sx, gy, scale):
     if at is None or wpn is None:
         return None, Vector2(pose.face, 0)
     tt = mech.fit["torso"] or 1
-    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
-    back = -34 - (6 if tt == 3 else 0)
+    body_top = -336 if tt >= 3 else (-330 if tt == 2 else -324)
+    back = -34 - (6 if tt >= 3 else 0)
     near = side == "r"
     sh = Vector2(back + (22 if near else 8) + pose.lean * 1.3,
                  body_top + (24 if near else 34))
@@ -6791,8 +7233,8 @@ def aux_at(mech, side, lean=0.0):
     drawn nowhere in either renderer or in the gantry. The TITAN TURRET
     is sold on having two of these."""
     tt = mech.fit["torso"] or 1
-    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
-    back = -34 - (6 if tt == 3 else 0)
+    body_top = -336 if tt >= 3 else (-330 if tt == 2 else -324)
+    back = -34 - (6 if tt >= 3 else 0)
     near = side == "ra"
     return Vector2(back + (2 if near else -18) + lean * 1.1,
                    body_top + (-6 if near else -16))
@@ -6998,14 +7440,15 @@ def draw_weapon_side(rig, w, hand, d, colour, pose, side):
 # passes every test that only asks whether something was drawn.
 # ---------------------------------------------------------------------------
 POISE = {"spitter": 1.1, "bulwark": 1.7, "strider": 1.25, "brood": 1.8,
-         "leviathan": 2.6, "cathedral": 2.9, "hound": 0.72}
+         "leviathan": 2.6, "cathedral": 2.9, "hound": 0.72,
+         "lancer": 0.80, "tick": 0.45, "anvil": 2.2}
 
 
 class Kind:
     __slots__ = ("key", "name", "title", "hide", "dark", "scale", "hp",
                  "speed", "dr", "attacks", "scrap", "alloy", "wreck",
                  "rampage", "body", "note", "poise", "family", "build",
-                 "rig", "minion")
+                 "rig", "minion", "smart")
 
     def __init__(self, key, name, title, hide, scale, hp, speed, dr,
                  attacks, scrap, alloy, wreck, rampage, body, note):
@@ -7030,6 +7473,7 @@ class Kind:
         self.build = None           # the loadout a KEAL model is drawn from
         self.rig = None             # and the Mech built out of it
         self.minion = None          # what its spawn attack puts down
+        self.smart = False          # it braces, and it is not always there
 
 
 def atk(kind, reach, windup, dmg, cool, **kw):
@@ -7123,6 +7567,34 @@ BESTIARY = [
          (58, 24, -104, 2, 108, 34, -0.30, 18, 1, 0, 96, 0, 0),
          "Quick, low and not worth a shell on its own. That is the "
          "arithmetic it is counting on."),
+    # More ESCORT STOCK. The HOUND was the only thing the escort table
+    # had to reach for, so every landfall from the fourth on was the
+    # boss plus the same fast body - which is a difficulty setting, not
+    # a different fight. These three do jobs the HOUND does not: one
+    # stands off and shoots, one is a wall you have to go round, and
+    # one comes in a handful and chews.
+    Kind("lancer", "LANCER", "it never gets any closer", (118, 158, 134),
+         0.80, 2200, 66, 2,
+         [atk("spit", 1100, 1.05, 46, 3.6, speed=600, arc=1),
+          atk("swipe", 210, 0.60, 30, 2.4)],
+         420, 2, 1.8, 11,
+         (54, 24, -236, 1, 248, 104, -0.82, 21, 2, 0, 118, 0, 0),
+         "Stilts and a throat. It will stand at the far end of the "
+         "street all night if you let it."),
+    Kind("anvil", "ANVIL", "you will have to go round it", (108, 112, 120),
+         0.92, 4200, 32, 6,
+         [atk("slam", 300, 1.15, 122, 3.4, shake=1, lunge=1)],
+         600, 3, 2.6, 15,
+         (98, 58, -80, 3, 74, 10, -0.05, 31, 0, 2, 38, 0, 0),
+         "It is not quick and it does not have to be. Whatever it is "
+         "standing in front of, you are not getting to it."),
+    Kind("tick", "TICK", "there are more of them", (166, 142, 78),
+         0.42, 520, 168, 0,
+         [atk("swipe", 180, 0.34, 21, 1.1, lunge=1)],
+         140, 0, 0.9, 5,
+         (38, 17, -58, 3, 56, 15, -0.15, 13, 1, 0, 38, 0, 0),
+         "One is nothing. The arithmetic only works out for them at "
+         "four."),
 ]
 KINDS = {k.key: k for k in BESTIARY}
 
@@ -7449,6 +7921,21 @@ KEAL_ROSTER = [
              {"legs": 2, "torso": 1, "head": 1, "r_arm": 1, "r_wpn": "fist"},
              "Cheap, quick and sent in threes. Shooting one is a fair "
              "trade for whoever signed the order."),
+    _machine(BESTIARY[8], "lance", "KL-6 LANCE",
+             "it never gets any closer", (128, 150, 128), 0.82,
+             {"legs": 3, "torso": 1, "head": 2, "r_arm": 2,
+              "r_wpn": "revolver"},
+             "Long legs, a long barrel and a spotter two streets back. "
+             "It has no intention of being in the fight."),
+    _machine(BESTIARY[9], "redoubt", "KL-8 REDOUBT",
+             "you will have to go round it", (118, 122, 132), 0.94,
+             {"legs": 1, "torso": 3, "head": 1, "armour": 3, "l_arm": 3,
+              "l_wpn": "pile", "r_arm": 3, "r_wpn": "pile"},
+             "A door with legs. They park it in the gap and go home."),
+    _machine(BESTIARY[10], "mite", "KL-2 MITE",
+             "there are more of them", (172, 156, 96), 0.44,
+             {"legs": 2, "torso": 1, "r_arm": 1, "r_wpn": "fist"},
+             "Built by the gross. The paint costs more than the frame."),
 ]
 KEAL_KINDS = {k.key: k for k in KEAL_ROSTER}
 
@@ -7470,6 +7957,72 @@ ROSTERS = {"bio": BESTIARY, "mech": KEAL_ROSTER}
 def roster_for(house_key):
     """Whatever the OTHER company makes."""
     return ROSTERS[HOUSES.get(house_key, HOUSES["keal"]).roster]
+
+
+# Measured over four auto-played years a side. At 14000 and dr 12 the
+# last landfall of a 365-day campaign was the EASIEST of its last six -
+# 100% in eight runs, and faster than the LEVIATHAN before it. A year of
+# ceilings and a GREAT MAUL walk through a datasheet written for a
+# ten-week machine. See `gw_test.py story`.
+MIRROR_HP = 26000.0
+MIRROR_DR = 18
+# What "it does everything you can" is made of. A player braces to take
+# a third, and a PALE STALKER is simply not where the blow lands; the
+# thing built out of a year of watching you does both.
+SMART_DODGE = 0.16               # ...and it was not there
+SMART_GUARD = 0.42               # what a brace leaves of a hit
+SMART_GUARD_EVERY = 5.0          # how often it puts the plates up
+SMART_GUARD_FOR = 1.6            # and how long they stay there
+
+
+def mirror_kind(run):
+    """The last landfall: what they built out of you.
+
+    A year of your fights is a year of data, and the thing at the end
+    of it is your own frame one generation on - same chassis, same
+    sockets, everything filled. It is not a datasheet in the bestiary
+    because it cannot be: there is a different one for every machine a
+    player brings, which is the entire point of it."""
+    m = run.mech
+    lab = frame_label(m)
+    rig = Mech(m.chassis)
+    for s in rig.sockets():
+        if s in HARDPOINTS:
+            opts = options_for(s, None, rig.frame)
+            if opts:
+                rig.install(s, opts[0].key)
+        else:
+            rig.install(s, TOP_CEILING)   # a generation on, not three rungs
+    grown = CURRENT["house"] == "ryez"
+    tint = (206, 74, 66) if not grown else (150, 210, 120)
+    # It is made out of you, so it is as built as you are. One fixed
+    # datasheet made the last day of a 365-day campaign EASIER the
+    # better you had played it: a fully kitted tier-five frame with a
+    # GREAT MAUL walked through 26000 hit points in 34 seconds, while
+    # the same fight at the end of an ordinary year ran to 108. This is
+    # the only fight in the game that reads the player's own machine,
+    # and it is the one fight that has to.
+    grade = clamp(run.mech.completion(getattr(run, "ceiling", None)),
+                  0.35, 1.0)
+    hit = 0.72 + 0.58 * grade
+    k = Kind("mirror", lab, "it has watched you do this all year",
+             tint, 1.34, MIRROR_HP * (0.62 + 0.88 * grade), 82, MIRROR_DR,
+             [atk("swipe", 330, 0.62, 128 * hit, 2.0, lunge=1),
+              atk("slam", 356, 1.05, 178 * hit, 3.8, shake=1, lunge=1),
+              atk("beam", 1500, 1.30, 52 * hit, 5.2, hold=2.0),
+              atk("roar", 0, 0.85, 0, 9.0, stun=1)],
+             0, 0, 5.8, 44,
+             MECH_BODY if not grown else KINDS["cathedral"].body,
+             "Your frame, a generation on. Every fight you have had "
+             "this year went into it, and it fights the way you do "
+             "because that is where it learned.")
+    k.family = "mech" if not grown else "bio"
+    k.build = dict(rig.fit)
+    k.rig = rig
+    k.poise = 3.0
+    k.minion = BROODLING if grown else DRONE
+    k.smart = True
+    return k
 
 
 def kind_at(house_key, index):
@@ -7776,6 +8329,9 @@ class Enemy:
         self.rot = 0.0              # damage a second still to be delivered
         self.rot_t = 0.0            # for how long
         self.rot_c = (255, 150, 60)  # what colour it is while it does
+        self.guard = 0.0            # plates up, for the ones that can
+        self.guard_t = SMART_GUARD_EVERY * random.uniform(0.4, 1.0)
+        self.read = False           # ...and whether THE ARCHIVE has it
 
     @property
     def walk_speed(self):
@@ -7830,12 +8386,37 @@ class Enemy:
     def hurtby(self, dmg, pierce=False, cut=0.0):
         """`cut` is partial pierce - a fraction of the hide ignored. A whole
         pierce is still a whole pierce; this is for everything else."""
+        if self.kind.smart and not self.read:
+            # the two things a player has that nothing else on the road
+            # has ever had: it gets out of the way, and it puts the
+            # plates up. It learned both off you.
+            if random.random() < SMART_DODGE:
+                self.hurt = 0.10
+                return 0.0
+            if self.guard > 0:
+                dmg *= SMART_GUARD
+        elif self.kind.smart and self.guard > 0:
+            # THE ARCHIVE. You have the drawing, so the plates are a
+            # place you know the seams of rather than a wall.
+            dmg *= (1.0 + SMART_GUARD) * 0.5
         hide = (0.0 if pierce else self.kind.dr * kaiju_mult("hide")
                 * (1.0 - clamp(cut, 0.0, 1.0)))
         d = max(1.0, dmg - hide)
         self.hp -= d
         self.hurt = 0.28
         return d
+
+    def smart_tick(self, dt):
+        """Raise the plates now and then. Only the mirror does this."""
+        if not self.kind.smart or not self.alive:
+            return
+        if self.guard > 0:
+            self.guard = max(0.0, self.guard - dt)
+            return
+        self.guard_t -= dt
+        if self.guard_t <= 0:
+            self.guard_t = SMART_GUARD_EVERY * random.uniform(0.8, 1.3)
+            self.guard = SMART_GUARD_FOR
 
 
 class Fight:
@@ -7857,11 +8438,15 @@ class Fight:
         # The guns on the ridge do not stop one. They do take the edge off
         # the thing before it is anybody else's problem.
         hpm = ((0.95 if has_ware("military") else 1.0)
-               * kaiju_mult("hp"))
+               * kaiju_mult("hp") * getattr(run, "story_mult", lambda: 1.0)())
         self.enemies = [Enemy(kind, WORLD_W - 260, hp_mult=hpm)]
+        # THE ARCHIVE is read at the top of the fight, not per blow - the
+        # bay is on the machine for the whole landfall or it is not
+        self.enemies[0].read = self.mech.has("archive")
         # ...and whatever came with it, strung out behind
         back = 0
-        for rung, count, frac in escorts_at(run.kaiju_index):
+        for rung, count, frac in escorts_at(run.kaiju_index,
+                                            getattr(run, "mode", "landfall")):
             k = kind_at(run.house, rung)
             # NOT `k is kind` - an escort of the same datasheet as the
             # boss is the whole of the seventh landfall, and guarding
@@ -9131,6 +9716,8 @@ class Fight:
             self.great_sac()
         self.pose.flash = approach(self.pose.flash, 0.0, dt * 3.0)
 
+        for e in self.enemies:
+            e.smart_tick(dt)
         self.strain_tick(dt)
         self.brood_tick(dt)
         self.merc_tick(dt)
@@ -9651,6 +10238,40 @@ class Fight:
 # new is that there are two of them and only one of you.
 SCHEDULE = (7, 15, 24, 34, 45, 57, 70)
 
+# STORY MODE. A year instead of ten weeks, and the point of the extra
+# fifty-one weeks is not more of the same fight - it is that a year is
+# long enough for somebody to build something out of what you did in
+# it. The last landfall is your own frame, one generation on.
+#
+# It is locked until a campaign has been won from BOTH sides, because
+# the story is about the two houses being the same programme and that
+# lands as a shrug if you have only ever seen one of them.
+STORY_SCHEDULE = (12, 26, 41, 58, 76, 95, 115, 136, 158, 181,
+                  205, 230, 256, 283, 311, 340, 365)
+STORY_MARKS = (16, 22, 30, 38, 48, 58, 70, 82, 96, 112,
+               128, 146, 166, 188, 212, 240, 300)
+
+
+# Which body is on which rung of the long ladder. The first seven are
+# the campaign you already know, spread over a third of a year. The
+# next nine are the SAME tests run again with the numbers turned up,
+# because that is what a programme does with a result it likes. The
+# last one is not on this list; see `mirror_kind`.
+STORY_LADDER = (("crawler", 1.00), ("spitter", 1.00), ("bulwark", 1.00),
+                ("strider", 1.00), ("brood", 1.00), ("leviathan", 1.00),
+                ("cathedral", 1.00),
+                ("bulwark", 1.35), ("strider", 1.40), ("spitter", 1.60),
+                ("brood", 1.45), ("cathedral", 1.20), ("leviathan", 1.55),
+                ("brood", 1.80), ("cathedral", 1.60), ("leviathan", 2.00))
+
+
+def schedule_for(mode):
+    return STORY_SCHEDULE if mode == "story" else SCHEDULE
+
+
+def marks_table(mode):
+    return STORY_MARKS if mode == "story" else MARKS_FOR
+
 # WHAT ELSE COMES ASHORE.
 #
 # One body at a time is a duel, and a duel is a thing a good build simply
@@ -9670,13 +10291,24 @@ SCHEDULE = (7, 15, 24, 34, 45, 57, 70)
 # down to 78 - which is not difficulty, it is a wall on day 24 in front
 # of a player who has one arm and a leg. Company arrives when there is
 # a machine to meet it with.
+# Escorts name a BODY, not a position in the roster. They used to be
+# roster indices, and the moment three more bodies went in at the end
+# in a different order from the one this table assumed, the fourth
+# landfall quietly started fielding a pair of ANVILs instead of TICKs.
+# The two rosters are parallel, so a bio key picks the right machine on
+# the steel side as well.
 ESCORTS = ((),                    # 1st - it comes alone, and it should
            (),                    # 2nd - still alone
            (),                    # 3rd - still a duel
-           ((7, 1),),             # 4th - and now it does not come alone
-           ((1, 1), (7, 1)),      # 5th
-           ((3, 1), (7, 1)),      # 6th
-           ((7, 2),))             # 7th
+           (("tick", 2),),        # 4th - a pair of the small ones
+           (("anvil", 1), ("tick", 1)),     # 5th - a wall, and a nibble
+           (("hound", 1), ("lancer", 1)),   # 6th - one chases, one shoots
+           (("hound", 2),))                 # 7th
+# Measured, and moved. The ANVIL went in at the sixth beside a
+# LEVIATHAN and two TICKs, which is four bodies and took the sixth
+# landfall to 3 wins in 10 - harder than the finale under it. And the
+# finale cannot carry four either: CATHEDRAL, two HOUNDs and a LANCER
+# came out 2 in 8. Three bodies is what the top of this ladder holds.
 # The seventh had a full-strength LEVIATHAN walking in beside the
 # CATHEDRAL, which is a lovely sentence and 0 wins in 10. At 62% of its
 # health it was still 0 in 10. What the finale can carry is two of the
@@ -9686,12 +10318,50 @@ ESCORT_HP = 0.78                  # an escort is a lesser example of one
 ESCORT_PAY = 0.55                 # ...and it pays like one
 
 
-def escorts_at(index):
+def _rung_of(what):
+    """A roster position from a body's key, or straight through if it
+    already is one."""
+    if isinstance(what, int):
+        return what
+    for i, k in enumerate(BESTIARY):
+        if k.key == what:
+            return i
+    return -1
+
+
+# The year's own column. ESCORTS is seven rows long, so for a while
+# every landfall past the seventh in a 365-day campaign came up the road
+# completely alone - the back half of the long game was ten duels in a
+# row against a bigger number, which is the exact thing escorts were
+# added to stop. Measured; see `gw_test.py story`.
+STORY_ESCORTS = ((),                            # 1st, alone
+                 (),                            # 2nd
+                 (),                            # 3rd
+                 (("tick", 2),),                # 4th
+                 (("anvil", 1), ("tick", 1)),   # 5th
+                 (("hound", 1), ("lancer", 1)),  # 6th
+                 (("hound", 2),),               # 7th - the season ends here
+                 (("tick", 2), ("hound", 1)),   # 8th - and the year does not
+                 (("lancer", 2),),
+                 (("anvil", 1), ("hound", 1)),
+                 (("hound", 2), ("tick", 1)),
+                 (("lancer", 1), ("tick", 1)),
+                 (("hound", 2), ("lancer", 1)),
+                 (("anvil", 1), ("tick", 2)),
+                 (("lancer", 2), ("hound", 1)),
+                 (("hound", 2), ("lancer", 1)),
+                 (("hound", 1), ("lancer", 1)))  # beside your own frame
+
+
+def escorts_at(index, mode="landfall"):
     """[(rung, count, hp multiplier)] for everything walking in beside
     the boss. The multiplier is optional and defaults to ESCORT_HP."""
+    table = STORY_ESCORTS if mode == "story" else ESCORTS
     out = []
-    for row in (ESCORTS[index] if 0 <= index < len(ESCORTS) else ()):
-        rung, count = row[0], row[1]
+    for row in (table[index] if 0 <= index < len(table) else ()):
+        rung, count = _rung_of(row[0]), row[1]
+        if rung < 0:
+            continue
         out.append((rung, count, row[2] if len(row) > 2 else ESCORT_HP))
     return out
 MAX_CREW = 6
@@ -9800,8 +10470,10 @@ class Job:
 
 
 class Run:
-    def __init__(self, house_key="keal", chassis="standard"):
+    def __init__(self, house_key="keal", chassis="standard",
+                 mode="landfall"):
         self.house = house_key if house_key in HOUSES else "keal"
+        self.mode = mode if mode in ("landfall", "story") else "landfall"
         set_house(self.house)
         self.day = 1
         self.scrap = 170
@@ -9830,6 +10502,13 @@ class Run:
         self.ejected = False         # Mike's seat, once a campaign
         self.furnace = 0.0           # Zoe's, half an alloy at a time
         self.queue = 0               # ...and her recruiting office's clock
+        # how high each socket is allowed to go. A field post sells the
+        # next one; nothing else in the game does, which is why they
+        # only exist in the long campaign.
+        self.ceiling = {s: BASE_CEILING for s in SOCKETS}
+        self.flags = []              # what it decided, in the rooms
+        self.seen = []               # ...and which rooms it has been in
+        self.opened = []             # ...and the plans it bought on the road
         if has_ware("warchest"):
             self.scrap += 200
         if has_ware("earlyshift"):
@@ -9850,7 +10529,8 @@ class Run:
         return days
 
     def landfall(self, i):
-        return SCHEDULE[i] + self.grace if i < len(SCHEDULE) else None
+        sch = schedule_for(self.mode)
+        return sch[i] + self.grace if i < len(sch) else None
 
     @property
     def next_landfall(self):
@@ -9862,7 +10542,20 @@ class Run:
         return None if nl is None else nl - self.day
 
     def next_kind(self):
-        return kind_at(self.house, self.kaiju_index)
+        if self.mode != "story":
+            return kind_at(self.house, self.kaiju_index)
+        i = self.kaiju_index
+        if i >= len(STORY_LADDER):
+            return mirror_kind(self)          # the last one is you
+        key, _mult = STORY_LADDER[i]
+        rung = _rung_of(key)
+        return kind_at(self.house, rung if rung >= 0 else 0)
+
+    def story_mult(self):
+        i = self.kaiju_index
+        if self.mode != "story" or i >= len(STORY_LADDER):
+            return 1.0
+        return STORY_LADDER[i][1]
 
     @property
     def income(self):
@@ -10008,6 +10701,29 @@ class Run:
         self.scrap -= cost
         self.spent += cost
         self.jobs.append(Job(CITY_SLOT, 0, "build", RELIEF.days, crew=1))
+        return True
+
+    def can_raise(self, socket):
+        return (self.mode == "story" and socket in CATALOGUE
+                and self.ceiling.get(socket, BASE_CEILING) < TOP_CEILING)
+
+    def raise_cost(self, socket):
+        """What the next rung costs to unlock, in the run's own money."""
+        lv = self.ceiling.get(socket, BASE_CEILING)
+        cut = post_cut(self)
+        return (int((700 + (lv - BASE_CEILING) * 900) * cut),
+                int(round((3 + (lv - BASE_CEILING) * 3) * cut)))
+
+    def raise_ceiling(self, socket):
+        if not self.can_raise(socket):
+            return False
+        s_, a_ = self.raise_cost(socket)
+        if not self.can_afford(s_, a_):
+            return False
+        self.scrap -= s_
+        self.alloy -= a_
+        self.spent += s_
+        self.ceiling[socket] = self.ceiling.get(socket, BASE_CEILING) + 1
         return True
 
     def price(self, part, socket=None):
@@ -10242,20 +10958,30 @@ class Run:
         kind = fight.kind
         if fight.over == "won":
             self.killed += 1
-            got_s = int(kind.scrap * (1.30 if self.mech.has("claws") else 1.0)
+            got_s = int(kind.scrap
+                        * (1.30 if self.mech.has("claws") else 1.0)
+                        * (HUNGER_SCRAP if self.mech.has("hunger") else 1.0)
                         * self.scrap_mult)
             got_a = (kind.alloy + (1 if self.yard >= 3 else 0)
                      + (1 if has_ware("hazmat") else 0)
-                     + (1 if has_ware("c_feed") else 0))
+                     + (1 if has_ware("c_feed") else 0)
+                     + (HUNGER_ALLOY if self.mech.has("hunger") else 0))
             got_s += getattr(fight, "escort_scrap", 0)
             got_a += getattr(fight, "escort_alloy", 0)
             self.scrap += got_s
             self.alloy += got_a
-            got_m = int(round(MARKS_FOR[min(self.kaiju_index,
-                                            len(MARKS_FOR) - 1)]
+            tbl = marks_table(self.mode)
+            got_m = int(round(tbl[min(self.kaiju_index, len(tbl) - 1)]
                               * self.marks_mult))
             add_marks(got_m)
             lines.append("%s DOWN." % kind.name)
+            if self.mech.has("hunger"):
+                # it eats the thing it killed, which is the whole of the
+                # bay: no mender, no four days, no scrap
+                for s in self.mech.sockets():
+                    if self.mech.fit[s] is not None:
+                        self.mech.hp[s] = self.mech.max_hp(s)
+                lines.append("IT ATE, AND IT IS WHOLE AGAIN")
             lines.append("+%d MARKS FOR THE BODY" % got_m)
             lines.append("HARVEST: %d %s, %d %s"
                          % (got_s, word("scrap", "SCRAP"),
@@ -10274,8 +11000,8 @@ class Run:
             salv_a = max(1, kind.alloy // 2) if kind.alloy else 0
             # the contracts pay on a loss too: you took the risk either
             # way, and he was paid either way
-            salv_m = int(round(MARKS_FOR[min(self.kaiju_index,
-                                             len(MARKS_FOR) - 1)]
+            tbl = marks_table(self.mode)
+            salv_m = int(round(tbl[min(self.kaiju_index, len(tbl) - 1)]
                                * self.marks_mult)) // 2
             self.scrap += salv
             self.alloy += salv_a
@@ -10313,14 +11039,17 @@ class Run:
         # same length until there was a seventh landfall, and reading
         # the roster here meant the seventh was scheduled, printed on
         # the brief, and then never happened
-        if self.kaiju_index >= len(SCHEDULE):
+        if self.kaiju_index >= len(schedule_for(self.mode)):
             return ("victory" if fight.over == "won" else "unfinished"), lines
         lines.append("NEXT LANDFALL: DAY %d" % self.landfall(self.kaiju_index))
         return None, lines
 
     # -- saved ------------------------------------------------------------
     def to_json(self):
-        return {"house": self.house,
+        return {"house": self.house, "mode": self.mode,
+                "opened": list(self.opened),
+                "ceiling": dict(self.ceiling),
+                "flags": list(self.flags), "seen": list(self.seen),
                 "day": self.day, "scrap": self.scrap, "alloy": self.alloy,
                 "crew": self.crew, "yard": self.yard,
                 "integrity": round(self.integrity, 2),
@@ -10335,7 +11064,8 @@ class Run:
     @classmethod
     def from_json(cls, d):
         d = d or {}
-        r = cls(d.get("house", "keal"), d.get("chassis", "standard"))
+        r = cls(d.get("house", "keal"), d.get("chassis", "standard"),
+                d.get("mode", "landfall"))
         try:
             r.day = max(1, int(d.get("day", 1)))
             r.scrap = max(0, int(d.get("scrap", 0)))
@@ -10346,8 +11076,16 @@ class Run:
             r.house = d.get("house") if d.get("house") in HOUSES else "keal"
             set_house(r.house)
             r.kaiju_index = int(clamp(int(d.get("kaiju_index", 0)), 0,
-                                      len(roster_for(r.house))))
+                                      len(schedule_for(r.mode))))
             r.killed = max(0, int(d.get("killed", 0)))
+            r.flags = [str(x) for x in (d.get("flags") or [])]
+            r.seen = [int(x) for x in (d.get("seen") or [])]
+            r.opened = [str(x) for x in (d.get("opened") or [])
+                        if x in STORY_GEAR]
+            for s, v in (d.get("ceiling") or {}).items():
+                if s in r.ceiling:
+                    r.ceiling[s] = int(clamp(int(v), BASE_CEILING,
+                                             TOP_CEILING))
             r.mech = Mech.from_json(d.get("mech"), r.mech.chassis)
             r.jobs = [Job.from_json(j) for j in d.get("jobs", [])
                       if j.get("socket") in SOCKETS + (MOD_SLOT, YARD_SLOT,
@@ -10380,6 +11118,12 @@ def record_end(run, won):
     best = data.get("best", {})
     if won:
         best["wins"] = int(best.get("wins", 0)) + 1
+        # WHICH side won, not just that somebody did. Story mode opens
+        # on having finished a campaign from both, and the old ledger
+        # only counted victories in a lump.
+        best["won_" + run.house] = True
+        if getattr(run, "mode", "landfall") == "story":
+            best["story_" + run.house] = True
         if run.integrity > best.get("best_city", 0):
             best["best_city"] = round(run.integrity, 1)
     else:
@@ -10388,6 +11132,391 @@ def record_end(run, won):
     data["best"] = best
     data["run"] = None
     write_save(data)
+
+
+# ---------------------------------------------------------------------------
+# THE FIELD POSTS
+#
+# Six of them, in two sections of three, and they only ever open in the
+# long campaign - after a landfall, on the ground, while the thing you
+# just killed is still cooling. They trade in the RUN's money rather
+# than marks, because the whole point of them is that they compete with
+# building a part: everything you spend at a post is a part you did not
+# start.
+#
+# The CONVOY follows the coast and turns up with the salvage. The DEEP
+# YARD is under the city and nobody ordered it, which is the first hard
+# evidence a player gets that the schedule has an author.
+#
+# Between them they are the only place in the game that lifts a socket's
+# CEILING, which is what makes the fourth and fifth rungs reachable.
+# ---------------------------------------------------------------------------
+POST_SECTIONS = (
+    ("convoy", "THE CONVOY",
+     "it follows the coast and it is always there by morning"),
+    ("deep", "THE DEEP YARD",
+     "nobody ordered this and nobody will say who pays for it"),
+)
+
+POSTS = (
+    ("fitter", "convoy", "THE FITTER", "limbs, and what they will take",
+     ("legs", "l_arm", "r_arm")),
+    ("plater", "convoy", "THE PLATER", "mass, and how much of it",
+     ("torso", "armour")),
+    ("mender", "convoy", "THE MENDER", "everything, back the way it was",
+     ()),
+    ("instrument", "deep", "THE INSTRUMENT SHOP",
+     "what it sees and what runs it", ("head", "reactor")),
+    ("crucible", "deep", "THE CRUCIBLE", "it eats scrap and it is hungry",
+     ()),
+    ("clerk", "deep", "THE CLERK", "he is not selling anything", ()),
+)
+POST_BY = {p[0]: p for p in POSTS}
+
+MEND_PER_HP = 0.55               # what the mender charges, per point
+CRUCIBLE_SCRAP = 420             # ...and what a billet costs down here
+CRUCIBLE_ALLOY = 3
+RELAY_CUT = 0.75                 # what a FIELD RELAY takes off all of it
+HUNGER_ALLOY = 2                 # ...and what DEEP HUNGER renders extra
+# Measured over four auto-played years a side. A FIELD RELAY takes a
+# quarter off every road price for a whole year and DEEP HUNGER only put
+# the animal back together, which came out 3 victories in 4 against 1.
+# The bay a RYEZ yard cannot trade away has to be worth as much as the
+# one a KEAL yard cannot, so the thing it eats pays as well.
+HUNGER_SCRAP = 1.35
+
+# The second half of the hint chain. Nine shopkeepers get a player most
+# of the way; these six finish it, and the CLERK is the one who says the
+# thing out loud. `heard_everything` covers both stacks.
+TALK.update({
+    "fitter": [
+        "Whatever you are about to ask, the answer is yes and it will "
+        "cost you a leg you were saving for.",
+        "We were told to carry parts for a frame nobody has built yet. "
+        "I have the crate. I have not opened it.",
+        "The crate has your yard's stamp on it and a date eight months "
+        "from now.",
+    ],
+    "plater": [
+        "Plate is plate. What matters is how many of it you are "
+        "prepared to walk around with.",
+        "The heavy stock did not come off a breaker. It came off "
+        "something that was built and never used.",
+        "Built, never used, and scrapped anyway. Somebody changed "
+        "their mind about a machine the size of yours.",
+    ],
+    "mender": [
+        "Sit down. This is going to be quick and it is going to be "
+        "unpleasant.",
+        "I have patched the other side's machines too. Same bench, "
+        "different week, same paperwork.",
+        "The paperwork does not have two companies on it. It has one "
+        "account and two delivery addresses.",
+    ],
+    "instrument": [
+        "Eyes and hearts. Everything else on a machine is an opinion.",
+        "The sighting gear ships pre-calibrated. Calibrated against "
+        "something, and it is not our targets.",
+        "It is calibrated against YOU. Your gait, your reach, the way "
+        "you hold it when you brace.",
+    ],
+    "crucible": [
+        "Feed it. It does not care what it was.",
+        "Half of what you bring me is the other company's hull and half "
+        "of that is ours before that.",
+        "It is all the same metal going round. Nobody is making "
+        "anything new. Somebody is just moving it.",
+    ],
+    "clerk": [
+        "I am not selling. Sit down anyway.",
+        "There is no war. There is a schedule, and two companies who "
+        "are each told the other one wrote it.",
+        "The schedule is a test programme and the coast is the bench. "
+        "You have been the control for eleven years.",
+        "On the last day the thing that comes up the road will be "
+        "yours. Everything you did this year went into it. If you want "
+        "the people who scheduled it instead, come and find me first.",
+    ],
+})
+
+
+# ---------------------------------------------------------------------------
+# THE YEAR, TOLD IN SIX ROOMS
+#
+# Cutscenes fire between landfalls in the long campaign, keyed on which
+# rung is next. Four of them ask you something, and what you answer is
+# kept in `run.flags` - which is what the ending reads.
+#
+# A beat is (WHO, LINE) or ("?", PROMPT, ((LABEL, FLAG), ...)). A LINE
+# may be a dict keyed by house where the two companies would not say the
+# same thing; everything else is shared, because the point of the story
+# is that the two of them are in the same position and neither knows it.
+# ---------------------------------------------------------------------------
+def _l(keal, ryez):
+    return {"keal": keal, "ryez": ryez}
+
+
+STORY_SCENES = {
+    0: (
+        ("DR ILSE NOVAK", _l(
+            "A year. They have published a year of it this time, dated "
+            "to the day, and they want the gantry lit for all of it.",
+            "A year. Twelve months of dates, published in advance, and "
+            "they want the tanks running for every one of them.")),
+        ("DR ILSE NOVAK",
+         "Nobody has ever asked me how the coast authority knows when "
+         "something is going to come out of the sea."),
+        ("-", "You have never asked either."),
+    ),
+    3: (
+        ("MIKE ODUYA",
+         "I pulled this off the thing you killed on Tuesday. Look at "
+         "the plate."),
+        ("MIKE ODUYA", _l(
+            "That is our stamp. That is this yard, that is my bench, "
+            "and that is my handwriting on the batch number.",
+            "That is our mark. That tank, that bench, and that is my "
+            "own hand on the batch number.")),
+        ("MIKE ODUYA",
+         "We did not build that. Not yet. The date on it has not "
+         "happened."),
+        ("?", "The recovery report is on your desk.",
+         (("FILE IT AND SAY WHAT YOU SAW", "filed"),
+          ("LOSE IT IN THE PILE", "quiet"))),
+    ),
+    6: (
+        ("-", "There is a yard under the city that was not there in "
+              "the spring."),
+        ("-", "Nobody signed for it. Nobody is paid for it. The lights "
+              "are on and the benches are warm."),
+        ("GENERAL K",
+         "I did not authorise it and I cannot close it. I have tried "
+         "both, in writing, twice."),
+        ("?", "They are offering to work on your machine.",
+         (("TAKE WHAT THEY ARE OFFERING", "took"),
+          ("WALK BACK UP THE RAMP", "refused"))),
+    ),
+    9: (
+        ("PROF ANJA HAUK", _l(
+            "I was given a target profile eight months ago and asked "
+            "to hit it. The profile is your machine.",
+            "I was given a target profile eight months ago and asked "
+            "to grow to it. The profile is your animal.")),
+        ("PROF ANJA HAUK",
+         "Your gait. Your reach. The way you hold it when you brace. "
+         "All measured, all from the landfalls."),
+        ("PROF ANJA HAUK",
+         "They are building a copy of you and they are nearly done. I "
+         "am telling you because I helped."),
+        ("?", "The drawings are on the bench in front of you.",
+         (("LET THEM FINISH IT", "let"),
+          ("BURN THE DRAWINGS", "burned"))),
+    ),
+    12: (
+        ("THE CLERK", "Sit down. I am not selling anything."),
+        ("THE CLERK",
+         "There is no war. There is a schedule, and two companies who "
+         "are each told the other one wrote it."),
+        ("THE CLERK",
+         "It is a test programme. The coast is the bench. You have "
+         "been the control for eleven years and you have been "
+         "excellent."),
+        ("?", "He waits.",
+         (("GET BACK TO THE SCHEDULE", "schedule"),
+          ("ASK HIM WHERE THEY ARE", "address"))),
+    ),
+    16: (
+        ("AGENT ZACH",
+         "You asked me on the last day, like I said. So: I am paid by "
+         "the same account that pays your wages and theirs."),
+        ("AGENT ZACH", _l(
+            "The thing walking up the road tomorrow is your frame, one "
+            "generation on. Everything you did this year is in it.",
+            "The thing coming ashore tomorrow is your strain, one "
+            "generation on. Everything you did this year is in it.")),
+        ("AGENT ZACH",
+         "It braces because you brace. It steps off the line because "
+         "you do. There is nothing in it that is not you."),
+    ),
+}
+
+# Which flags an ending wants. The true one is not on this list: see
+# `story_ending`, because it is gated on something you cannot buy.
+ENDINGS = {
+    "stood": ("THE PROGRAMME CONTINUES",
+              "You did not go out. The city took it, the way the city "
+              "has always taken it, and somewhere a line was drawn "
+              "through a date and another one was written under it."),
+    "datasheet": ("YOU ARE THE NEXT DATASHEET",
+                  "You beat it, which is what the test was for. The "
+                  "measurements from the last fight went the same place "
+                  "all the others went, and the drawings are already "
+                  "out for the one after you."),
+    "elsewhere": ("SOMEBODY ELSE'S TURN",
+                  "You beat it, and you burned what they drew you from. "
+                  "It will take them years to build another. They have "
+                  "years, and another coast, and you have bought this "
+                  "one a decade it would not otherwise have had."),
+    "broke": ("THE SCHEDULE ENDS",
+              "You did not go to the landfall. You went to the address, "
+              "and the room at the end of it had eleven years of dates "
+              "on the wall and four people in it who had never been "
+              "shot at. There is no landfall tomorrow. There is no "
+              "schedule at all."),
+}
+
+
+def scene_at(index):
+    return STORY_SCENES.get(index, ())
+
+
+def scene_line(beat, house):
+    """The line this house hears. Most of them are the same line."""
+    txt = beat[1]
+    return txt.get(house, txt.get("keal")) if isinstance(txt, dict) else txt
+
+
+def can_break(run):
+    """Whether the last day can be spent on the people instead of the
+    machine. You have to have ASKED (the Clerk, on day 230) and you have
+    to have listened to everybody - fifteen people each hold a piece and
+    nothing in the game says it out loud except all of them together."""
+    return ("address" in getattr(run, "flags", ())
+            and heard_everything())
+
+
+def record_story_ending(key):
+    """Which of the four rooms a year ended in, kept in the slot.
+
+    There are four and one of them is hidden behind a question you have
+    to know to ask, so a player who does not know the others exist has
+    no reason to go looking. The front door counts them."""
+    if key not in ENDINGS:
+        return
+    data = load_save()
+    best = data.get("best", {})
+    seen = [k for k in (best.get("endings") or []) if k in ENDINGS]
+    if key not in seen:
+        seen.append(key)
+    best["endings"] = seen
+    data["best"] = best
+    write_save(data)
+
+
+def endings_seen(best=None):
+    best = best if best is not None else (load_save().get("best") or {})
+    got = best.get("endings") or []
+    return [k for k in ENDINGS if k in got]
+
+
+def story_ending(run, beat_it, went_to_them=False):
+    """Which of the four it was."""
+    if went_to_them:
+        return "broke"
+    if not beat_it:
+        return "stood"
+    return "elsewhere" if "burned" in getattr(run, "flags", ()) else "datasheet"
+
+
+# What the plans cost on the road, and which counter has them. The FITTER
+# carries the arms and the INSTRUMENT SHOP carries everything that runs
+# the machine, which is the same split they already have for the rungs.
+GEAR_PLANS = {
+    "quiver": ("fitter", 900, 3),
+    "breach": ("fitter", 1000, 4),
+    "maul": ("fitter", 1250, 5),
+    "relay": ("instrument", 850, 3),
+    "archive": ("instrument", 1150, 5),
+    "hunger": ("instrument", 1150, 5),
+}
+
+
+def plans_at(run, post):
+    """The plans this post can still sell this run, in table order."""
+    if not post_open(run):
+        return []
+    return [k for k in GEAR_PLANS
+            if GEAR_PLANS[k][0] == post and gear_house_ok(k)
+            and not gear_open(run, k)]
+
+
+def plan_cost(run, key):
+    _post, s_, a_ = GEAR_PLANS[key]
+    cut = post_cut(run)
+    return int(s_ * cut), int(round(a_ * cut))
+
+
+def post_buy(run, key):
+    """Buy the plans. It does not build the thing - that is still a job
+    in the yard with crew on it, which is the point of buying it early."""
+    if key not in GEAR_PLANS or gear_open(run, key)             or not gear_house_ok(key) or not post_open(run):
+        return False
+    s_, a_ = plan_cost(run, key)
+    if not run.can_afford(s_, a_):
+        return False
+    run.scrap -= s_
+    run.alloy -= a_
+    run.spent += s_
+    run.opened = list(run.opened) + [key]
+    return True
+
+
+def gear_thing(key):
+    """The Weapon or the Module the plans are for."""
+    return WEAPONS[key] if key in STORY_GUNS else MODULES[key]
+
+
+def posts_in(section):
+    return [p for p in POSTS if p[1] == section]
+
+
+def post_open(run):
+    """A post is only ever a thing in the long campaign."""
+    return run is not None and getattr(run, "mode", "landfall") == "story"
+
+
+def post_cut(run):
+    """FIELD RELAY, which is a bay spent on a discount. Over a year that
+    is three ceilings, which is why it costs a bay."""
+    return RELAY_CUT if run is not None and run.mech.has("relay") else 1.0
+
+
+def mend_cost(run, socket):
+    miss = run.mech.max_hp(socket) - run.mech.hp[socket]
+    return int(max(0.0, miss) * MEND_PER_HP * post_cut(run))
+
+
+def mend_all_cost(run):
+    return sum(mend_cost(run, s) for s in run.mech.sockets()
+               if run.mech.fit[s] is not None)
+
+
+def post_mend(run, socket=None):
+    """Whole machine, or one socket, put back now and not in four days."""
+    socks = ([socket] if socket else
+             [s for s in run.mech.sockets() if run.mech.fit[s] is not None])
+    cost = sum(mend_cost(run, s) for s in socks)
+    if cost <= 0 or run.scrap < cost:
+        return False
+    run.scrap -= cost
+    run.spent += cost
+    for s in socks:
+        run.mech.hp[s] = run.mech.max_hp(s)
+    return True
+
+
+def smelt_cost(run):
+    return int(CRUCIBLE_SCRAP * post_cut(run))
+
+
+def post_smelt(run):
+    cost = smelt_cost(run)
+    if run.scrap < cost:
+        return False
+    run.scrap -= cost
+    run.spent += cost
+    run.alloy += CRUCIBLE_ALLOY
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -10858,7 +11987,8 @@ class Hangar:
                  GOOD if run.integrity > 50 else
                  (WARN if run.integrity > 22 else BAD)),
                 (word("built", "BUILT"),
-                 "%d%%" % round(run.mech.completion() * 100), CORE)]
+                 "%d%%" % round(run.mech.completion(run.ceiling) * 100),
+                 CORE)]
         x = r.right - 14
         for label, val, col in reversed(cols):
             wv = font(22).size(val)[0]
@@ -11022,7 +12152,8 @@ class Hangar:
             text(surf, "Nothing hangs off an arm that is not there.", 14,
                  (r.x + 14, y), FAINT)
             return
-        opts = options_for(s, self.slot_fit(s), run.mech.frame)
+        opts = options_for(s, self.slot_fit(s), run.mech.frame,
+                           ceiling_of(run, s), getattr(run, "opened", ()))
         if s == YARD_SLOT:
             opts = list(opts) + [REFINE, RELIEF]
         if not opts:
@@ -11227,7 +12358,7 @@ class Hangar:
                 run.alloy, word("crew", "CREW"), run.free_crew), 16,
              (r.right - 22, r.y + 20), DIM, right=True)
         job = run.job_on(MOD_SLOT)
-        mods = module_list(m.frame)
+        mods = module_list(m.frame, run)
         # Mike's four push the rack past the five rows the overlay has, so
         # it goes four across rather than growing a scrollbar for one more
         # row. Thirteen in three columns is five rows and fits; seventeen
@@ -11243,7 +12374,7 @@ class Hangar:
             building = job is not None and job.target == mod.key
             room = len(m.mods) < m.bays
             afford = run.can_afford(*run.price(mod, MOD_SLOT))
-            fits = module_fits(mod, m.frame)
+            fits = module_fits(mod, m.frame, run)
             can = (not inside and not building and job is None and room
                    and afford and not run.no_room() and fits
                    and (run.bio or run.free_crew > 0))
@@ -11266,12 +12397,14 @@ class Hangar:
                 self.price(surf, card, mod, run, MOD_SLOT)
             for k, ln in enumerate(wrap(peffect(mod), 12, card.w - 20)[:2]):
                 text(surf, ln, 12, (card.x + 10, card.y + 28 + k * 14), CORE)
-            why = module_why(mod, m.frame)
+            why = module_why(mod, m.frame, run)
             if why:
                 # the amber line, same as the one a shop card gets when
                 # the ware is bought and does nothing in this house
                 text(surf, why, 12, (card.x + 10, card.y + 60), WARN)
-                text(surf, "THE GRAVID MOTHER HAS TWO", 12,
+                text(surf, "THE INSTRUMENT SHOP, AFTER A LANDFALL"
+                     if mod.key in STORY_MODULES else
+                     "THE GRAVID MOTHER HAS TWO", 12,
                      (card.x + 10, card.y + 74), FAINT, bold=False)
             else:
                 for k, ln in enumerate(wrap(pblurb(MOD_SLOT, mod), 12,
@@ -11500,7 +12633,8 @@ class Brief:
         text(surf, k.name, 66, (60, 66), INK)
         text(surf, k.title.upper(), 20, (60, 136), PAINT)
         with_it = []
-        for rung, count, _frac in escorts_at(run.kaiju_index):
+        for rung, count, _frac in escorts_at(run.kaiju_index,
+                                             getattr(run, "mode", "landfall")):
             ek = kind_at(run.house, rung)
             if ek is not None:
                 with_it.append("%d x %s" % (count, ek.name) if count > 1
@@ -11513,29 +12647,41 @@ class Brief:
             lab = "IT IS NOT COMING ALONE - WITH IT: " + ",  ".join(with_it)
             text(surf, lab, fit(lab, 17, 560), (60, 162), BAD)
             y = 194
-        for line in wrap(k.note, 18, 560):
+        m = run.mech
+        p = pygame.Rect(56, 404, 470, 172)
+        # Everything above the loadout panel is laid out to FIT above the
+        # loadout panel. It used to flow, and a three-line note plus an
+        # escort line put the stats and the warning underneath it - the
+        # last five words stuck out of the side and the rest was painted
+        # over. On the last day of the year that is guaranteed: the
+        # mirror has the longest note in the game and never comes alone.
+        for line in wrap(k.note, 18, 560)[:3]:
             text(surf, line, 18, (60, y), DIM, bold=False)
             y += 24
-        y += 14
+        y += 10
+        text(surf, "IT WILL WALK TO THE CITY. IT WILL ONLY STOP FOR YOU.",
+             17, (60, y), WARN)
+        y += 28
         rows = [("HEALTH", "%d" % k.hp), ("SPEED", "%d" % k.speed),
                 ("HIDE", "-%d per hit" % k.dr if k.dr else "soft"),
                 ("POISE", "hard to stagger" if k.poise >= 1.6 else
                  "staggers" if k.poise <= 1.1 else "braced"),
                 ("HARVEST", "%d scrap  %d alloy" % (k.scrap, k.alloy)
                  if k.scrap else "nothing left to salvage")]
-        for a, b in rows:
-            text(surf, a, 15, (60, y), FAINT)
-            text(surf, b, 17, (190, y - 1), INK)
-            y += 24
-        y += 16
-        text(surf, "IT WILL WALK TO THE CITY. IT WILL ONLY STOP FOR YOU.",
-             17, (60, y), WARN)
+        # two columns of three, not one of six, because one of six is
+        # 144 pixels and there are not 144 pixels here
+        per = (len(rows) + 1) // 2
+        for i, (a, b) in enumerate(rows):
+            cx = 60 + (i // per) * 252
+            ry = y + (i % per) * 24
+            text(surf, a, 14, (cx, ry), FAINT)
+            text(surf, b, fit(b, 17, 186), (cx + 96, ry - 1), INK)
 
-        m = run.mech
-        p = pygame.Rect(56, 404, 470, 172)
         panel(surf, p, (16, 18, 25), LINE, 6)
         text(surf, "%s - %d%% %s" % (frame_label(m),
-                                      round(m.completion() * 100),
+                                      round(m.completion(
+                                          getattr(run, "ceiling", None))
+                                          * 100),
                                       word("built", "BUILT")),
              19, (p.x + 14, p.y + 10), PAINT)
         ls = []
@@ -11668,8 +12814,9 @@ class After:
 class Choose:
     CARD_W, CARD_H = 470, 536
 
-    def __init__(self):
+    def __init__(self, mode="landfall"):
         self.t = 0.0
+        self.mode = mode
         self.hot = None
         self.cards = {}
         self.demo = {}
@@ -11698,7 +12845,9 @@ class Choose:
         ov = pygame.Surface((W, H), pygame.SRCALPHA)
         ov.fill((8, 9, 14, 176))
         surf.blit(ov, (0, 0))
-        text(surf, "SIGN WITH", 19, (W // 2, 26), DIM, center=True)
+        text(surf, "SIGN WITH" if self.mode != "story" else
+             "THE LONG CAMPAIGN  -  SIGN WITH", 19, (W // 2, 26),
+             DIM if self.mode != "story" else ALLOY_C, center=True)
         text(surf, "ELEVEN YEARS OVER THE SAME WATERFRONT", 33,
              (W // 2, 58), INK, center=True)
         text(surf, "Whichever one you sign with, the other one's product "
@@ -11746,7 +12895,14 @@ class Choose:
         text(surf, how, 12, (r.centerx, r.y + 352), FAINT, center=True)
         text(surf, "YOU FIGHT", 12, (r.centerx + 132, r.bottom - 26), FAINT,
              center=True)
-        names = roster_for(key)[0].name + "   then five more, ending   "             + foe.name
+        # the ladder this screen is actually signing you up for. It said
+        # "then five more" on the long campaign too, which is a seven-rung
+        # promise in front of a seventeen-rung year.
+        more = len(STORY_LADDER) - 1 if self.mode == "story" else 5
+        last = ("YOURSELF, ONE GENERATION ON" if self.mode == "story"
+                else foe.name)
+        names = "%s   then %d more, ending   %s" % (
+            roster_for(key)[0].name, more, last)
         text(surf, names, fit(names, 13, r.w - 60), (r.centerx, r.y + 336),
              ho.colour if hot else ho.dark, center=True)
 
@@ -13333,8 +14489,9 @@ class PickFrame:
     parts the player has spent six weeks building. That is stated on this
     screen rather than discovered later."""
 
-    def __init__(self, house_key="keal"):
+    def __init__(self, house_key="keal", mode="landfall"):
         self.t = 0.0
+        self.mode = mode
         self.house = house_key
         self.grown = house_key == "ryez"
         self.frames = owned_chassis()
@@ -13358,6 +14515,9 @@ class PickFrame:
         ov = pygame.Surface((W, H), pygame.SRCALPHA)
         ov.fill((8, 9, 14, 176))
         surf.blit(ov, (0, 0))
+        if self.mode == "story":
+            text(surf, "THE LONG CAMPAIGN", 13, (W // 2, 18), ALLOY_C,
+                 center=True)
         text(surf, "WHICH BODY" if self.grown else "WHICH MACHINE", 34,
              (W // 2, 44), PAINT, center=True)
         text(surf, ("The strain decides which organs it has. It cannot be "
@@ -13732,6 +14892,9 @@ class Bazaar:
                  for i in self.open_sections()
                  if self.SECTIONS[i][0] in self.SECTION_MUSIC])
         self.open = None            # the ware being turned over
+        self.said = None            # ...and what one of them just told you
+        self.said_by = None
+        self.talks = []
         self.arm_btn = None
         self.say_no = ""            # why the last press did nothing
         self.flash = {}
@@ -13832,11 +14995,26 @@ class Bazaar:
                  INK if on else FAINT, center=True)
             self.tabs.append((tr, i))
         self.slots = []
+        self.talks = []
         for i, (skey, name, tag, col, art) in enumerate(sellers):
             r = self.stall_rect(i, len(sellers))
             globals()[stall](surf, r, col, self.t, globals()[art])
             text(surf, name, 22, (r.centerx, r.y + 15), ink, center=True)
-            text(surf, tag, 13, (r.centerx, r.y + 296), dim, center=True)
+            text(surf, tag, 13, (r.centerx, r.y + 292), dim, center=True)
+            # the one thing you could never do at a counter in this game
+            tb = pygame.Rect(r.centerx - 74, r.y + 306, 148, 22)
+            more = can_talk(skey)
+            tone = col if more else LINE
+            hot = tb.collidepoint(mouse) and self.open is None \
+                and self.said is None and more
+            panel(surf, tb, (34, 34, 46) if hot else (20, 20, 28), tone, 5)
+            lab = ("TALK" if more else "NOTHING MORE")
+            if more and heard(skey):
+                lab = "TALK  %d/%d" % (heard(skey) + 1, len(TALK[skey]))
+            text(surf, lab, 13, tb.center, INK if more else FAINT,
+                 center=True)
+            if more:
+                self.talks.append((tb, skey))
             wares = [x for x in WARE_LIST if x.seller == skey]
             for box, w in zip(self.slot_rects(r, len(wares)), wares):
                 self.good(surf, box, w, col, mouse)
@@ -13844,6 +15022,13 @@ class Bazaar:
         self.btn.draw(surf, 19)
         if self.open is not None:
             self.inspect(surf, mouse)
+        if self.said is not None:
+            self.speech(surf)
+
+    def speech(self, surf):
+        """What one of them just said. Shared with the field posts, so
+        a person talks the same way wherever they are standing."""
+        speech_box(surf, self.said_by, self.said)
 
     def tone_of(self, w):
         for sn in self.SECTIONS:
@@ -13964,6 +15149,9 @@ class Bazaar:
                 del self.flash[k]
 
     def click(self, pos):
+        # a conversation eats the click before anything else can have it
+        if self.hear(pos):
+            return None
         if self.open is not None:
             if self.arm_btn and self.arm_btn.hit(pos):
                 arm_ware(self.open)
@@ -14012,6 +15200,23 @@ class Bazaar:
                 return None
         return None
 
+    def hear(self, pos):
+        """Returns True if the click was spent on a conversation."""
+        if self.said is not None:
+            self.said = self.said_by = None
+            return True
+        for tb, skey in self.talks:
+            if tb.collidepoint(pos):
+                line = talk_to(skey)
+                if line is not None:
+                    self.said = line
+                    self.said_by = next(
+                        (nm for sn in self.SECTIONS for k, nm, _t, _c, _a
+                         in sn[7] if k == skey), skey.upper())
+                    SFX.play("click", 0.5)
+                return True
+        return False
+
     def back_out(self):
         """ESC puts the thing down first, and leaves the market second."""
         if self.open is not None:
@@ -14023,6 +15228,328 @@ class Bazaar:
 # ---------------------------------------------------------------------------
 # THE FRONT DOOR
 # ---------------------------------------------------------------------------
+class Cutscene:
+    """One room, a few lines, and sometimes a question.
+
+    It is drawn like the speech panel a shopkeeper gets, because it is
+    the same thing at greater length - this game tells its story by
+    having somebody say it to your face."""
+
+    def __init__(self, run, beats):
+        self.run = run
+        self.beats = list(beats)
+        self.i = 0
+        self.t = 0.0
+        self.picks = []
+        self.done = False
+
+    def beat(self):
+        return self.beats[self.i] if self.i < len(self.beats) else None
+
+    def asking(self):
+        b = self.beat()
+        return b if (b and b[0] == "?") else None
+
+    def draw(self, surf, mouse):
+        surf.fill((7, 8, 12))
+        sky(surf, self.t * 0.08)
+        ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        ov.fill((6, 7, 11, 224))
+        surf.blit(ov, (0, 0))
+        b = self.beat()
+        self.picks = []
+        if b is None:
+            return
+        if b[0] == "?":
+            prompt, options = b[1], b[2]
+            # whoever has been talking is still in the room. Without this
+            # the question arrives on a black screen with no one on it,
+            # and the decision reads as the game asking rather than a
+            # person waiting for an answer.
+            who = next((x[0] for x in reversed(self.beats[:self.i])
+                        if x[0] not in ("?", "-")), None)
+            if who:
+                text(surf, who, 20, (W // 2, H // 2 - 180), PAINT,
+                     center=True)
+            text(surf, prompt, 24, (W // 2, H // 2 - 130), INK,
+                 center=True)
+            for i, (lab, _flag) in enumerate(options):
+                r = pygame.Rect(W // 2 - 300, H // 2 - 50 + i * 76, 600, 60)
+                hot = r.collidepoint(mouse)
+                panel(surf, r, (30, 32, 44) if hot else (18, 19, 27),
+                      PAINT if hot else LINE, 7, 2 if hot else 1)
+                text(surf, lab, fit(lab, 19, r.w - 30), r.center,
+                     INK if hot else DIM, center=True)
+                self.picks.append((r, _flag))
+            text(surf, "there is no going back to this one", 13,
+                 (W // 2, H // 2 + 120), FAINT, center=True)
+            return
+        who, _ = b[0], b[1]
+        line = scene_line(b, self.run.house)
+        rows = wrap(line, 26, 860)
+        top = H // 2 - 40 - len(rows) * 17
+        if who != "-":
+            text(surf, who, 22, (W // 2, top - 46), PAINT, center=True)
+        y = top
+        for ln in rows:
+            text(surf, ln, 26, (W // 2, y), INK if who != "-" else DIM,
+                 center=True, bold=who != "-")
+            y += 34
+        text(surf, "press anything", 14, (W // 2, H - 70), FAINT,
+             center=True)
+
+    def update(self, dt):
+        self.t += dt
+
+    def advance(self, pos=None):
+        """A click or a key. Returns True when the room is finished."""
+        b = self.beat()
+        if b is None:
+            self.done = True
+            return True
+        if b[0] == "?":
+            if pos is None:
+                return False           # a question wants an answer
+            for r, flag in self.picks:
+                if r.collidepoint(pos):
+                    self.run.flags = list(getattr(self.run, "flags", ())) \
+                        + [flag]
+                    SFX.play("click", 0.6)
+                    # the rects belong to the beat that is now behind us;
+                    # a second click in the same frame must not be able to
+                    # answer the same question twice
+                    self.picks = []
+                    self.i += 1
+                    break
+            else:
+                return False
+        else:
+            self.i += 1
+        if self.i >= len(self.beats):
+            self.done = True
+            return True
+        return False
+
+
+class FieldPosts:
+    """What is waiting on the road afterwards, in the long campaign.
+
+    Two sections of three, and everything on them is paid for out of the
+    run rather than out of marks - so a ceiling bought here is a part
+    not started, which is the decision the whole screen exists to be."""
+
+    HEAD = 78
+
+    def __init__(self, run):
+        self.run = run
+        self.t = 0.0
+        self.sec = 0
+        self.tabs = []
+        self.cards = []
+        self.talks = []
+        self.said = None
+        self.said_by = None
+        self.done = None
+        self.no = None
+        self.no_t = 0.0
+
+    def section(self):
+        return POST_SECTIONS[self.sec]
+
+    def tab_rect(self, i):
+        return pygame.Rect(W - 30 - (2 - i) * 210, 40, 200, 30)
+
+    def post_rect(self, i):
+        gap = 16
+        w = (W - 52 - gap * 2) // 3
+        return pygame.Rect(26 + i * (w + gap), self.HEAD + 10, w,
+                           H - self.HEAD - 96)
+
+    def offers(self, key, socks):
+        """[(label, sub, cost, act)] - what this one will do for you."""
+        run = self.run
+        out = []
+        for s in socks:
+            lv = run.ceiling.get(s, BASE_CEILING)
+            if lv >= TOP_CEILING:
+                out.append((sock_label(s), "AS HIGH AS IT GOES", None, None))
+                continue
+            cost = run.raise_cost(s)
+            nxt = CATALOGUE[s][lv]           # the rung it unlocks
+            out.append((sock_label(s), "%s  -  RUNG %d" % (pname(s, nxt),
+                                                           lv + 1),
+                        cost, ("ceil", s)))
+        for k in plans_at(run, key):
+            thing = gear_thing(k)
+            out.append((pname("wpn" if k in STORY_GUNS else MOD_SLOT, thing),
+                        "PLANS  -  " + peffect(thing)
+                        if k in STORY_MODULES else
+                        "PLANS  -  %d DAMAGE, %s"
+                        % (thing.dmg * thing.shots, thing.kind.upper()),
+                        plan_cost(run, k), ("plan", k)))
+        if key == "mender":
+            c = mend_all_cost(run)
+            out.append((word("repair", "MEND") + " EVERYTHING",
+                        "every socket, now, not in four days",
+                        (c, 0) if c else None,
+                        ("mend", None) if c else None))
+            for s in run.mech.sockets():
+                if run.mech.fit[s] is None:
+                    continue
+                c = mend_cost(run, s)
+                if c:
+                    out.append((sock_label(s), "%d%% gone"
+                                % round(run.mech.damage_frac(s) * 100),
+                                (c, 0), ("mend", s)))
+        if key == "crucible":
+            out.append(("%d %s" % (CRUCIBLE_ALLOY, word("alloy", "ALLOY")),
+                        "it does not care what it was",
+                        (smelt_cost(run), 0), ("smelt", None)))
+        return out
+
+    def draw(self, surf, mouse):
+        run = self.run
+        surf.fill(BG)
+        sky(surf, self.t * 0.15)
+        ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        ov.fill((8, 9, 14, 170))
+        surf.blit(ov, (0, 0))
+        bar = pygame.Surface((W, self.HEAD), pygame.SRCALPHA)
+        bar.fill((10, 11, 18, 230))
+        surf.blit(bar, (0, 0))
+        pygame.draw.line(surf, LINE, (0, self.HEAD - 1), (W, self.HEAD - 1))
+        skey, title, sub = self.section()
+        text(surf, title, 28, (24, 10), PAINT)
+        text(surf, sub, 13, (24, 44), FAINT)
+        text(surf, "%s %d    %s %d" % (word("scrap", "SCRAP"), run.scrap,
+                                       word("alloy", "ALLOY"), run.alloy),
+             20, (W - 24, 14), INK, right=True)
+        self.tabs = []
+        for i, (k, nm, _s) in enumerate(POST_SECTIONS):
+            tr = self.tab_rect(i)
+            on = i == self.sec
+            hot = tr.collidepoint(mouse) and self.said is None
+            panel(surf, tr, (34, 36, 48) if (on or hot) else (18, 19, 26),
+                  PAINT if on else (LINE if not hot else DIM), 5,
+                  2 if on else 1)
+            text(surf, nm, fit(nm, 13, tr.w - 12), tr.center,
+                 INK if on else FAINT, center=True)
+            self.tabs.append((tr, i))
+        self.cards = []
+        self.talks = []
+        for i, (key, _sec, name, tag, socks) in enumerate(posts_in(skey)):
+            r = self.post_rect(i)
+            panel(surf, r, (17, 18, 25), LINE, 8)
+            text(surf, name, 21, (r.centerx, r.y + 12), PAINT, center=True)
+            text(surf, tag, 12, (r.centerx, r.y + 40), FAINT, center=True)
+            tb = pygame.Rect(r.centerx - 70, r.y + 60, 140, 22)
+            more = can_talk(key)
+            panel(surf, tb, (24, 24, 34) if more else (18, 18, 24),
+                  CORE if more else LINE, 5)
+            text(surf, "TALK" if more else "NOTHING MORE", 13, tb.center,
+                 INK if more else FAINT, center=True)
+            if more:
+                self.talks.append((tb, key, name))
+            y = r.y + 94
+            rows = self.offers(key, socks)
+            if not rows:
+                text(surf, "He is not selling anything.", 14,
+                     (r.centerx, y + 10), FAINT, center=True)
+            for lab, note, cost, act in rows:
+                card = pygame.Rect(r.x + 12, y, r.w - 24, 58)
+                ok = act is not None and cost is not None \
+                    and run.can_afford(*cost)
+                hot = card.collidepoint(mouse) and ok and self.said is None
+                panel(surf, card, (28, 30, 40) if hot else (21, 22, 30),
+                      PAINT if hot else (LINE if act else (40, 42, 52)), 6)
+                text(surf, lab, fit(lab, 16, card.w - 100),
+                     (card.x + 10, card.y + 8), INK if ok else FAINT)
+                text(surf, note, fit(note, 12, card.w - 24),
+                     (card.x + 10, card.y + 32), DIM if ok else FAINT,
+                     bold=False)
+                if cost:
+                    cl = "%d" % cost[0] + (" + %d" % cost[1] if cost[1] else "")
+                    text(surf, cl, 15, (card.right - 10, card.y + 8),
+                         GOOD if ok else BAD, right=True)
+                if act and cost:
+                    self.cards.append((card, act, cost))
+                y += 64
+                if y > r.bottom - 58:
+                    break
+        self.done = Button(pygame.Rect(W // 2 - 150, H - 56, 300, 40),
+                           "BACK TO THE YARD", ("done", None), primary=True)
+        self.done.hover(mouse)
+        self.done.draw(surf, 18)
+        if self.no and self.no_t > 0:
+            text(surf, self.no, 15, (W // 2, H - 76), BAD, center=True)
+        if self.said is not None:
+            speech_box(surf, self.said_by, self.said)
+
+    def update(self, dt):
+        self.t += dt
+        self.no_t = max(0.0, self.no_t - dt)
+
+    def click(self, pos):
+        if self.said is not None:
+            self.said = self.said_by = None
+            return None
+        for tb, key, name in self.talks:
+            if tb.collidepoint(pos):
+                line = talk_to(key)
+                if line:
+                    self.said, self.said_by = line, name
+                    SFX.play("click", 0.5)
+                return None
+        for tr, i in self.tabs:
+            if tr.collidepoint(pos):
+                self.sec = i
+                SFX.play("click", 0.5)
+                return None
+        for card, act, cost in self.cards:
+            if not card.collidepoint(pos):
+                continue
+            kind, arg = act
+            done = False
+            if kind == "ceil":
+                done = self.run.raise_ceiling(arg)
+            elif kind == "plan":
+                done = post_buy(self.run, arg)
+            elif kind == "mend":
+                done = post_mend(self.run, arg)
+            elif kind == "smelt":
+                done = post_smelt(self.run)
+            if done:
+                SFX.play(work_sfx(), 0.6)
+                save_run(self.run)
+            else:
+                self.no = "NOT ENOUGH FOR THAT"
+                self.no_t = 1.6
+                SFX.play("deny", 0.5)
+            return None
+        if self.done and self.done.hit(pos):
+            SFX.play("click", 0.6)
+            return "done"
+        return None
+
+
+def speech_box(surf, who, said):
+    """One person talking, over whatever screen they are standing on."""
+    ov = pygame.Surface((W, H), pygame.SRCALPHA)
+    ov.fill((8, 9, 14, 200))
+    surf.blit(ov, (0, 0))
+    lines = wrap(said, 20, 700)
+    box = pygame.Rect(W // 2 - 380, H // 2 - 60 - len(lines) * 13, 760,
+                      96 + len(lines) * 26)
+    panel(surf, box, (18, 19, 27), PAINT, 8, 2)
+    text(surf, who, 20, (box.x + 22, box.y + 16), PAINT)
+    y = box.y + 52
+    for ln in lines:
+        text(surf, ln, 20, (box.x + 22, y), INK, bold=False)
+        y += 26
+    text(surf, "CLICK TO GO BACK TO IT", 13, (box.centerx, box.bottom - 26),
+         FAINT, center=True)
+
+
 class Title:
     """The front door, and the three drawers behind it.
 
@@ -14039,6 +15566,10 @@ class Title:
         self.buttons = []
         self.save = load_save() if save is None else save
         self.armed = 0.0             # the erase, waiting to be meant
+        self.mode = "landfall"       # ...and which campaign BEGIN begins
+        self.modes = []
+        self.no = None
+        self.no_t = 0.0
         self.demo_house = None
         self.demo_frame = None
         self.demo = None
@@ -14067,6 +15598,7 @@ class Title:
     def update(self, dt):
         self.t += dt
         self.armed = max(0.0, self.armed - dt)
+        self.no_t = max(0.0, self.no_t - dt)
 
     def slot_rect(self, n):
         return pygame.Rect(74 + (n - 1) * (self.SLOT_W + 10), self.SLOT_Y,
@@ -14097,29 +15629,35 @@ class Title:
         text(surf, "SAVE", 13, (74, self.SLOT_Y - 18), FAINT)
         for n in range(1, SLOTS + 1):
             self.draw_slot(surf, n, mouse)
+        self.draw_modes(surf, mouse)
         has = bool(self.save.get("run"))
-        y = self.SLOT_Y + 92
+        y = self.SLOT_Y + 144
         if has:
             r = self.save["run"]
-            self.buttons.append(Button(pygame.Rect(74, y, 348, 54),
-                                       "CONTINUE - DAY %d" % r.get("day", 1),
+            # which campaign is in the slot, on the button that resumes
+            # it - the two are four times apart in length and DAY 60
+            # means opposite things in them
+            lab = "CONTINUE - DAY %d%s" % (
+                r.get("day", 1),
+                " OF THE YEAR" if r.get("mode") == "story" else "")
+            self.buttons.append(Button(pygame.Rect(74, y, 348, 46), lab,
                                        ("continue", None), primary=True))
-            y += 60
-        self.buttons.append(Button(pygame.Rect(74, y, 348, 54),
+            y += 51
+        self.buttons.append(Button(pygame.Rect(74, y, 348, 46),
                                    "A NEW MACHINE" if has else "BEGIN",
                                    ("new", None), primary=not has))
-        y += 60
-        self.buttons.append(Button(pygame.Rect(74, y, 348, 54),
+        y += 51
+        self.buttons.append(Button(pygame.Rect(74, y, 348, 46),
                                    "THE HENDRAS - %d MARKS" % marks(),
                                    ("shop", None), tone=ALLOY_C))
-        y += 60
-        self.buttons.append(Button(pygame.Rect(74, y, 170, 54), "QUIT",
+        y += 51
+        self.buttons.append(Button(pygame.Rect(74, y, 170, 46), "QUIT",
                                    ("quit", None), tone=BAD))
         card = slot_card(SLOT[0])
         if not card["empty"]:
             lab = ("ERASE - SURE?" if self.armed > 0
                    else "ERASE SAVE %d" % SLOT[0])
-            self.buttons.append(Button(pygame.Rect(252, y, 170, 54), lab,
+            self.buttons.append(Button(pygame.Rect(252, y, 170, 46), lab,
                                        ("erase", None),
                                        tone=BAD, primary=self.armed > 0))
         for b in self.buttons:
@@ -14134,6 +15672,50 @@ class Title:
                  (74, H - 52), FAINT)
         text(surf, "Every graphic and every note in this game is drawn or "
              "synthesised in code.", 12, (74, H - 28), (56, 60, 76))
+
+    def draw_modes(self, surf, mouse):
+        """Which campaign BEGIN begins.
+
+        A switch rather than a second button, because the long one is the
+        same game at four times the length: a player who cannot see which
+        one they are about to start will start the wrong one and find out
+        on day seventy. It also has somewhere to say WHY the long one is
+        shut, which a greyed-out button on its own does not."""
+        self.modes = []
+        shut = story_locked_because(self.save.get("best") or {})
+        y = self.SLOT_Y + 92
+        for i, (key, lab) in enumerate((("landfall", "THE SEASON"),
+                                        ("story", "THE YEAR"))):
+            r = pygame.Rect(74 + i * 178, y, 170, 28)
+            on = self.mode == key
+            live = key == "landfall" or not shut
+            hot = r.collidepoint(mouse) and live and not on
+            panel(surf, r, (32, 34, 46) if (on or hot) else (18, 19, 26),
+                  PAINT if on else (LINE if not hot else DIM), 5,
+                  2 if on else 1)
+            text(surf, lab, fit(lab, 14, r.w - 14), r.center,
+                 INK if on else (DIM if live else (58, 62, 78)),
+                 center=True)
+            self.modes.append((r, key, live))
+        if self.no_t > 0:
+            note, tone = self.no, BAD
+        elif shut:
+            note, tone = shut, FAINT
+        elif self.mode == "story":
+            ends = endings_seen(self.save.get("best") or {})
+            tone = ALLOY_C
+            if not ends:
+                note = ("365 days, posts on the road, and an ending you "
+                        "argue for")
+            elif "broke" in ends:
+                note = ("%d of %d endings, and you have found the true one"
+                        % (len(ends), len(ENDINGS)))
+            else:
+                note = ("%d of %d endings - the last one is not on any list"
+                        % (len(ends), len(ENDINGS)))
+        else:
+            note, tone = "seventy days and seven of them", FAINT
+        text(surf, note, 12, (74, y + 34), tone)
 
     def draw_slot(self, surf, n, mouse):
         r = self.slot_rect(n)
@@ -14169,6 +15751,18 @@ class Title:
         self.buttons.append(Button(r, "", ("slot%d" % n, None)))
 
     def click(self, pos):
+        for r, key, live in self.modes:
+            if not r.collidepoint(pos):
+                continue
+            if live:
+                self.mode = key
+                SFX.play("click", 0.5)
+            else:
+                self.no = story_locked_because(
+                    self.save.get("best") or {}) or ""
+                self.no_t = 2.6
+                SFX.play("deny", 0.45)
+            return None
         for b in self.buttons:
             if b.hit(pos):
                 key = b.key[0]
@@ -14178,6 +15772,12 @@ class Title:
                         set_slot(n)
                         self.refresh()
                         self.armed = 0.0
+                        # the ladder is recorded per slot, so a slot that
+                        # has not finished both campaigns shuts the long
+                        # one again rather than starting it locked
+                        if self.mode == "story" and story_locked_because(
+                                self.save.get("best") or {}):
+                            self.mode = "landfall"
                         SFX.play("click", 0.5)
                     return None
                 if key == "erase":
@@ -14206,9 +15806,12 @@ class _TitleRun:
 
 
 class Ending:
-    def __init__(self, run, won):
+    def __init__(self, run, won, story=None):
         self.run = run
         self.won = won
+        # a long campaign does not end in "won" or "lost" - it ends in
+        # one of four rooms, and which one is what you decided
+        self.story = story
         self.t = 0.0
         self.btn = Button(pygame.Rect(W // 2 - 150, H - 96, 300, 58),
                           "THE FRONT DOOR", ("go", None))
@@ -14220,6 +15823,44 @@ class Ending:
         ov.fill((8, 9, 14, 165))
         surf.blit(ov, (0, 0))
         r = self.run
+        if self.story:
+            title, body = ENDINGS[self.story]
+            good = self.story in ("broke", "elsewhere")
+            text(surf, title, 42, (W // 2, 46),
+                 PAINT if self.story != "stood" else BAD, center=True)
+            if self.story == "broke":
+                text(surf, "THE TRUE ENDING", 15, (W // 2, 100), GOOD,
+                     center=True)
+            y = 140
+            for ln in wrap(body, 22, 820):
+                text(surf, ln, 22, (W // 2, y), INK, center=True,
+                     bold=False)
+                y += 30
+            # the thing the year went into, still standing. The first
+            # pass ended a 365-day campaign on four lines of text over an
+            # empty screen, which reads as though none of it happened.
+            draw_mech_front(surf, r.mech, W // 2, H - 104, 0.72, {}, self.t,
+                            lit=good)
+            stats = [("DAYS", str(r.day)),
+                     ("CAME ASHORE", str(r.kaiju_index)),
+                     ("PUT DOWN", str(r.killed)),
+                     ("CITY LEFT", "%d%%" % int(r.integrity)),
+                     (word("built", "BUILT"),
+                      "%d%%" % round(r.mech.completion(
+                          getattr(r, "ceiling", None)) * 100))]
+            x = W // 2 - 300
+            for a, b in stats:
+                text(surf, b, 24, (x, max(y + 16, 316)), PAINT, center=True)
+                text(surf, a, 12, (x, max(y + 44, 344)), FAINT, center=True)
+                x += 150
+            ends = endings_seen()
+            if ends:
+                text(surf, "%d OF %d WAYS THIS YEAR CAN END"
+                     % (len(ends), len(ENDINGS)), 13, (W // 2, H - 120),
+                     FAINT, center=True)
+            self.btn.hover(mouse)
+            self.btn.draw(surf, 20)
+            return
         if self.won:
             text(surf, "THE GREAT WORK IS FINISHED", 50, (W // 2, 60), PAINT,
                  center=True)
@@ -14237,7 +15878,7 @@ class Ending:
                 "%d of them came ashore. You put %d down."
                 % (r.kaiju_index, r.killed),
                 "The machine was %d%% finished." %
-                round(r.mech.completion() * 100),
+                round(r.mech.completion(getattr(r, "ceiling", None)) * 100),
                 "It was always going to be close.",
             ]
         for i, s in enumerate(lines):
@@ -14249,7 +15890,8 @@ class Ending:
                  ("CITY LEFT", "%d%%" % int(r.integrity)),
                  (word("spent", "SCRAP SPENT"), str(r.spent)),
                  (word("built", "BUILT"),
-                  "%d%%" % round(r.mech.completion() * 100))]
+                  "%d%%" % round(
+                      r.mech.completion(getattr(r, "ceiling", None)) * 100))]
         x = W // 2 - 300
         for a, b in stats:
             text(surf, b, 26, (x, 276), PAINT, center=True)
@@ -14282,7 +15924,11 @@ class App:
         self.fight = None
         self.brief = None
         self.after = None
+        self.posts = None
+        self.scene = None
+        self.scene_back = "brief"
         self.ending = None
+        self.ending_screen = None
         self.speed = 1
         self.paused = False
         self.running = True
@@ -14291,9 +15937,10 @@ class App:
         music("vigil")
 
     # -- moving between screens -------------------------------------------
-    def begin_run(self, data=None, house_key="keal", chassis="standard"):
+    def begin_run(self, data=None, house_key="keal", chassis="standard",
+                  mode="landfall"):
         self.run = (Run.from_json(data) if data
-                    else Run(house_key, chassis))
+                    else Run(house_key, chassis, mode))
         set_house(self.run.house)
         self.hangar = Hangar(self.run)
         self.state = "hangar"
@@ -14302,7 +15949,55 @@ class App:
         # a run resumed on the morning of a landfall goes straight out
         nl = self.run.next_landfall
         if nl is not None and self.run.day >= nl:
-            self.to_brief()
+            if not self.maybe_scene():
+                self.to_brief()
+        elif data is None and self.run.mode == "story":
+            # ...and a fresh year opens in a room, not in the gantry
+            self.maybe_scene("hangar")
+
+    def maybe_scene(self, back="brief"):
+        """A room to stand in before the next landfall, once each."""
+        r = self.run
+        if r is None or r.mode != "story":
+            return False
+        i = r.kaiju_index
+        if i in r.seen:
+            return False
+        beats = list(scene_at(i))
+        if i == len(STORY_LADDER) and can_break(r):
+            # the door the Clerk pointed at, open only if you asked him
+            # AND listened to all fifteen of them
+            beats = beats + [
+                ("?", "Tomorrow is the last day.",
+                 (("GO OUT AND MEET IT", "meet"),
+                  ("GO AND FIND THEM INSTEAD", "break")))]
+        if not beats:
+            return False
+        r.seen = list(r.seen) + [i]
+        self.scene = Cutscene(r, beats)
+        self.scene_back = back
+        self.state = "scene"
+        music("vigil")
+        return True
+
+    def scene_done(self):
+        r = self.run
+        save_run(r)
+        if "break" in r.flags:
+            # the campaign ends in a room instead of on the road
+            self.ending = "victory"
+            st = story_ending(r, True, True)
+            self.ending_screen = Ending(r, True, st)
+            record_end(r, True)
+            record_story_ending(st)
+            self.state = "end"
+            return
+        if self.scene_back == "hangar":
+            self.hangar = Hangar(r)
+            self.state = "hangar"
+            music("yard")
+            return
+        self.to_brief()
 
     def to_brief(self):
         prebake(("landfall",))
@@ -14343,7 +16038,9 @@ class App:
         ending = None
         if self.run.integrity <= 0:
             ending = "over"
-        elif self.run.kaiju_index >= len(roster_for(self.run.house)):
+        elif self.run.kaiju_index >= len(schedule_for(self.run.mode)):
+            # the same roster-for-ladder mix-up `resolve` had. Standing
+            # down on the eleventh of seventeen ended the campaign.
             ending = "unfinished"
         else:
             lines.append("NEXT LANDFALL: DAY %d"
@@ -14359,12 +16056,31 @@ class App:
 
     def after_done(self):
         if self.ending:
-            self.ending_screen = Ending(self.run, self.ending == "victory")
+            won = self.ending == "victory"
+            # a long campaign does not end in WON or LOST. It ends in one
+            # of four rooms, and which one is what you decided in the
+            # other four - see `story_ending`.
+            st = (story_ending(self.run, won)
+                  if self.run.mode == "story" else None)
+            if st:
+                record_story_ending(st)
+            self.ending_screen = Ending(self.run, won, st)
             self.state = "end"
+        elif post_open(self.run):
+            # on the ground, while it is still cooling. Only ever here.
+            self.posts = FieldPosts(self.run)
+            self.state = "posts"
+            music("market")
         else:
             self.hangar = Hangar(self.run)
             self.state = "hangar"
             music("yard")
+
+    def posts_done(self):
+        save_run(self.run)
+        self.hangar = Hangar(self.run)
+        self.state = "hangar"
+        music("yard")
 
     def to_title(self):
         self.title = Title()
@@ -14435,22 +16151,23 @@ class App:
                 # anywhere that even mentioned them. The question is
                 # whether there is a CHOICE, and that is all it is.
                 if len(frames) > 1:
-                    self.frames = PickFrame(picked)
+                    self.frames = PickFrame(picked, self.choose.mode)
                     self.state = "frame"
                 else:
-                    self.begin_run(None, picked)
+                    self.begin_run(None, picked, mode=self.choose.mode)
         elif self.state == "frame":
             got = None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 got = self.frames.click(ev.pos)
             elif ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:
-                    self.choose = Choose()
+                    self.choose = Choose(self.frames.mode)
                     self.state = "choose"
                 else:
                     got = self.frames.key(ev.key)
             if got:
-                self.begin_run(None, self.frames.house, got)
+                self.begin_run(None, self.frames.house, got,
+                               self.frames.mode)
         elif self.state == "hangar":
             if ev.type == pygame.MOUSEWHEEL:
                 self.hangar.wheel(ev.y)
@@ -14458,7 +16175,8 @@ class App:
                 if self.hangar.spec:
                     self.hangar.spec = False
                 elif self.hangar.click(ev.pos) == "landfall":
-                    self.to_brief()
+                    if not self.maybe_scene():
+                        self.to_brief()
             elif ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:
                     if self.hangar.spec or self.hangar.rack:
@@ -14468,7 +16186,8 @@ class App:
                         save_run(self.run)
                         self.to_title()
                 elif self.hangar.key(ev.key) == "landfall":
-                    self.to_brief()
+                    if not self.maybe_scene():
+                        self.to_brief()
         elif self.state == "brief":
             act = None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -14493,6 +16212,20 @@ class App:
                         (ev.type == pygame.KEYDOWN and
                          ev.key in (pygame.K_SPACE, pygame.K_RETURN))):
                     self.finish_fight()
+        elif self.state == "scene":
+            act = None
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                act = self.scene.advance(ev.pos)
+            elif ev.type == pygame.KEYDOWN and not self.scene.asking():
+                act = self.scene.advance(None)
+            if act:
+                self.scene_done()
+        elif self.state == "posts":
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                if self.posts.click(ev.pos) == "done":
+                    self.posts_done()
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                self.posts_done()
         elif self.state == "after":
             act = None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -14528,7 +16261,7 @@ class App:
         if act == "shop":
             self.to_shop("title")
         elif act == "new":
-            self.choose = Choose()
+            self.choose = Choose(self.title.mode)
             self.state = "choose"
         elif act == "continue":
             self.begin_run(self.title.save.get("run"))
@@ -14610,6 +16343,12 @@ class App:
                 if self.fight.over_t > 1.2:
                     text(s, "press anything", 20, (W // 2, H // 2 + 30), DIM,
                          center=True)
+        elif self.state == "scene":
+            self.scene.update(dt)
+            self.scene.draw(s, mouse)
+        elif self.state == "posts":
+            self.posts.update(dt)
+            self.posts.draw(s, mouse)
         elif self.state == "after":
             self.after.t += dt
             self.after.draw(s, mouse)

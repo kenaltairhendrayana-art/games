@@ -10,6 +10,7 @@ measured.
     python gw_test.py slots          prove the three save slots stay apart
     python gw_test.py flow           drive the real App through a whole run
     python gw_test.py balance [n]    auto-play n campaigns and print the table
+    python gw_test.py story [n]      auto-play n YEARS - the long campaign
     python gw_test.py all            smoke, then flow, then balance 6
 
 Fight.update() deliberately touches no font and no display, which is what
@@ -38,6 +39,28 @@ the feature. That is the correct result: relief is not a build-optimiser's
 tool. It is for a person who has just lost a fight, is looking at a third
 of a city, and wants the run to continue - which is why the yield is
 weighted toward the bottom end (see `Run.relief_gain`).
+
+THE YEAR is measured separately, because it is a different game: the
+ladder is seventeen rungs, the parts go two rungs higher, and a second
+shop on the road competes with the build for the same scrap. Measured at
+n=4 a side, after the crucible went into the bot's road routine:
+
+    both houses reach 93-96% built by day 365 and spend down to 5-14k
+    4 victories in 4 a side, and the city ends between 74% and 100%
+    the last landfall is the longest fight in the game: 131s and 71s
+
+The pilot plays positioning better than a person will, so read 4 in 4
+the way the season's table reads 100% on its first five rungs.
+
+The finding that mattered was not a weapon. The year is not short of
+money and never was - it is short of ALLOY, and the crucible is the only
+tap on the road. Before the bot used it, both houses spent two thirds of
+their build days unable to afford the next thing in the list while
+sitting on forty thousand scrap, and the ceilings simply never got
+bought. Fixing that moved RYEZ from 1 victory in 4 to 4, and moved
+built-at-the-finale from 61% to 96%. Nothing else tried came close: a
+bigger DEEP HUNGER payout moved the end-of-year scrap pile by 600 and
+the win rate by nothing at all.
 
 Watch `taken` as much as `win%`. A fight the pilot wins without being hurt
 is a fight with no texture in it, and three separate bugs hid behind a
@@ -108,6 +131,17 @@ def smoke():
     t.t = 2.0
     t.draw(surf, mouse)
     snap("title")
+    # ...and the front door of a save that has been all the way round:
+    # both campaigns won, the year open, three of its four rooms found
+    t2 = G.Title({"run": {"day": 214, "mode": "story"},
+                  "best": {"wins": 5, "losses": 2, "best_kills": 16,
+                           "won_keal": True, "won_ryez": True,
+                           "endings": ["stood", "datasheet", "broke"]}})
+    t2.t = 2.0
+    t2.draw(surf, mouse)
+    t2.click(t2.modes[1][0].center)
+    t2.draw(surf, mouse)
+    snap("title_year")
 
     run = G.Run()
     h = G.Hangar(run)
@@ -233,6 +267,61 @@ def smoke():
         e.t = 1.0
         e.draw(surf, mouse)
         snap(name)
+
+    # -- and the screens the long campaign adds --------------------------
+    year = G.Run("keal", "standard", "story")
+    year.day, year.killed, year.scrap, year.alloy = 214, 11, 3300, 14
+    year.kaiju_index, year.integrity = 11, 71
+    for k, v in (("legs", 3), ("torso", 3), ("l_arm", 3), ("r_arm", 2),
+                 ("head", 3), ("reactor", 3), ("l_wpn", "ripper"),
+                 ("r_wpn", "missile"), ("armour", 2)):
+        year.mech.install(k, v)
+    year.mech.hp["legs"] *= 0.45
+    year.mech.hp["armour"] *= 0.2
+    fp = G.FieldPosts(year)
+    for i, (_k, nm, _s) in enumerate(G.POST_SECTIONS):
+        fp.sec = i
+        fp.t = 1.0
+        fp.draw(surf, mouse)
+        snap("posts_" + nm.split()[-1].lower())
+    fp.said_by, fp.said = "THE CLERK", G.TALK["clerk"][1]
+    fp.draw(surf, mouse)
+    snap("posts_said")
+
+    # the rack in a long campaign: the year's bays are ON it, greyed,
+    # with the counter that has the plans printed underneath
+    hy = G.Hangar(year)
+    hy.sel = G.MOD_SLOT
+    hy.rack = True
+    hy.t = 1.0
+    hy.draw(surf, (300, 300))
+    snap("rack_year")
+    year.opened = list(G.GEAR_PLANS)
+    hy.draw(surf, (300, 300))
+    snap("rack_year_open")
+
+    # the brief for the last day, which is a machine nothing drew before
+    year.kaiju_index = len(G.STORY_LADDER)
+    mb = G.Brief(year, year.next_kind())
+    mb.t = 2.0
+    mb.draw(surf, mouse)
+    snap("brief_mirror")
+    year.kaiju_index = 11
+
+    cs = G.Cutscene(year, G.scene_at(12))
+    cs.t = 1.0
+    cs.draw(surf, mouse)
+    snap("scene_line")
+    while not cs.asking():
+        cs.advance(None)
+        cs.draw(surf, mouse)
+    snap("scene_ask")
+
+    for key in G.ENDINGS:
+        e = G.Ending(year, key != "stood", key)
+        e.t = 1.0
+        e.draw(surf, mouse)
+        snap("end_" + key)
     print("\n%d screens drawn, no crashes" % n[0])
 
 
@@ -1123,6 +1212,880 @@ def yard():
     wipe_meta()
     G.set_house("keal")
 
+    # -- NINE PEOPLE WHO CAN BE ASKED -------------------------------------
+    # The shop is the only screen in this game where nothing is trying to
+    # kill you, and until now not one of the people standing on it could
+    # be spoken to. Each has a stack of lines ending on something they
+    # are not supposed to say; hearing all nine is the door to the true
+    # ending, so the stacks have to actually empty.
+    wipe_meta()
+    G.set_house("keal")
+    sellers = [s[0] for sn in G.Bazaar.SECTIONS for s in sn[7]]
+    assert len(sellers) == 9, sellers
+    for s in sellers:
+        assert s in G.TALK and G.TALK[s], s
+        assert G.can_talk(s) and G.heard(s) == 0, s
+    assert not G.heard_everything()
+    said = []
+    for s in sellers:
+        while G.can_talk(s):
+            line = G.talk_to(s)
+            assert line, s
+            said.append(line)
+        assert G.talk_to(s) is None, "it kept talking"
+    assert len(said) == len(set(said)), "somebody repeats themselves"
+    assert G.hints_heard() == len(sellers), G.hints_heard()
+    # NOT `heard_everything` - the field posts are in the same table and
+    # have their own stacks, so the whole chain is nine shopkeepers plus
+    # six people on the ground. That half is checked with the posts.
+    assert not G.heard_everything()
+    print("  %d sellers, %d lines, and every stack runs out"
+          % (len(sellers), len(said)))
+
+    # the button is on the counter, and it hands over exactly one line
+    wipe_meta()
+    G.set_house("keal")
+    baz = G.Bazaar()
+    baz.t = 1.0
+    sf = pygame.Surface((G.W, G.H))
+    baz.draw(sf, (0, 0))
+    assert [k for _r, k in baz.talks] == ["sarah", "jack"], baz.talks
+    tb, who = baz.talks[0]
+    baz.click(tb.center)
+    assert baz.said and baz.said_by == "SARAH HENDRA", baz.said_by
+    assert G.heard("sarah") == 1
+    baz.draw(sf, (0, 0))              # the line, over everything else
+    baz.click((8, 8))                 # anywhere puts it away
+    assert baz.said is None
+    print("  and the counter hands one over when you ask for it")
+
+    # -- STORY MODE: locked until both sides have been carried home -------
+    wipe_meta()
+    assert not G.story_open()
+    assert G.story_locked_because()
+    G.set_house("keal")
+    r = G.Run("keal")
+    r.integrity = 90.0
+    G.record_end(r, True)
+    assert not G.story_open(), "one side is not both sides"
+    assert "RYEZ" in G.story_locked_because(), G.story_locked_because()
+    G.set_house("ryez")
+    r = G.Run("ryez")
+    r.integrity = 90.0
+    G.record_end(r, True)
+    assert G.story_open() and G.story_locked_because() is None
+    print("  story mode opens on a win from each side, and not before")
+
+    # -- a year, and the same numbers turned up -------------------------
+    assert len(G.STORY_SCHEDULE) == 17, len(G.STORY_SCHEDULE)
+    assert G.STORY_SCHEDULE[-1] == 365, G.STORY_SCHEDULE[-1]
+    assert len(G.STORY_MARKS) == len(G.STORY_SCHEDULE)
+    for i in range(1, len(G.STORY_SCHEDULE)):
+        assert G.STORY_SCHEDULE[i] > G.STORY_SCHEDULE[i - 1]
+        assert G.STORY_MARKS[i] > G.STORY_MARKS[i - 1]
+    assert len(G.STORY_LADDER) == len(G.STORY_SCHEDULE) - 1, (
+        "the last rung is the mirror and is not in the table")
+    G.set_house("keal")
+    run = G.Run("keal", "standard", "story")
+    assert run.mode == "story"
+    assert len(G.schedule_for("story")) == 17
+    assert len(G.schedule_for("landfall")) == 7
+    seen = []
+    for i in range(len(G.STORY_SCHEDULE)):
+        run.kaiju_index = i
+        seen.append((run.next_kind(), run.story_mult()))
+    assert seen[0][0].key == "crawler", seen[0][0].key
+    assert max(m for _k, m in seen) > 1.9, "the year never gets harder"
+    print("  %d landfalls over %d days, ending at x%.1f"
+          % (len(seen), G.STORY_SCHEDULE[-1],
+             max(m for _k, m in seen[:-1])))
+
+    # -- and the last one is the machine you brought --------------------
+    # It cannot be a datasheet in the bestiary, because there has to be
+    # a different one for every frame a player walks in with.
+    G.add_marks(20000)
+    G.buy_ware("ch_warmachine")
+    for chassis in ("standard", "warmachine"):
+        run = G.Run("keal", chassis, "story")
+        run.kaiju_index = len(G.STORY_LADDER)
+        for s in run.mech.sockets():
+            if s not in G.HARDPOINTS:
+                run.mech.install(s, 3)
+        k = run.next_kind()
+        assert k.smart, "the last one is not paying attention"
+        assert k.rig.chassis == chassis, (k.rig.chassis, chassis)
+        assert k.name == G.frame_label(run.mech), k.name
+        assert k not in G.roster_for("keal")
+        assert k.hp > G.KINDS["cathedral"].hp, k.hp
+    print("  and the last landfall is your own frame, whichever you "
+          "brought")
+
+    # it braces and it is not always there, which nothing else does
+    run = G.Run("keal", "standard", "story")
+    run.kaiju_index = len(G.STORY_LADDER)
+    for s in run.mech.sockets():
+        if s not in G.HARDPOINTS:
+            run.mech.install(s, 3)
+    f = G.Fight(run, run.next_kind())
+    e = f.boss()
+    random.seed(11)
+    missed = 0
+    for _ in range(400):
+        e.hp = e.max_hp
+        e.guard = 0.0
+        if e.hurtby(500.0) == 0.0:
+            missed += 1
+    assert 30 < missed < 130, "dodge rate is %d in 400" % missed
+    e.guard = 0.0
+    open_hit = e.hurtby(500.0)
+    e.guard = G.SMART_GUARD_FOR
+    shut_hit = e.hurtby(500.0)
+    assert shut_hit < open_hit * 0.6, (open_hit, shut_hit)
+    # and it puts them up on its own
+    e.guard, e.guard_t = 0.0, 0.05
+    e.smart_tick(0.1)
+    assert e.guard > 0, "it never raises them"
+    plain = G.Fight(G.Run("keal"), G.kind_at("keal", 5)).boss()
+    plain.guard, plain.guard_t = 0.0, 0.05
+    plain.smart_tick(0.1)
+    assert plain.guard == 0.0, "everything on the road is bracing now"
+    print("  it was not there for %d of 400, and a blow on its plates "
+          "does %.0f against %.0f" % (missed, shut_hit, open_hit))
+
+    # -- nothing in the back half of the year walks up the road alone -----
+    # ESCORTS is seven rows long. For a while a 365-day campaign read off
+    # the end of it and landfalls eight to seventeen were ten duels in a
+    # row, which is the exact thing escorts were added to stop.
+    assert len(G.STORY_ESCORTS) == len(G.STORY_SCHEDULE), len(G.STORY_ESCORTS)
+    for i in range(3):
+        assert not G.escorts_at(i, "story"), "landfall %d is not a duel" % (i + 1)
+    for i in range(3, len(G.STORY_ESCORTS)):
+        with_it = G.escorts_at(i, "story")
+        assert with_it, "landfall %d of the year comes alone" % (i + 1)
+        assert sum(c for _r, c, _f in with_it) <= 4, (
+            "landfall %d of the year puts %d bodies on the road"
+            % (i + 1, 1 + sum(c for _r, c, _f in with_it)))
+        for rung, _c, _f in with_it:
+            assert 0 <= rung < len(G.roster_for("keal")), (i, rung)
+    assert G.escorts_at(9, "story") != G.escorts_at(9), (
+        "the year is still reading the season's column")
+    assert G.escorts_at(2, "story") == G.escorts_at(2)
+    print("  the year has its own %d-row escort column, and the last ten "
+          "landfalls do not come alone" % len(G.STORY_ESCORTS))
+
+    # -- the last one is as built as you are ------------------------------
+    # A fixed datasheet made the last day of a 365-day campaign EASIER the
+    # better it had been played: a kitted tier-five frame walked through
+    # 26000 hit points in 34 seconds while an ordinary year took 108.
+    G.set_house("keal")
+    bare = G.Run("keal", "standard", "story")
+    bare.kaiju_index = len(G.STORY_LADDER)
+    bare.mech.install("torso", 1)
+    full = G.Run("keal", "standard", "story")
+    full.kaiju_index = len(G.STORY_LADDER)
+    for s in full.mech.sockets():
+        if s in G.HARDPOINTS:
+            opts = G.options_for(s, None, full.mech.frame)
+            if opts:
+                full.mech.install(s, opts[0].key)
+        else:
+            full.ceiling[s] = G.TOP_CEILING
+            full.mech.install(s, G.TOP_CEILING)
+    kb, kf = bare.next_kind(), full.next_kind()
+    assert kf.hp > kb.hp * 1.25, (kb.hp, kf.hp)
+    assert kf.attacks[0]["dmg"] > kb.attacks[0]["dmg"] * 1.15, (
+        kb.attacks[0]["dmg"], kf.attacks[0]["dmg"])
+    assert kf.attacks[0]["reach"] == kb.attacks[0]["reach"], (
+        "it grew longer arms instead of harder blows")
+    assert kb.hp >= G.MIRROR_HP * 0.6, "it can be starved down to nothing"
+    # and what it looks like is a finished machine, not a mid-campaign one
+    for s in kf.rig.sockets():
+        if s not in G.HARDPOINTS:
+            assert kf.rig.fit[s] == G.TOP_CEILING, (s, kf.rig.fit[s])
+    print("  the last landfall reads your own machine: %d hp against a "
+          "finished one, %d against a bare frame" % (kf.hp, kb.hp))
+
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- THE FIELD POSTS, and the rungs only they sell --------------------
+    # Six posts in two sections of three, open on the ground after a
+    # landfall and only in the long campaign. They are the only place
+    # that lifts a socket's CEILING, which is the only way to reach the
+    # fourth and fifth rungs of a table.
+    wipe_meta()
+    G.set_house("keal")
+    assert len(G.POSTS) == 6, len(G.POSTS)
+    assert len(G.POST_SECTIONS) == 2, len(G.POST_SECTIONS)
+    for skey, _nm, _sub in G.POST_SECTIONS:
+        assert len(G.posts_in(skey)) == 3, skey
+    handled = [s for _k, _sec, _n, _t, socks in G.POSTS for s in socks]
+    for s in G.CATALOGUE:
+        assert s in handled, "%s has no post that will raise it" % s
+    assert len(handled) == len(set(handled)), "two posts sell the same rung"
+
+    plain = G.Run("keal")
+    story = G.Run("keal", "standard", "story")
+    assert not G.post_open(plain) and G.post_open(story)
+
+    # the ceiling, and what it gates
+    assert G.ceiling_of(plain, "torso") == G.BASE_CEILING
+    assert not plain.can_raise("torso"), "the short campaign sells rungs"
+    assert len(G.CATALOGUE["torso"]) == G.TOP_CEILING, len(G.CATALOGUE["torso"])
+    assert not G.options_for("torso", 3, None, G.BASE_CEILING)
+    assert G.options_for("torso", 3, None, G.TOP_CEILING)
+    story.scrap, story.alloy = 40000, 90
+    steps = 0
+    while story.can_raise("torso"):
+        was = story.scrap
+        assert story.raise_ceiling("torso")
+        assert story.scrap < was, "it was free"
+        steps += 1
+    assert steps == G.TOP_CEILING - G.BASE_CEILING, steps
+    assert story.ceiling["torso"] == G.TOP_CEILING
+    assert not story.raise_ceiling("torso"), "it went past the top"
+    nxt = G.options_for("torso", 3, None, G.ceiling_of(story, "torso"))
+    assert nxt and nxt[0].tier == 4, nxt
+    print("  6 posts in 2 sections; every socket has one, and a ceiling "
+          "goes %d -> %d and stops" % (G.BASE_CEILING, G.TOP_CEILING))
+
+    # ...and a finished machine still reads as finished in a short run,
+    # which it did not once the tables grew two rungs each
+    done = G.Run("keal")
+    for s in done.mech.sockets():
+        if s not in G.HARDPOINTS:
+            done.mech.install(s, 3)
+        else:
+            opts = G.options_for(s, None, done.mech.frame)
+            if opts:
+                done.mech.install(s, opts[0].key)
+    # ...measured against what that campaign can REACH. Uncapped, the
+    # same machine is scored against two rungs it was never offered.
+    capped = done.mech.completion(done.ceiling)
+    uncapped = done.mech.completion({s: G.TOP_CEILING for s in G.SOCKETS})
+    assert capped > uncapped + 0.1, (capped, uncapped)
+    # every body socket it could fill, it filled
+    for s in ("legs", "torso", "head", "reactor", "armour"):
+        table = G.CATALOGUE[s][:G.BASE_CEILING]
+        assert done.mech.fit[s] == len(table), s
+
+    # -- mending and smelting on the spot ---------------------------------
+    r = G.Run("keal", "standard", "story")
+    r.scrap, r.alloy = 20000, 20
+    for s in r.mech.sockets():
+        if s not in G.HARDPOINTS:
+            r.mech.install(s, 3)
+    r.mech.hp["torso"] *= 0.4
+    r.mech.hp["legs"] *= 0.5
+    want = G.mend_all_cost(r)
+    assert want > 0
+    was = r.scrap
+    assert G.post_mend(r)
+    assert r.scrap == was - want, (r.scrap, was, want)
+    for s in r.mech.sockets():
+        if r.mech.fit[s] is not None:
+            assert r.mech.hp[s] == r.mech.max_hp(s), s
+    assert not G.post_mend(r), "it charged for nothing"
+    was_a = r.alloy
+    assert G.post_smelt(r) and r.alloy == was_a + G.CRUCIBLE_ALLOY
+    r.scrap = 10
+    assert not G.post_smelt(r), "it smelted on credit"
+    print("  the mender puts a whole machine back for %d, and the "
+          "crucible turns %d into %d" % (want, G.CRUCIBLE_SCRAP,
+                                         G.CRUCIBLE_ALLOY))
+
+    # -- the screen they live on --------------------------------------
+    r = G.Run("keal", "standard", "story")
+    r.scrap, r.alloy = 6000, 20
+    for s in r.mech.sockets():
+        if s not in G.HARDPOINTS:
+            r.mech.install(s, 3)
+    r.mech.hp["torso"] *= 0.45
+    fp = G.FieldPosts(r)
+    fp.t = 1.0
+    sf = pygame.Surface((G.W, G.H))
+    fp.draw(sf, (0, 0))
+    assert [k for _b, k, _n in fp.talks] == ["fitter", "plater", "mender"]
+    assert fp.cards, "the convoy is selling nothing"
+    for card, _act, _cost in fp.cards:
+        assert card.bottom <= G.H, "a post card fell off the screen"
+    card, act, cost = fp.cards[0]
+    assert act == ("ceil", "legs"), act
+    was = r.scrap
+    fp.click(card.center)
+    assert r.ceiling["legs"] == G.BASE_CEILING + 1
+    assert r.scrap == was - cost[0]
+    # the other three are on the other tab, and it switches
+    fp.click(fp.tab_rect(1).center)
+    assert fp.sec == 1
+    fp.draw(sf, (0, 0))
+    assert [k for _b, k, _n in fp.talks] == ["instrument", "crucible",
+                                             "clerk"]
+    # talking at a post works the same as talking at a counter
+    tb, key, name = fp.talks[2]
+    fp.click(tb.center)
+    assert fp.said and fp.said_by == "THE CLERK", fp.said_by
+    fp.draw(sf, (0, 0))
+    fp.click((8, 8))
+    assert fp.said is None
+    assert fp.click(fp.done.rect.center) == "done"
+    print("  the posts draw, both tabs, and a rung bought there sticks")
+
+    # -- and the posts finish the hint chain ------------------------------
+    for key, _sec, _n, _t, _s in G.POSTS:
+        assert key in G.TALK and G.TALK[key], key
+    assert "yours" in G.TALK["clerk"][-1], G.TALK["clerk"][-1]
+    wipe_meta()
+    for k in G.TALK:
+        while G.can_talk(k):
+            G.talk_to(k)
+    assert G.heard_everything()
+    print("  and %d people across both shops have %d things to say"
+          % (len(G.TALK), sum(len(v) for v in G.TALK.values())))
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- THE YEAR'S GEAR: three guns and three bays, sold on the road -----
+    # None of it is in a ten-week campaign at all, and none of it is in a
+    # long one either until a post has sold the plans. The rack shows the
+    # bays greyed with the counter's name on them rather than hiding them,
+    # which is the mistake this file keeps making.
+    wipe_meta()
+    G.set_house("keal")
+    assert len(G.STORY_GUNS) == 3 and len(G.STORY_MODULES) == 3
+    for k in G.STORY_GEAR:
+        assert k in G.GEAR_PLANS, k
+        assert G.GEAR_PLANS[k][0] in [p[0] for p in G.POSTS], k
+    for k in G.STORY_GUNS:
+        assert k in G.WEAPONS and k not in G.BLUEPRINT_WEAPONS, k
+        assert ("wpn", k) in G.RYEZ_PARTS, "%s has no grown name" % k
+    for k in G.STORY_MODULES:
+        assert k in G.MODULES and k not in G.BLUEPRINT_MODULES, k
+
+    short = G.Run("keal")
+    long_ = G.Run("keal", "standard", "story")
+    plain_guns = {w.key for w in G.options_for("l_wpn", None)}
+    assert not (plain_guns & set(G.STORY_GUNS)), "the season sells the year's"
+    assert not [m for m in G.module_list(short.mech.frame, short)
+                if m.key in G.STORY_MODULES], "the season racks the year's"
+    for k in G.STORY_GUNS:
+        assert not G.post_buy(short, k), "a ten-week run bought plans"
+
+    # in a long one the bays are on the rack, greyed, saying where to go
+    racked = [m for m in G.module_list(long_.mech.frame, long_)
+              if m.key in G.STORY_MODULES]
+    assert len(racked) == 2, [m.key for m in racked]     # one is RYEZ's
+    for m in racked:
+        assert not G.module_fits(m, long_.mech.frame, long_)
+        why = G.module_why(m, long_.mech.frame, long_)
+        assert why and "DEEP YARD" in why, why
+    assert not ({w.key for w in G.options_for("l_wpn", None, None, None,
+                                              long_.opened)}
+                & set(G.STORY_GUNS)), "a gun with no plans behind it"
+
+    # the rack has five rows and there is no sixth, so no house ever sees
+    # more than twenty cards - that is what the house split is FOR
+    G.add_marks(30000)
+    for w in list(G.WARES):
+        G.buy_ware(w)
+    for hk in ("keal", "ryez"):
+        G.set_house(hk)
+        r = G.Run(hk, "standard", "story")
+        cards = G.module_list(r.mech.frame, r)
+        assert len(cards) <= 20, "%s rack is %d cards" % (hk, len(cards))
+        mine = [m.key for m in cards if m.key in G.STORY_MODULES]
+        assert "archive" in mine and len(mine) == 2, mine
+        assert ("relay" in mine) == (hk == "keal"), mine
+        assert ("hunger" in mine) == (hk == "ryez"), mine
+    G.set_house("keal")
+    print("  6 pieces of year gear, none of it in a season, and no rack "
+          "goes past 20 cards")
+
+    # -- buying the plans, at the counter that has them -------------------
+    r = G.Run("keal", "standard", "story")
+    r.scrap, r.alloy = 20000, 60
+    fp = G.FieldPosts(r)
+    bought = 0
+    for sec, (skey, _nm, _s) in enumerate(G.POST_SECTIONS):
+        fp.sec = sec
+        fp.draw(surf, (0, 0))
+        for card, act, cost in list(fp.cards):
+            if act[0] != "plan":
+                continue
+            was_s, was_a = r.scrap, r.alloy
+            assert fp.click(card.center) is None
+            assert act[1] in r.opened, act[1]
+            assert (r.scrap, r.alloy) != (was_s, was_a), "the plans were free"
+            bought += 1
+    assert bought == 5, "%d plans on both counters" % bought   # 3 + 2
+    assert not G.post_buy(r, "hunger"), "a KEAL yard bought a gut"
+    assert "archive" in r.opened, "the drawings are not for sale here"
+    assert not G.post_buy(r, "maul"), "it sold the same plans twice"
+    for k in G.STORY_GUNS:
+        assert k in {w.key for w in G.options_for("l_wpn", None, None, None,
+                                                  r.opened)}, k
+    for m in G.module_list(r.mech.frame, r):
+        if m.key in G.STORY_MODULES:
+            assert G.module_fits(m, r.mech.frame, r), m.key
+            assert G.module_why(m, r.mech.frame, r) is None, m.key
+    back = G.Run.from_json(r.to_json())
+    assert sorted(back.opened) == sorted(r.opened), back.opened
+    print("  %d sets of plans bought across the two sections, and they "
+          "survive a save" % bought)
+
+    # -- FIELD RELAY: a bay spent on a discount ---------------------------
+    a = G.Run("keal", "standard", "story")
+    b = G.Run("keal", "standard", "story")
+    for run in (a, b):
+        run.scrap, run.alloy = 40000, 80
+        for s in run.mech.sockets():
+            if s not in G.HARDPOINTS:
+                run.mech.install(s, 3)
+        run.mech.hp["torso"] *= 0.3
+    b.opened = ["relay"]
+    b.mech.mods = ["relay"]
+    assert b.mech.has("relay")
+    assert abs(G.mend_all_cost(b) / float(G.mend_all_cost(a))
+               - G.RELAY_CUT) < 0.01
+    assert G.smelt_cost(b) < G.smelt_cost(a)
+    assert b.raise_cost("torso")[0] < a.raise_cost("torso")[0]
+    assert G.plan_cost(b, "maul")[0] < G.plan_cost(a, "maul")[0]
+    print("  a FIELD RELAY takes %d%% off a mend, a billet, a rung and a "
+          "set of plans" % round((1 - G.RELAY_CUT) * 100))
+
+    # -- THE ARCHIVE: it does not step aside, measured --------------------
+    mir = G.Run("keal", "standard", "story")
+    mir.kaiju_index = len(G.STORY_LADDER)
+    for s in mir.mech.sockets():
+        if s not in G.HARDPOINTS:
+            mir.mech.install(s, 3)
+    bare = G.Fight(mir, mir.next_kind()).boss()
+    mir.mech.mods = ["archive"]
+    read = G.Fight(mir, mir.next_kind()).boss()
+    assert read.read and not bare.read
+    random.seed(4)
+    missed = 0
+    for _ in range(400):
+        read.hp, read.guard = read.max_hp, 0.0
+        if read.hurtby(500.0) == 0.0:
+            missed += 1
+    assert missed == 0, "it still got out of the way %d times" % missed
+    bare.guard = read.guard = G.SMART_GUARD_FOR
+    bare.hp, read.hp = bare.max_hp, read.max_hp
+    shut, seen = bare.hurtby(500.0), read.hurtby(500.0)
+    assert seen > shut * 1.4, (shut, seen)
+    # ...and nothing else on the road is affected by a bay it cannot read
+    plain = G.Fight(G.Run("keal"), G.kind_at("keal", 4)).boss()
+    assert not plain.read
+    print("  with THE ARCHIVE it never steps aside, and a blow on its "
+          "plates does %.0f where it did %.0f" % (seen, shut))
+
+    # -- DEEP HUNGER: it eats what it kills -------------------------------
+    G.set_house("ryez")
+    h = G.Run("ryez", "standard", "story")
+    for s in h.mech.sockets():
+        if s not in G.HARDPOINTS:
+            h.mech.install(s, 3)
+    h.mech.mods = ["hunger"]
+    for s in ("torso", "legs"):
+        h.mech.hp[s] *= 0.3
+    was_a = h.alloy
+    f = G.Fight(h, h.next_kind())
+    f.over = "won"
+    f.integrity = 80.0
+    h.resolve(f)
+    for s in h.mech.sockets():
+        if h.mech.fit[s] is not None:
+            assert h.mech.hp[s] == h.mech.max_hp(s), s
+    assert h.alloy >= was_a + G.HUNGER_ALLOY
+    # and without it the damage is still there afterwards
+    h2 = G.Run("ryez", "standard", "story")
+    for s in h2.mech.sockets():
+        if s not in G.HARDPOINTS:
+            h2.mech.install(s, 3)
+    h2.mech.hp["torso"] *= 0.3
+    f2 = G.Fight(h2, h2.next_kind())
+    f2.over, f2.integrity = "won", 80.0
+    h2.resolve(f2)
+    assert h2.mech.hp["torso"] < h2.mech.max_hp("torso")
+    print("  DEEP HUNGER comes off a body whole and %d genome up; "
+          "without it the damage is still there" % G.HUNGER_ALLOY)
+
+    # -- and the three guns are guns, in both views and in the fight ------
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        for key in G.STORY_GUNS:
+            r = G.Run(house, "standard", "story")
+            r.opened = [key]
+            for s in r.mech.sockets():
+                if s not in G.HARDPOINTS:
+                    r.mech.install(s, 3)
+            r.mech.install("l_wpn", key)
+            r.mech.install("r_wpn", key)
+            G.draw_mech_front(surf, r.mech, G.W // 2, 600, 0.6, {}, 1.0)
+            pose = G.Pose()
+            pose.face, pose.walk = 1, 1.0
+            G.draw_mech_side(surf, r.mech, 400, 500, 0.6, 1.0, pose,
+                             bio=house == "ryez")
+            random.seed(3)
+            f = G.Fight(r, G.kind_at(house, 3))
+            for _ in range(900):
+                f.update(DT, {"fire_l": True, "fire_r": True, "right": True})
+            assert f.dealt > 400, "%s %s dealt %.0f" % (house, key, f.dealt)
+    G.set_house("keal")
+    print("  and all three draw in both views and put damage on the road "
+          "in both houses")
+
+    # -- EVERY RUNG DRAWS, which the fourth and fifth did not -------------
+    # Every proportion in the drawing code was a 1-2-3 tuple indexed by
+    # `tier - 1`, and every `tier == 3` was an "at the top, add the good
+    # detail" branch. The long campaign put two more rungs on the same
+    # sockets: twenty-seven of those tuples threw IndexError and the
+    # rest quietly drew the best legs in the game as the second-best
+    # ones. A whole rung of a whole mode could not be put on screen.
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        for tier in range(1, G.TOP_CEILING + 1):
+            r = G.Run(house, "standard", "story")
+            for s in r.mech.sockets():
+                if s in G.HARDPOINTS:
+                    continue
+                r.ceiling[s] = G.TOP_CEILING
+                assert len(G.CATALOGUE[s]) >= tier, (s, tier)
+                r.mech.install(s, tier)
+            for s in r.mech.sockets():
+                if s in G.HARDPOINTS:
+                    opts = G.options_for(s, None, r.mech.frame)
+                    if opts:
+                        r.mech.install(s, opts[0].key)
+            G.draw_mech_front(surf, r.mech, G.W // 2, 640, 0.6, {}, 1.0)
+            pose = G.Pose()
+            pose.face, pose.walk, pose.moving = 1, 1.3, 1.0
+            G.draw_mech_side(surf, r.mech, 420, 520, 0.6, 1.0, pose,
+                             bio=house == "ryez")
+            # and the ghost outline of the rung ABOVE, which is what the
+            # gantry draws for a socket you have not built yet
+            for s in ("legs", "torso", "head", "l_arm", "reactor", "armour"):
+                r.mech.fit[s] = None
+            G.draw_mech_front(surf, r.mech, G.W // 2, 640, 0.6, {}, 1.0)
+    G.set_house("keal")
+
+    # ...and the two new rungs are bigger than the three old ones, which
+    # is the whole reason to walk to a field post and buy them
+    hips = [G.LEG_GEOM[t][0] for t in range(1, G.TOP_CEILING + 1)]
+    assert hips == sorted(hips) and len(set(hips)) == len(hips), hips
+    for t in range(2, G.TOP_CEILING + 1):
+        a, b = G.five(9.0, 12.0, 15.0)[t - 2], G.five(9.0, 12.0, 15.0)[t - 1]
+        assert b > a, (t, a, b)
+    assert len(G.five(1, 2, 3)) == G.TOP_CEILING
+    assert G.five((1.0, 2.0), (2.0, 4.0), (3.0, 6.0))[4][1] > 6.0
+    print("  all %d rungs of all %d body sockets draw in both views and "
+          "both houses, and each rung is bigger than the last"
+          % (G.TOP_CEILING, len(G.CATALOGUE)))
+
+
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- SIX ROOMS, FOUR QUESTIONS, FOUR ENDINGS --------------------------
+    # The rooms are the only part of the long campaign that is not a
+    # number, so what is tested is that every one of them can be reached,
+    # played to the end, and leaves the mark on the run that the ending
+    # later reads.
+    wipe_meta()
+    G.set_house("keal")
+    rungs = sorted(G.STORY_SCENES)
+    assert rungs, "a story with no rooms in it"
+    for i in rungs:
+        assert 0 <= i <= len(G.STORY_LADDER), "a room at rung %d" % i
+    assert 0 in G.STORY_SCENES, "the year opens on nothing"
+    assert len(G.STORY_LADDER) in G.STORY_SCENES, "the last day is silent"
+
+    asked = {}
+    for i in rungs:
+        for b in G.scene_at(i):
+            assert isinstance(b, tuple) and len(b) in (2, 3), (i, b)
+            if b[0] == "?":
+                assert len(b) == 3 and len(b[2]) >= 2, (i, b)
+                asked[i] = [f for _lab, f in b[2]]
+                for lab, _f in b[2]:
+                    assert lab.strip() and lab == lab.upper(), lab
+                continue
+            for house in ("keal", "ryez"):
+                ln = G.scene_line(b, house)
+                assert isinstance(ln, str) and len(ln) > 12, (i, house, ln)
+    assert len(asked) == 4, "%d rooms ask something" % len(asked)
+    flags = [f for v in asked.values() for f in v]
+    assert len(flags) == len(set(flags)), "two answers write the same flag"
+    # and a house-split line really is two different lines
+    split = [b for i in rungs for b in G.scene_at(i)
+             if b[0] != "?" and isinstance(b[1], dict)]
+    assert split, "nobody ever addresses the house you signed with"
+    for b in split:
+        assert G.scene_line(b, "keal") != G.scene_line(b, "ryez"), b
+    print("  %d rooms, %d of them asking, %d answers and no two alike"
+          % (len(rungs), len(asked), len(flags)))
+
+    # -- a room plays through, and a question will not be skipped ---------
+    surf = pygame.Surface((G.W, G.H))
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        for i in rungs:
+            run = G.Run(house, "standard", "story")
+            cs = G.Cutscene(run, G.scene_at(i))
+            guard = 0
+            while not cs.done and guard < 40:
+                guard += 1
+                cs.draw(surf, (0, 0))          # picks only exist once drawn
+                q = cs.asking()
+                if q is None:
+                    assert not cs.advance(None) or cs.done
+                    continue
+                assert cs.advance(None) is False, "a key answered a question"
+                assert cs.advance((2, 2)) is False, "the void answered it"
+                assert cs.advance(cs.picks[0][0].center) or cs.done
+            assert cs.done, "room %d never ended" % i
+            assert len(run.flags) == (1 if i in asked else 0), run.flags
+            if i in asked:
+                assert run.flags[0] == asked[i][0], run.flags
+    G.set_house("keal")
+    print("  every room plays out in both houses, and a question has to "
+          "be answered with a click")
+
+    # -- ...and it draws, both kinds of beat ------------------------------
+    run = G.Run("ryez", "gravid", "story") if "gravid" in G.CHASSIS \
+        else G.Run("ryez", "standard", "story")
+    cs = G.Cutscene(run, G.scene_at(3))
+    cs.draw(surf, (0, 0))
+    assert not cs.asking()
+    while not cs.asking():
+        cs.advance(None)
+        cs.draw(surf, (0, 0))
+    assert cs.picks and len(cs.picks) == 2
+    pygame.image.save(surf, os.path.join(HERE, "gw_scene.png"))
+    print("  and it draws - gw_scene.png")
+
+    # -- the four endings, and which one you get --------------------------
+    assert len(G.ENDINGS) == 4, len(G.ENDINGS)
+    for key, (title, body) in G.ENDINGS.items():
+        assert title == title.upper() and len(body) > 60, key
+    r = G.Run("keal", "standard", "story")
+    assert G.story_ending(r, False) == "stood"
+    assert G.story_ending(r, True) == "datasheet"
+    r.flags = ["burned"]
+    assert G.story_ending(r, True) == "elsewhere"
+    assert G.story_ending(r, False) == "stood", "losing still reads as a win"
+    assert G.story_ending(r, True, True) == "broke"
+
+    # the true one is gated on BOTH halves: you have to have asked, and
+    # you have to have listened to all fifteen of them
+    wipe_meta()
+    r = G.Run("keal", "standard", "story")
+    r.flags = ["address"]
+    assert not G.can_break(r), "the true ending is for sale"
+    for k in G.TALK:
+        while G.can_talk(k):
+            G.talk_to(k)
+    assert G.heard_everything()
+    assert G.can_break(r)
+    r2 = G.Run("keal", "standard", "story")
+    r2.flags = ["schedule"]
+    assert not G.can_break(r2), "you get it without asking"
+    for story in G.ENDINGS:
+        e = G.Ending(r, story != "stood", story)
+        e.draw(surf, (0, 0))
+    print("  four endings, and the true one needs the question AND all "
+          "%d stacks emptied" % len(G.TALK))
+
+    # -- and the slot remembers which rooms it has been in ----------------
+    # Four endings and one of them is hidden behind a question you have
+    # to know to ask. Without a count on the front door a player has no
+    # way to know the others are there, which is the same complaint as
+    # a module that is simply not on the rack.
+    wipe_meta()
+    _d = G.load_save()
+    _d["best"] = {}
+    G.write_save(_d)
+    assert G.endings_seen() == []
+    G.record_story_ending("datasheet")
+    G.record_story_ending("datasheet")
+    G.record_story_ending("not-a-room")
+    assert G.endings_seen() == ["datasheet"], G.endings_seen()
+    G.record_story_ending("stood")
+    assert sorted(G.endings_seen()) == ["datasheet", "stood"]
+    # asked about a record it was handed rather than the one on disk
+    assert G.endings_seen({}) == []
+    assert len(G.endings_seen({"endings": list(G.ENDINGS)})) == len(G.ENDINGS)
+    assert G.story_locked_because({}) is not None
+    assert G.story_locked_because({"won_keal": True,
+                                   "won_ryez": True}) is None
+    assert G.story_open({"won_keal": True, "won_ryez": True})
+    # ...which is what the front door asks, so the note under the switch
+    # follows the slot it is drawing and not the file
+    shown = {"won_keal": True, "won_ryez": True,
+             "endings": ["stood", "broke"]}
+    t = G.Title({"run": None, "best": shown})
+    t.mode = "story"
+    t.draw(surf, (0, 0))
+    assert t.modes[1][2], "the year is shut on a record that opened it"
+    t2 = G.Title({"run": None, "best": {}})
+    t2.draw(surf, (0, 0))
+    assert not t2.modes[1][2], "an empty record opened the year"
+    wipe_meta()
+    _d = G.load_save()
+    _d["best"] = {}
+    G.write_save(_d)
+    print("  the slot counts the rooms a year ended in, and the front "
+          "door reads the save it is showing")
+
+    wipe_meta()
+    G.set_house("keal")
+
+    # -- THE FRONT DOOR: the switch, and where it lands -------------------
+    # The long campaign existed for a while with no way at all to start
+    # it, which is the same bug as the frame picker gated to KEAL: a
+    # whole half of the game behind a door with no handle.
+    wipe_meta()
+    G.clear_run()
+    # wipe_meta leaves the RECORD alone, and the record is what opens the
+    # year. A slot that has already been carried home twice in this
+    # process would walk straight past the lock this block is about.
+    _d = G.load_save()
+    _d["best"] = {}
+    G.write_save(_d)
+    t = G.Title()
+    t.draw(surf, (0, 0))
+    assert t.mode == "landfall"
+    assert len(t.modes) == 2, t.modes
+    season, year = t.modes[0][0], t.modes[1][0]
+    assert not t.modes[1][2], "the year is open on a fresh ledger"
+    t.click(year.center)
+    assert t.mode == "landfall", "the lock is decorative"
+    assert t.no and t.no_t > 0, "it refused without saying why"
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        rr = G.Run(house)
+        rr.integrity = 90.0
+        G.record_end(rr, True)
+    G.set_house("keal")
+    t = G.Title()
+    t.draw(surf, (0, 0))
+    assert t.modes[1][2], "it stayed shut after both wins"
+    t.click(year.center)
+    assert t.mode == "story", t.mode
+    t.click(season.center)
+    assert t.mode == "landfall"
+    t.click(year.center)
+    # a slot that has not earned it shuts it again rather than starting
+    # a year the ledger does not allow
+    was = G.SLOT[0]
+    t.click(t.slot_rect(2 if was != 2 else 3).center)
+    assert t.mode == "landfall", "the year followed the switch to a new slot"
+    G.set_slot(was)
+    print("  the switch is refused with a reason, opens on two wins, and "
+          "does not follow you into an unearned slot")
+
+    # and it actually reaches a Run
+    G.clear_run()
+    app = G.App()
+    app.title.draw(surf, (0, 0))
+    app.title.click(app.title.modes[1][0].center)
+    assert app.title.mode == "story"
+    new_btn = next(b for b in app.title.buttons if b.key[0] == "new")
+    app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                  pos=new_btn.rect.center, button=1))
+    assert app.state == "choose" and app.choose.mode == "story"
+    app.choose.draw(surf, (0, 0))
+    app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                  pos=app.choose.rects()["keal"].center,
+                                  button=1))
+    if app.state == "frame":
+        app.frames.draw(surf, (0, 0))
+        assert app.frames.mode == "story"
+        app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                      pos=app.frames.card_rect(0).center,
+                                      button=1))
+        app.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN,
+                                      mod=0, unicode="", scancode=0))
+    assert app.run is not None and app.run.mode == "story", app.run
+    # a year opens in a room rather than in the gantry
+    assert app.state == "scene", app.state
+    assert app.scene_back == "hangar"
+    guard = 0
+    while app.state == "scene" and guard < 40:
+        guard += 1
+        app.scene.draw(surf, (0, 0))
+        app.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE,
+                                      mod=0, unicode="", scancode=0))
+    assert app.state == "hangar", app.state
+    assert app.run.seen == [0], app.run.seen
+    assert G.load_save()["run"]["mode"] == "story", "the year did not save"
+
+    # a room fires once, and only where there is one
+    assert not app.maybe_scene(), "the same room twice"
+    app.run.kaiju_index = 1
+    assert not app.maybe_scene(), "a room at a rung that has none"
+    app.run.kaiju_index = 3
+    assert app.maybe_scene() and app.state == "scene"
+    assert app.scene_back == "brief"
+    guard = 0
+    while app.state == "scene" and guard < 40:
+        guard += 1
+        app.scene.draw(surf, (0, 0))
+        q = app.scene.asking()
+        pos = app.scene.picks[0][0].center if q else (2, 2)
+        app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos,
+                                      button=1))
+    assert app.state == "brief", app.state
+    assert app.run.flags == ["filed"], app.run.flags
+
+    # ...and a short campaign never sees one
+    app.run = G.Run("keal")
+    app.run.kaiju_index = 0
+    assert not app.maybe_scene(), "the season grew a cutscene"
+    print("  a year opens in a room, each room fires once, and the "
+          "season has none")
+
+    # -- and the last door: the schedule, or the people who wrote it ------
+    wipe_meta()
+    for k in G.TALK:
+        while G.can_talk(k):
+            G.talk_to(k)
+    app.run = G.Run("keal", "standard", "story")
+    app.run.kaiju_index = len(G.STORY_LADDER)
+    app.run.flags = ["address"]
+    assert app.maybe_scene() and app.state == "scene"
+    beats = app.scene.beats
+    assert beats[-1][0] == "?" and len(beats) == len(
+        G.scene_at(len(G.STORY_LADDER))) + 1, "no last choice"
+    guard = 0
+    while app.state == "scene" and guard < 40:
+        guard += 1
+        app.scene.draw(surf, (0, 0))
+        if app.scene.asking():
+            pos = app.scene.picks[-1][0].center      # go and find them
+        else:
+            pos = (2, 2)
+        app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos,
+                                      button=1))
+    assert "break" in app.run.flags, app.run.flags
+    assert app.state == "end", app.state
+    assert app.ending_screen.story == "broke", app.ending_screen.story
+    app.ending_screen.draw(surf, (0, 0))
+    pygame.image.save(surf, os.path.join(HERE, "gw_true_end.png"))
+    # without the question, the same room does not offer the door
+    wipe_meta()
+    app.run = G.Run("keal", "standard", "story")
+    app.run.kaiju_index = len(G.STORY_LADDER)
+    app.run.flags = ["schedule"]
+    assert app.maybe_scene()
+    assert app.scene.beats[-1][0] != "?", "the door is open to everybody"
+    print("  the last room offers the other door only if you asked for "
+          "it - gw_true_end.png")
+    wipe_meta()
+    G.clear_run()
+    G.set_house("keal")
+
     # -- the things you FIGHT are machines too ---------------------------
     # Every KEAL model in the roster was `chassis standard`: the stock
     # frame at a different tier in a different colour, so seven models
@@ -1170,9 +2133,10 @@ def yard():
     assert worst[0] < 0.55, (
         "%s and %s are %.0f%% the same machine"
         % (worst[1], worst[2], worst[0] * 100))
-    print("  the eight KEAL models field %d frames of their own; the two "
+    print("  the %d KEAL models field %d frames of their own; the two "
           "most alike share %.0f%% of an outline"
-          % (len(set(k.rig.chassis for k in roster)), worst[0] * 100))
+          % (len(roster), len(set(k.rig.chassis for k in roster)),
+             worst[0] * 100))
 
     # -- and nothing walks under the road --------------------------------
     # a `build` overlay draws in the BODY zone, which scales about the
@@ -1439,11 +2403,21 @@ def yard():
                              - G.HANDLER_CALM * hands))
         return u >= G.FAULT_AT
 
-    # against the cultures that EXIST, not against invented lengths
+    # against the cultures that EXIST, not against invented lengths -
+    # and the ordinary campaign only reaches the first three rungs of
+    # each table, so that is what "exists" means for this claim
     lens = sorted({int(math.ceil(max(1, p.days) * G.GESTATE))
                    for s in G.SOCKETS if s in G.CATALOGUE
-                   for p in G.CATALOGUE[s]})
+                   for p in G.CATALOGUE[s][:G.BASE_CEILING]})
     assert max(lens) <= 12, lens
+    # the long campaign reaches two rungs further and they gestate for
+    # much longer, so two pairs of hands have to still be enough there
+    story = sorted({int(math.ceil(max(1, p.days) * G.GESTATE))
+                    for s in G.SOCKETS if s in G.CATALOGUE
+                    for p in G.CATALOGUE[s]})
+    assert max(story) > max(lens), (max(story), max(lens))
+    assert not any(drifts(d, 2) for d in story), (
+        "a year-long culture cannot be held by anybody: %s" % story)
     assert all(drifts(d, 0) for d in lens if d >= 4), (
         "a pod nobody watches can still come out right: %s" % lens)
     assert any(not drifts(d, 1) for d in lens), "one handler is never enough"
@@ -2214,7 +3188,9 @@ def frames():
     foes = [c for c in G.CHASSIS_LIST if c.foe]
     assert len(G.CHASSIS_LIST) - len(foes) == 13, len(G.CHASSIS_LIST)
     assert len(steel_frames) == 6, len(steel_frames)
-    assert len(foes) == 7, len(foes)
+    # one per model KEAL fields, minus the SOVEREIGN, which wears the
+    # frame you can buy
+    assert len(foes) == len(G.roster_for("ryez")) - 1, len(foes)
     for c in foes:
         assert c.ware is None, c.key
         assert c not in G.owned_chassis(), c.key
@@ -3177,6 +4153,244 @@ def score():
     print("\nscore ok")
 
 
+
+
+# ---------------------------------------------------------------------------
+# STORY - auto-play the long campaign, which is a different game
+#
+# A year is not the season with more rows in it. The ladder is seventeen
+# rungs instead of seven, the parts go two rungs higher, and there is a
+# second shop on the road that competes with the build for the same
+# scrap. None of that could be trusted until something had played it.
+# ---------------------------------------------------------------------------
+# The fifth bay only exists once the torso is at rung five, so THE
+# ARCHIVE goes in the list directly after it. Asking for it earlier put
+# it fourth in a four-bay rack, which cost RYEZ its FEEDING bay and three
+# runs out of four - see the note on `_story_priority`.
+STORY_TAIL_HEAD = [
+    ("torso", 4), ("reactor", 4), ("armour", 4), ("l_wpn", "maul"),
+    ("legs", 4), ("head", 4), ("l_arm", 4), ("r_arm", 4),
+    ("r_wpn", "breach"), ("torso", 5),
+]
+STORY_TAIL_FOOT = [
+    ("reactor", 5), ("armour", 5), ("legs", 5), ("head", 5),
+    ("l_arm", 5), ("r_arm", 5),
+]
+# RYEZ wants a different order in the season, so the year got one too:
+# organs first, arms after. MEASURED, it was worse - 0 victories in 4
+# against 1, because the arms are what the guns hang off and a year of
+# tier-five organs holding tier-three forelimbs kills nothing. The two
+# houses share the year's tail, and this note is here so nobody tries
+# it again.
+# what the bot keeps back so a post never eats the next part
+POST_RESERVE = 900
+PLAN_RESERVE = 1600
+# Measured. At 14 the bot spent 178 of KEAL's 282 build days and 245 of
+# RYEZ's 339 unable to afford the next thing in the list while sitting on
+# forty thousand SCRAP - the year is not short of money, it is short of
+# the rare stuff, and the crucible is the only tap on the road.
+SMELT_UP_TO = 40         # what the bot tops the rare stuff up to on the road
+
+
+def _story_priority(house_key):
+    """The season's list, then the year's.
+
+    The house bay goes FIRST and the drawings go after the fifth bay is
+    open. Measured the other way round, RYEZ took THE ARCHIVE into the
+    fourth slot of a four-bay rack, never fitted DEEP HUNGER, and went
+    from three victories in four to one - the feeding bay is what keeps
+    a RYEZ animal on the road, and the drawings are worth about twenty
+    seconds on one fight a year."""
+    bio = house_key == "ryez"
+    base = list(RYEZ_PRIORITY if bio else PRIORITY)
+    tail = [(MOD, "hunger" if bio else "relay")]
+    tail += STORY_TAIL_HEAD + [(MOD, "archive")] + STORY_TAIL_FOOT
+    return base + tail
+
+
+def _story_part(run, socket, target):
+    """Like _next_part, but aware of the ceiling and of what the road sold."""
+    if run.job_on(socket):
+        return None
+    if socket == MOD:
+        m = run.mech
+        if m.has(target) or len(m.mods) >= m.bays:
+            return None
+        mod = G.MODULES[target]
+        return mod if G.module_fits(mod, m.frame, run) else None
+    if socket == YARD:
+        opts = G.options_for(YARD, run.yard or None)
+        return opts[0] if opts and opts[0].tier == target else None
+    need = G.NEEDS.get(socket)
+    if need and run.mech.fit[need] is None:
+        return None
+    for p in G.options_for(socket, run.mech.fit[socket], run.mech.frame,
+                           G.ceiling_of(run, socket), run.opened):
+        key = p.key if isinstance(p, G.Weapon) else p.tier
+        if key == target:
+            return p
+    return None
+
+
+def story_shop(run, order):
+    """The build loop, with the long ladder on the end of the list."""
+    for s in G.SOCKETS:
+        if run.free_crew < 1:
+            break
+        if run.mech.damage_frac(s) > 0.45 and not run.job_on(s):
+            run.start_repair(s)
+    if (run.integrity <= RELIEF_AT and not run.job_on(G.CITY_SLOT)
+            and run.free_crew >= 2
+            and run.scrap >= G.RELIEF.scrap + RELIEF_SPARE):
+        run.start_relief()
+    for socket, target in order:
+        if run.no_room() or (not run.bio and run.free_crew < 1):
+            break
+        p = _story_part(run, socket, target)
+        if p is not None and run.can_afford(*run.price(p, socket)):
+            run.start_build(socket, p)
+    # ...and the in-yard refinery, the same way the season uses it: the
+    # year wants six to nine of the rare stuff per rung and there are
+    # seventeen landfalls between visits to the crucible
+    nxt = None
+    for socket, target in order:
+        p = _story_part(run, socket, target)
+        if p is not None:
+            nxt = p
+            break
+    if (nxt is not None and nxt.alloy > run.alloy
+            and run.scrap >= G.REFINE.scrap + 600
+            and not run.job_on(G.REFINE_SLOT)):
+        run.start_refine()
+
+
+def post_bot(run, order):
+    """What the bot does on the road while the body cools.
+
+    Order matters and was measured: mend first, because a wrecked socket
+    is a socket the build loop will spend crew on tomorrow; then the
+    plans, because they are one-off and they gate a whole line of parts;
+    then ceilings, and only for the sockets the list actually wants next.
+    """
+    if not G.post_open(run):
+        return {}
+    did = {}
+    c = G.mend_all_cost(run)
+    if c and run.scrap - c >= POST_RESERVE:
+        if G.post_mend(run):
+            did["mend"] = did.get("mend", 0) + 1
+    # The crucible, which is the only alloy tap anywhere on the road.
+    # Without this the bot finished a year sitting on fifty thousand
+    # scrap it could not spend: every ceiling past the first wants six
+    # alloy, every part wants some, and nothing else down there sells
+    # any. Scrap was not the constraint; it was never the constraint.
+    while run.alloy < SMELT_UP_TO and run.scrap - G.smelt_cost(run) >= POST_RESERVE:
+        if not G.post_smelt(run):
+            break
+        did["smelt"] = did.get("smelt", 0) + 1
+    for key in list(G.GEAR_PLANS):
+        if key not in [t for _s, t in order]:
+            continue
+        s_, a_ = G.plan_cost(run, key)
+        if run.scrap - s_ >= PLAN_RESERVE and run.alloy - a_ >= 2:
+            if G.post_buy(run, key):
+                did["plan"] = did.get("plan", 0) + 1
+    for socket, target in order:
+        if not isinstance(target, int) or socket in (MOD, YARD):
+            continue
+        if target <= G.ceiling_of(run, socket):
+            continue
+        if not run.can_raise(socket):
+            continue
+        s_, a_ = run.raise_cost(socket)
+        if run.scrap - s_ >= POST_RESERVE and run.alloy - a_ >= 1:
+            if run.raise_ceiling(socket):
+                did["rung"] = did.get("rung", 0) + 1
+    return did
+
+
+def story_campaign(seed, house_key="keal", sloppy=False):
+    random.seed(seed)
+    run = G.Run(house_key, "standard", "story")
+    order = _story_priority(house_key)
+    drive = Sloppy() if sloppy else None
+    report = []
+    while run.next_landfall is not None:
+        nl = run.next_landfall
+        while run.day < nl:
+            story_shop(run, order)
+            run.end_day()
+        kind = run.next_kind()
+        f = run_fight(run, kind, drive)
+        ending, _ = run.resolve(f)
+        report.append({"kind": kind.name, "rung": run.kaiju_index - 1,
+                       "day": nl, "won": f.over == "won", "secs": f.t,
+                       "timeout": f.timeout, "city": round(run.integrity),
+                       "built": round(run.mech.completion(run.ceiling) * 100),
+                       "scrap": run.scrap, "alloy": run.alloy,
+                       "taken": round(f.taken), "dealt": round(f.dealt),
+                       "mods": list(run.mech.mods),
+                       "opened": list(run.opened),
+                       "ceil": sum(run.ceiling.values())})
+        if ending:
+            report.append({"ending": ending})
+            break
+        report[-1]["posts"] = post_bot(run, order)
+    return run, report
+
+
+def story(n=4, house_key="keal"):
+    print("== STORY ==")
+    wipe_meta()
+    G.set_house(house_key)
+    rungs = len(G.STORY_SCHEDULE)
+    per = [[] for _ in range(rungs)]
+    endings = {}
+    last = None
+    for s in range(n):
+        run, rep = story_campaign(2000 + s, house_key, SLOPPY[0])
+        last = (run, rep)
+        for row in rep:
+            if "ending" in row:
+                endings[row["ending"]] = endings.get(row["ending"], 0) + 1
+            else:
+                per[row["rung"]].append(row)
+        if not any("ending" in r for r in rep):
+            endings["all seventeen, alive"] = \
+                endings.get("all seventeen, alive", 0) + 1
+    print("\n%-3s %-16s %5s %6s %6s %7s %6s %7s %5s"
+          % ("#", "WHAT CAME", "day", "win%", "secs", "built%", "city",
+             "scrap", "ceil"))
+    print("-" * 74)
+    for i, rows in enumerate(per):
+        if not rows:
+            print("%-3d %-16s never reached" % (i + 1, "-"))
+            continue
+        won = sum(1 for r in rows if r["won"])
+        print("%-3d %-16s %5d %5d%% %6.0f %6d%% %6d %7d %5.1f"
+              % (i + 1, rows[0]["kind"][:16], rows[0]["day"],
+                 round(100.0 * won / len(rows)),
+                 statistics.mean(r["secs"] for r in rows),
+                 statistics.mean(r["built"] for r in rows),
+                 statistics.mean(r["city"] for r in rows),
+                 statistics.mean(r["scrap"] for r in rows),
+                 statistics.mean(r["ceil"] for r in rows)))
+    print("\nendings over %d runs: %s" % (n, endings))
+    run, rep = last
+    fights = [r for r in rep if "ending" not in r]
+    print("last run: day %d, %d of %d put down, city %d%%"
+          % (run.day, run.killed, rungs, round(run.integrity)))
+    print("          bays %s" % (run.mech.mods or "none"))
+    print("          plans bought %s" % (run.opened or "none"))
+    print("          ceilings %s"
+          % " ".join("%s%d" % (s[:2], v) for s, v in run.ceiling.items()))
+    bought = sum(sum(r.get("posts", {}).values()) for r in fights)
+    print("          %d things bought on the road over %d landfalls"
+          % (bought, len(fights)))
+    print("\nstory ok")
+    return endings
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
     SLOPPY[0] = "sloppy" in sys.argv
@@ -3211,8 +4425,11 @@ def main():
         print("\n== BALANCE ==")
         for hk in ("keal", "ryez"):
             balance(6 if what == "all" else n, hk)
+    if what == "story":
+        for hk in ("keal", "ryez"):
+            story(n if args else 4, hk)
     if what not in ("smoke", "capital", "gov", "frames", "score", "yard",
-                    "slots", "flow", "balance", "all"):
+                    "slots", "flow", "balance", "story", "all"):
         print(__doc__)
         return 2
     return 0
