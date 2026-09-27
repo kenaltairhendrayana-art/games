@@ -1044,6 +1044,85 @@ def yard():
     wipe_meta()
     G.set_house("keal")
 
+    # -- a small mount you can see -----------------------------------------
+    # AUX POD and AUX FLARE POD cost money, fill a socket, show in the
+    # HUD and fire, and were drawn NOWHERE - not in the street, not in
+    # the gantry, in either house. The TITAN TURRET is sold on having
+    # two of them. Worse, their shots came out of the right hand,
+    # because `weapon_muzzle` read an arm socket for every side.
+    def with_without(house, chassis, ware, key, front):
+        wipe_meta()
+        G.set_house(house)
+        G.add_marks(20000)
+        assert G.buy_ware(ware), ware
+        shots = []
+        for fit in (False, True):
+            run = G.Run(house, chassis)
+            run.scrap, run.alloy = 20000, 200
+            for s in run.mech.sockets():
+                if s not in G.HARDPOINTS:
+                    run.mech.install(s, 3)
+            if fit:
+                run.mech.install("l_aux", key)
+                run.mech.install("r_aux", key)
+            pz = G.Pose()
+            pz.face = 1
+            pz.aim = {k: -0.3 for k in G.SIDES}
+            sf = pygame.Surface((460, 470), pygame.SRCALPHA)
+            sf.fill((0, 0, 0, 0))
+            if front:
+                G.draw_mech_front(sf, run.mech, 230, 440, 0.6, t=2.0)
+            else:
+                G.draw_mech_side(sf, run.mech, 210, 440, 0.6, 2.0, pz,
+                                 bio=(house == "ryez"))
+            w, h = sf.get_size()
+            # COLOUR, not an alpha mask. An empty mount is already
+            # drawn as a dashed ghost in the same place, so the
+            # silhouette barely moves when a pod goes into it - the
+            # first version of this compared masks and read zero.
+            shots.append([sf.get_at((x, y))[:3]
+                          for y in range(0, h, 2)
+                          for x in range(0, w, 2)])
+        bare, armed = shots
+        return sum(1 for a, b in zip(bare, armed) if a != b)
+
+    for house, chassis, ware in (("keal", "turret", "ch_turret"),
+                                 ("ryez", "gravid", "st_gravid")):
+        for key in G.AUX_GUNS:
+            for front, where in ((False, "the street"), (True, "the yard")):
+                d = with_without(house, chassis, ware, key, front)
+                assert d > 60, (
+                    "%s on a %s is invisible in %s (%d pixels changed)"
+                    % (key, chassis, where, d))
+    # ...and the two of them are not the same drawing
+    a = with_without("keal", "turret", "ch_turret", "auxpod", False)
+    b = with_without("keal", "turret", "ch_turret", "auxflare", False)
+    assert a != b, "the pod and the flare pod draw identically"
+    print("  both small mounts draw, in both views and both houses")
+
+    # -- and a shot leaves the pod, not the hand --------------------------
+    wipe_meta()
+    G.set_house("keal")
+    G.add_marks(20000)
+    G.buy_ware("ch_turret")
+    run = G.Run("keal", "turret")
+    for s in run.mech.sockets():
+        if s not in G.HARDPOINTS:
+            run.mech.install(s, 3)
+    run.mech.install("r_wpn", "titanauto")
+    run.mech.install("r_aux", "auxpod")
+    pz = G.Pose()
+    pz.face = 1
+    arm, _ = G.weapon_muzzle(run.mech, pz, "r", 300.0, 440.0, 0.6)
+    pod, _ = G.weapon_muzzle(run.mech, pz, "ra", 300.0, 440.0, 0.6)
+    assert arm is not None and pod is not None
+    assert (arm - pod).length() > 20, (
+        "the pod fires out of the arm's hand: %s against %s" % (arm, pod))
+    print("  and its shots leave the pod, %dpx off the hand they used to "
+          "come from" % round((arm - pod).length()))
+    wipe_meta()
+    G.set_house("keal")
+
     # -- THE LADDER: seven rungs, and the top ones are not duels ---------
     # One body at a time is a duel and a duel is a thing a finished
     # machine wins outright - measured, a plain animal took the top rung

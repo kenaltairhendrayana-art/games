@@ -4085,6 +4085,8 @@ def part_shape(socket, fit, arm_tier=1, strain=None):
     if socket in ("l_wpn", "r_wpn"):
         side = "l" if socket == "l_wpn" else "r"
         return (bio_weapon if bio else shape_weapon)(fit, side, arm_tier)
+    if socket in AUX_SOCKETS:
+        return shape_aux(fit, "l" if socket == "l_aux" else "r")
     if socket == "reactor":
         r = (11, 15, 19)[fit - 1]
         if bio:                              # a heart, deep in the trunk
@@ -5545,6 +5547,16 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
         wsock = "l_wpn" if side == "l" else "r_wpn"
         if mech.weapon(side) is not None:
             blit(bio_weapon(mech.fit[wsock], side, at), wsock)
+    for side in ("la", "ra"):
+        sock = "l_aux" if side == "la" else "r_aux"
+        if mech.fit[sock] is None:
+            continue
+        rig.zone = ZONE_OF.get(sock, "body")
+        c = col(sock, "main")
+        if c is not None:
+            draw_aux_side(rig, mech, pose, side,
+                          shade(c, 0.86 if side == "la" else 1.0))
+        rig.zone = "body"
     if mech.fit["reactor"] is not None:
         rt = mech.fit["reactor"]
         rr = (11, 15, 19)[rt - 1]
@@ -5571,6 +5583,14 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
 
 def beast_muzzle(mech, pose, side, sx, gy, scale):
     """Where a spine or a jet of bile leaves the animal."""
+    if side in ("la", "ra"):
+        if mech.weapon(side) is None:
+            return None, Vector2(pose.face, 0)
+        ang = pose.aim[side]
+        d = Vector2(math.cos(ang), math.sin(ang))
+        p = bio_aux_at(side) + d * 22
+        rig = Side(None, sx, gy, scale, pose.face)
+        return (Vector2(rig.p(p.x, p.y)), Vector2(d.x * pose.face, d.y))
     wsock = "l_wpn" if side == "l" else "r_wpn"
     key = mech.fit[wsock]
     w = WEAPONS.get(key) if key else None
@@ -5991,6 +6011,14 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                                         "main") or ac, depth),
                              pose, side)
 
+    rig.zone = "arms"
+    for side in ("la", "ra"):
+        if mech.fit["l_aux" if side == "la" else "r_aux"] is not None:
+            sock = "l_aux" if side == "la" else "r_aux"
+            c = tone(sock, "main")
+            if c is not None:
+                draw_aux_side(rig, mech, pose, side,
+                              shade(c, 0.86 if side == "la" else 1.0), lean)
     rig.zone = "body"
     chassis_overlay(rig, mech, t, lean, hip_y)
     if pose.brace and mech.alive("l_arm") or pose.brace and mech.alive("r_arm"):
@@ -6224,6 +6252,17 @@ def weapon_muzzle(mech, pose, side, sx, gy, scale):
     and the drawing needs this, so neither one owns it."""
     if CURRENT["house"] == "ryez":
         return beast_muzzle(mech, pose, side, sx, gy, scale)
+    if side in ("la", "ra"):
+        # a small mount hangs off the body, not off an arm, and its
+        # shots used to come out of the right hand
+        wpn = mech.weapon(side)
+        if wpn is None:
+            return None, Vector2(pose.face, 0)
+        ang = pose.aim[side]
+        d = Vector2(math.cos(ang), math.sin(ang))
+        p = aux_at(mech, side, pose.lean) + d * 24
+        rig = Side(None, sx, gy, scale, pose.face)
+        return (Vector2(rig.p(p.x, p.y)), Vector2(d.x * pose.face, d.y))
     asock = "l_arm" if side == "l" else "r_arm"
     at = mech.fit[asock]
     wpn = mech.weapon(side)
@@ -6244,6 +6283,120 @@ def weapon_muzzle(mech, pose, side, sx, gy, scale):
     rig = Side(None, sx, gy, scale, pose.face)
     return (Vector2(rig.p(tip.x, tip.y)),
             Vector2(d.x * pose.face, d.y))
+
+
+def aux_at(mech, side, lean=0.0):
+    """Where a small mount sits, in PROFILE, on a machine.
+
+    One definition, because the art and the muzzle both need it and a
+    pod that fires from somewhere it is not drawn is worse than a pod
+    with no art at all - which is what this was: AUX POD and AUX FLARE
+    POD cost money, filled a socket, showed in the HUD, fired, and were
+    drawn nowhere in either renderer or in the gantry. The TITAN TURRET
+    is sold on having two of these."""
+    tt = mech.fit["torso"] or 1
+    body_top = -336 if tt == 3 else (-330 if tt == 2 else -324)
+    back = -34 - (6 if tt == 3 else 0)
+    near = side == "ra"
+    return Vector2(back + (2 if near else -18) + lean * 1.1,
+                   body_top + (-6 if near else -16))
+
+
+def bio_aux_at(side):
+    """The same, grown. A spare organ site sits low and back on the
+    flank, behind the pair that do the work."""
+    near = side == "ra"
+    return Vector2(TRUNK_BACK + (66 if near else 32),
+                   TRUNK_TOP + (-4 if near else -16))
+
+
+def draw_aux_side(rig, mech, pose, side, colour, lean=0.0):
+    """A small mount in profile, machine or animal."""
+    key = mech.fit["l_aux" if side == "la" else "r_aux"]
+    w = WEAPONS.get(key) if key else None
+    if w is None:
+        return
+    grown = CURRENT["house"] == "ryez"
+    p = bio_aux_at(side) if grown else aux_at(mech, side, lean)
+    ang = pose.aim[side] + pose.recoil[side] * 0.3
+    d = Vector2(math.cos(ang), math.sin(ang))
+    nrm = Vector2(-d.y, d.x)
+    kick = -d * pose.recoil[side] * 5.0
+    p = p + kick
+    dark = shade(colour, 0.62)
+    light = shade(colour, 1.22)
+    if grown:
+        # a nodule with something in it, not a box with a barrel
+        rig.poly(_blob(p.x, p.y, 15, 12, 11, 0.16, 3.0), colour)
+        rig.poly(_blob(p.x, p.y, 15, 12, 11, 0.16, 3.0), dark, 1)
+        if key == "auxflare":
+            for i in range(3):
+                q = p + nrm * (i - 1) * 7 + d * 9
+                rig.poly(_blob(q.x, q.y, 5.5, 5, 9, 0.2, i * 2.0), light)
+        else:
+            tip = p + d * 26
+            rig.bar(_t(p), _t(tip), 3.0, light)
+            rig.poly([_t(tip), _t(tip - d * 7 + nrm * 3.5),
+                      _t(tip - d * 7 - nrm * 3.5)], light)
+        return
+    # a box tucked in where the shoulder used to be, and short tubes
+    box = [_t(p - d * 9 + nrm * 9), _t(p + d * 11 + nrm * 8),
+           _t(p + d * 11 - nrm * 8), _t(p - d * 9 - nrm * 9)]
+    rig.poly(box, colour)
+    rig.poly(box, dark, 1)
+    if key == "auxflare":
+        for i in (-1, 0, 1):
+            b = p + nrm * i * 5.0 + d * 8
+            tip = b + d * 11 + nrm * i * 2.5
+            rig.bar(_t(b), _t(tip), 2.6, light)
+    else:
+        for i in (-1, 1):
+            b = p + nrm * i * 4.0 + d * 8
+            rig.bar(_t(b), _t(b + d * 17), 2.4, light)
+    rig.circle(_t(p - d * 4), 3.0, dark)
+
+
+def shape_aux(key, side):
+    """The pair as the gantry sees them: small, high, outboard of the
+    collar, and mirrored."""
+    w = WEAPONS.get(key)
+    if w is None:
+        return []
+    sgn = -1 if side == "l" else 1
+    cx, cy = sgn * 72, -318
+    bio = CURRENT["house"] == "ryez"
+    if bio:
+        # the SAME anchor the street uses. A beast's shapes are authored
+        # in profile and the gantry draws those same shapes, so mech
+        # shoulder coordinates put the pair in the sky above the animal
+        p = bio_aux_at("ra" if side == "r" else "la")
+        cx, cy = p.x, p.y
+        out = [(_blob(cx, cy, 16, 13, 11, 0.16, 3.0 + sgn), "main")]
+        if key == "auxflare":
+            for i in range(3):
+                out.append((_blob(cx + sgn * 4, cy + 14 + i * 3 - 3,
+                                  5.5, 5, 9, 0.2, i * 2.0), "light"))
+        else:
+            out.append((([(cx - 3, cy + 6), (cx + 3, cy + 6),
+                          (cx + sgn * 5, cy + 30)]), "light"))
+        return out
+    out = [([(cx - 13, cy - 11), (cx + 13, cy - 11),
+             (cx + 11, cy + 13), (cx - 11, cy + 13)], "main"),
+           ([(cx - 10, cy - 8), (cx + 10, cy - 8),
+             (cx + 9, cy - 1), (cx - 9, cy - 1)], "light")]
+    if key == "auxflare":
+        for i in (-1, 0, 1):
+            out.append(([(cx + i * 6 - 2.4, cy + 12),
+                         (cx + i * 6 + 2.4, cy + 12),
+                         (cx + i * 6 + 2.4, cy + 24),
+                         (cx + i * 6 - 2.4, cy + 24)], "dark"))
+    else:
+        for i in (-1, 1):
+            out.append(([(cx + i * 5 - 2.2, cy + 12),
+                         (cx + i * 5 + 2.2, cy + 12),
+                         (cx + i * 5 + 2.2, cy + 28),
+                         (cx + i * 5 - 2.2, cy + 28)], "dark"))
+    return out
 
 
 WEAPON_LEN = {"fist": 24, "pile": 34, "saw": 44, "ripper": 50,
