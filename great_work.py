@@ -8747,6 +8747,131 @@ def draw_kaiju(surf, kind, sx, gy, scale, t, walk=0.0, moving=1.0, face=-1,
 
 
 # ---------------------------------------------------------------------------
+# WHAT ELSE HAPPENED THAT DAY
+#
+# A landfall was the same landfall every time: the datasheet on the brief
+# walked up the road and you fought it. The ladder made a campaign harder
+# and nothing made one DIFFERENT, so the seventh run of a season was the
+# first run with better parts.
+#
+# An event is rolled per landfall, it is on the brief BEFORE you commit -
+# which is the whole point, because STAND DOWN is a real button and a
+# flood is a real reason to press it - and it is rolled from a HASH of
+# the run's seed and the rung rather than from the global RNG. Two
+# reasons: a save reloaded on the morning of a landfall has to come back
+# to the same weather, and the balance harness has to be able to run the
+# same campaign with events on and off and have every other number match.
+#
+# Not every landfall gets one, and the first never does: a player who has
+# not yet seen a plain fight cannot tell which half of what is happening
+# is the weather.
+#
+# Fourteen of them, eight bad and six good, and the mix is the point. A
+# table of nothing but hazards is a difficulty slider with weather
+# painted on it - the run has to be able to get LUCKY or the brief is
+# only ever bad news.
+# ---------------------------------------------------------------------------
+EVENT_CHANCE = 0.45              # ...and how often one lands
+EVENT_FROM = 1                   # the first rung that can have one
+
+WADE = 0.62                      # what the water does to everything's walk
+RUNNERS = 1.30                   # ...and what a warm night does instead
+HEAVY_HP = 1.25                  # what it ate on the way in
+BLIND_SPREAD = 2.2               # ...and the storm to your grouping
+QUAKE_EVERY = 8.0                # seconds between aftershocks
+QUAKE_STUN = 0.7                 # ...and how long each one holds you
+SWARM_EXTRA = 4                  # bodies a swarm adds
+GUARD_SQUADS = 4                 # ...and squads the district turns out
+WOUNDED_HP = 0.66                # what is left of something that got here hurt
+CONVOY_PAY = 1.35                # scrap, on the way back
+BOUNTY_MARKS = 1.60              # ...and marks, on a head somebody wants
+PANIC_CITY = 1.75                # what an evacuation that failed costs
+BLACKOUT_VENT = 0.55             # no shore power, so it sheds heat badly
+REVEAL_WARN = 1.0                # seconds of telegraph the file buys
+
+EVENTS = (
+    # -- the bad ---------------------------------------------------------
+    ("flood", "THE TIDE IS IN", False,
+     "water to the waist the length of the road - nothing out there moves "
+     "the way it wants to, including you"),
+    ("swarm", "A SWARM", False,
+     "it is not one of them. Whatever the water pushed in front of it is "
+     "coming too"),
+    ("storm", "THE STORM", False,
+     "no sighting and no warning. You will hear it before the sensors "
+     "find it"),
+    ("quake", "AFTERSHOCKS", False,
+     "the ground has not finished moving, and it takes both of you off "
+     "your feet"),
+    ("fog", "FOG OFF THE WATER", False,
+     "the spotters have lost it. You will know where it is when it is "
+     "close enough to matter"),
+    ("panic", "THE EVACUATION FAILED", False,
+     "the blocks behind you are full. Everything it steps on tonight "
+     "costs more than it should"),
+    ("blackout", "THE GRID IS DOWN", False,
+     "no shore power on the line, so the core sheds heat the slow way"),
+    ("veteran", "IT HAS DONE THIS BEFORE", False,
+     "it has been shot at and it remembers. It steps off the line and it "
+     "puts its plates up"),
+    ("runners", "THEY ARE FAST TONIGHT", False,
+     "whatever is in the water is warm, and it is not walking up that "
+     "road, it is running"),
+    ("heavy", "IT CAME ASHORE FED", False,
+     "it has eaten on the way in. There is a great deal more of it than "
+     "the file says"),
+    # -- and the good ----------------------------------------------------
+    ("wounded", "IT CAME ASHORE HURT", True,
+     "something got to it before you did. Nobody at the desk will say "
+     "what"),
+    ("guard", "THE GUARD TURNED OUT", True,
+     "every rifle in the district is on that road and they are not "
+     "leaving"),
+    ("convoy", "A CONVOY GOT THROUGH", True,
+     "cold tanks, full racks, and somebody to sell the salvage to"),
+    ("refit", "THE YARD WORKED ALL NIGHT", True,
+     "everything that was hanging off it is bolted back on. Nobody slept"),
+    ("bounty", "THERE IS A BOUNTY ON IT", True,
+     "somebody upstairs wants this particular one, and is paying in "
+     "marks"),
+    ("reveal", "THE DESK SENT THE FILE", True,
+     "eleven years of somebody watching these. You will see it wind up "
+     "a second before it does"),
+)
+EVENT_BY = {e[0]: e for e in EVENTS}
+
+
+def event_at(run, index=None):
+    """The event for a landfall, or None. Deterministic, and free of the
+    global RNG - see the note above."""
+    if run is None:
+        return None
+    i = run.kaiju_index if index is None else index
+    if i < EVENT_FROM:
+        return None
+    seed = getattr(run, "seed", 0)
+    if _h01("weather", seed, i) >= EVENT_CHANCE:
+        return None
+    pick = _h01("which", seed, i)
+    return EVENTS[min(len(EVENTS) - 1, int(pick * len(EVENTS)))][0]
+
+
+def event_name(key):
+    row = EVENT_BY.get(key)
+    return row[1] if row else ""
+
+
+def event_note(key):
+    row = EVENT_BY.get(key)
+    return row[3] if row else ""
+
+
+def event_good(key):
+    row = EVENT_BY.get(key)
+    return bool(row and row[2])
+
+
+# ---------------------------------------------------------------------------
 # THE THINGS THAT COME UP FROM THE DOCKS
 #
 # KEAL CO's production line, for the campaign where you are the hatchery.
@@ -9251,6 +9376,11 @@ class Enemy:
         self.guard = 0.0            # plates up, for the ones that can
         self.guard_t = SMART_GUARD_EVERY * random.uniform(0.4, 1.0)
         self.read = False           # ...and whether THE ARCHIVE has it
+        # off the datasheet, but NOT the datasheet's to keep - a KIND is
+        # shared by every copy on the road and by the brief drawing it,
+        # so IT HAS DONE THIS BEFORE has to make one body clever without
+        # making the species clever for the rest of the campaign
+        self.smart = bool(kind.smart)
 
     @property
     def walk_speed(self):
@@ -9305,7 +9435,7 @@ class Enemy:
     def hurtby(self, dmg, pierce=False, cut=0.0):
         """`cut` is partial pierce - a fraction of the hide ignored. A whole
         pierce is still a whole pierce; this is for everything else."""
-        if self.kind.smart and not self.read:
+        if self.smart and not self.read:
             # the two things a player has that nothing else on the road
             # has ever had: it gets out of the way, and it puts the
             # plates up. It learned both off you.
@@ -9314,7 +9444,7 @@ class Enemy:
                 return 0.0
             if self.guard > 0:
                 dmg *= SMART_GUARD
-        elif self.kind.smart and self.guard > 0:
+        elif self.smart and self.guard > 0:
             # THE ARCHIVE. You have the drawing, so the plates are a
             # place you know the seams of rather than a wall.
             dmg *= (1.0 + SMART_GUARD) * 0.5
@@ -9327,7 +9457,7 @@ class Enemy:
 
     def smart_tick(self, dt):
         """Raise the plates now and then. Only the mirror does this."""
-        if not self.kind.smart or not self.alive:
+        if not self.smart or not self.alive:
             return
         if self.guard > 0:
             self.guard = max(0.0, self.guard - dt)
@@ -9414,6 +9544,114 @@ class Fight:
         self.venom = 0.0             # Jack's sac, while it lasts
         self.jars = []               # what came out in the log
         self.tutorial = 4.0 if run.kaiju_index == 0 else 0.0
+        self.ev = event_at(run)
+        self.wade = 1.0              # what the water leaves of a walk
+        self.blind = False           # no warning, and a wide group
+        self.quaking = False
+        self.quake_t = QUAKE_EVERY
+        self.fogged = False
+        self.pay = 1.0               # scrap, on the way home
+        self.marks_pay = 1.0
+        self.city_hit = 1.0          # ...and what a block costs tonight
+        self.vent_mult = 1.0
+        self.warn_bonus = 0.0
+        self.apply_event()
+
+    def apply_event(self):
+        """Everything one event does, in one place.
+
+        Spawn-time changes happen here; the rest are dials the fight
+        reads as it runs, because an event that has to be remembered in
+        six different update paths is an event that will be forgotten in
+        one of them."""
+        ev = self.ev
+        if ev is None:
+            return
+        if ev == "flood":
+            self.wade = WADE
+        elif ev == "runners":
+            # the same dial, the other way. Water and adrenaline are one
+            # number on this road and there is no reason for two.
+            self.wade = RUNNERS
+        elif ev == "heavy":
+            b = self.boss()
+            if b is not None:
+                b.max_hp *= HEAVY_HP
+                b.hp = b.max_hp
+        elif ev == "storm":
+            self.blind = True
+        elif ev == "quake":
+            self.quaking = True
+        elif ev == "fog":
+            self.fogged = True
+        elif ev == "panic":
+            self.city_hit = PANIC_CITY
+        elif ev == "blackout":
+            self.vent_mult = BLACKOUT_VENT
+        elif ev == "reveal":
+            self.warn_bonus = REVEAL_WARN
+        elif ev == "convoy":
+            self.pay = CONVOY_PAY
+            self.mech.heat = 0.0
+        elif ev == "bounty":
+            self.marks_pay = BOUNTY_MARKS
+        elif ev == "veteran":
+            b = self.boss()
+            if b is not None:
+                b.smart = True
+        elif ev == "wounded":
+            b = self.boss()
+            if b is not None:
+                b.hp = b.max_hp * WOUNDED_HP
+        elif ev == "refit":
+            for s in self.mech.sockets():
+                if self.mech.fit[s] is not None:
+                    self.mech.hp[s] = self.mech.max_hp(s)
+        elif ev == "guard":
+            base = self.mx + 260.0
+            for q in range(GUARD_SQUADS):
+                for i in range(MERC_SQUAD):
+                    self.mercs.append(Merc(base + q * 150 + (i - 1) * 46, 1))
+        elif ev == "swarm":
+            hpm = kaiju_mult("hp") * ESCORT_HP
+            rung = max(0, self.run.kaiju_index - 2)
+            k = kind_at(self.run.house, rung)
+            if k is not None:
+                for i in range(SWARM_EXTRA):
+                    e = Enemy(k, WORLD_W - 90 + i * 150, hp_mult=hpm * 0.8)
+                    e.escort = True
+                    self.enemies.append(e)
+        if ev is not None:
+            self.say(event_name(ev))
+
+    # -- what the weather leaves you ---------------------------------------
+    @property
+    def sight(self):
+        """Seconds of telegraph, here, tonight."""
+        return 0.0 if self.blind else self.mech.warn + self.warn_bonus
+
+    @property
+    def aim_spread(self):
+        return self.mech.spread * (BLIND_SPREAD if self.blind else 1.0)
+
+    def quake_tick(self, dt):
+        """The ground, still moving. It takes BOTH of you - an aftershock
+        that only staggered the player would be a difficulty setting with
+        a name on it."""
+        if not self.quaking or self.over is not None:
+            return
+        self.quake_t -= dt
+        if self.quake_t > 0:
+            return
+        self.quake_t = QUAKE_EVERY
+        self.shake = max(self.shake, 14)
+        self.stun = max(self.stun, QUAKE_STUN)
+        for e in self.enemies:
+            if e.alive:
+                e.hurt = max(e.hurt, 0.2)
+                e.stagger += 0.5 / e.kind.poise
+        SFX.play("thud", 0.6)
+        self.say("THE GROUND WENT AGAIN")
 
     # -- geometry ---------------------------------------------------------
     def boss(self):
@@ -9583,7 +9821,7 @@ class Fight:
             # one big one, over the top, and it comes down burning
             shots = 1
         for i in range(shots):
-            spread = self.mech.spread
+            spread = self.aim_spread
             if wpn.kind == "salvo" and tgt is not None:
                 # lobbed, so it needs a ballistic solution rather than a line
                 dx = (tgt.x - self.mx) * self.pose.face - 60.0
@@ -10153,7 +10391,8 @@ class Fight:
         SFX.play("beam", 0.42)
         self.pose.recoil[side] = 1.0
         self.shake = max(self.shake, 1.4)
-        ang = self.pose.aim[side] + random.uniform(-0.04, 0.04) * self.mech.spread
+        ang = self.pose.aim[side] + random.uniform(-0.04, 0.04) \
+            * self.aim_spread
         v = Vector2(math.cos(ang) * self.pose.face, math.sin(ang)) * wpn.throw
         self.shots.append(Shot((self.mx + 60 * self.pose.face, -300.0), v,
                                wpn.dmg * mult, "mech", PLASMA_C, size=7,
@@ -10347,13 +10586,16 @@ class Fight:
             return
         e.moving = approach(e.moving, 1.0, dt * 2)
         if e.x > WALL_X:
-            e.x -= e.walk_speed * dt
-            e.walk += dt * (2.4 + e.walk_speed / 60.0)
+            # ...and it slows THEM. Water that only slowed the player
+            # would be a difficulty setting with weather painted on it
+            e.x -= e.walk_speed * self.wade * dt
+            e.walk += dt * (2.4 + e.walk_speed * self.wade / 60.0)
         else:
             # it is inside the wall now, and it is not fighting any more
             e.x = WALL_X
             e.moving = approach(e.moving, 0.0, dt * 2)
-            self.integrity -= e.kind.wreck * dt * self.city_mult
+            self.integrity -= (e.kind.wreck * dt * self.city_mult
+                               * self.city_hit)
             if random.random() < dt * 0.55:
                 b = self.city.wreck_one()
                 if b is not None:
@@ -10364,7 +10606,7 @@ class Fight:
     def begin(self, e, a):
         e.state = "windup"
         e.attack = a
-        e.timer = a["windup"] + self.mech.warn * 0.45
+        e.timer = a["windup"] + self.sight * 0.45
         e.cool[a["kind"]] = a["cool"]
         if a["kind"] == "roar":
             SFX.play("roar", 0.8)
@@ -10562,7 +10804,7 @@ class Fight:
             (self.mech.alive("l_arm") or self.mech.alive("r_arm"))
         if self.pose.brace:
             move = 0.0
-        speed = self.mech.speed
+        speed = self.mech.speed * self.wade
         if self.boost > 0:
             speed *= 2.3
         self.mvel = approach(self.mvel, move * speed, speed * 5.0 * dt)
@@ -10615,9 +10857,9 @@ class Fight:
             trig = "fire_l" if side in ("l", "la") else "fire_r"
             if inp.get(trig) and not down:
                 self.fire(side, dt)
-        self.mech.cool(dt)
+        self.mech.cool(dt * self.vent_mult)
         if self.pose.brace and self.mech.has("shutters"):
-            self.mech.cool(dt * 1.5)         # 2.5x venting behind the plates
+            self.mech.cool(dt * 1.5 * self.vent_mult)   # 2.5x behind plates
         if inp.get("flush") and not self.flushed and self.mech.has("flush")                 and not down:
             self.flushed = True
             self.mech.heat = 0.0
@@ -10642,6 +10884,7 @@ class Fight:
         self.strain_tick(dt)
         self.brood_tick(dt)
         self.merc_tick(dt)
+        self.quake_tick(dt)
         self.ally_tick(dt)
         # -- the animals ---------------------------------------------------
         for e in self.enemies:
@@ -10769,11 +11012,61 @@ class Fight:
                 pass
 
     # -- drawing ----------------------------------------------------------
+    def weather_under(self, surf, gy, sh):
+        """Anything the fight happens INSIDE, drawn before the bodies."""
+        if self.ev == "fog":
+            band = pygame.Surface((W, 260), pygame.SRCALPHA)
+            for i in range(13):
+                a = int(10 + i * 3)
+                pygame.draw.rect(band, (150, 158, 172, a),
+                                 (0, i * 20, W, 20))
+            surf.blit(band, (0, gy - 250))
+
+    def weather_over(self, surf, gy, sh):
+        """...and anything it happens UNDER, drawn after them.
+
+        The water goes on top because a flood you can see the feet
+        through is a puddle. It is drawn from the road up, at a height
+        that reads as waist-deep on a machine and shoulder-deep on
+        whatever is crawling."""
+        ev = self.ev
+        if ev == "flood":
+            top = int(gy - 86 + math.sin(self.t * 1.1) * 2)
+            band = pygame.Surface((W, H - top), pygame.SRCALPHA)
+            band.fill((42, 82, 108, 150))
+            surf.blit(band, (0, top))
+            for k in range(3):                    # the surface, moving
+                off = (self.t * (22 + k * 15) + k * 90) % 180
+                y = top + 3 + k * 5
+                for x in range(int(-off), W, 180):
+                    pygame.draw.line(surf, (128, 178, 200),
+                                     (x, y), (x + 74, y), 2)
+            pygame.draw.line(surf, (150, 196, 214), (0, top), (W, top), 2)
+        elif ev == "storm":
+            ov = pygame.Surface((W, H), pygame.SRCALPHA)
+            ov.fill((10, 12, 24, 96))
+            surf.blit(ov, (0, 0))
+            for i in range(90):
+                # deterministic lanes, scrolled - `random` here would be
+                # drawing out of the stream the fight is resolved from
+                lane = (i * 131) % W
+                fall = (self.t * 900 + i * 173) % (H + 180)
+                x = lane - int(fall * 0.22)
+                y = int(fall) - 90
+                pygame.draw.line(surf, (150, 170, 210), (x, y),
+                                 (x - 7, y + 30), 1)
+        elif ev == "quake" and self.quake_t > QUAKE_EVERY - 0.9:
+            f = (self.quake_t - (QUAKE_EVERY - 0.9)) / 0.9
+            ov = pygame.Surface((W, 60), pygame.SRCALPHA)
+            ov.fill((120, 84, 52, int(70 * f)))
+            surf.blit(ov, (0, gy - 20))
+
     def draw(self, surf):
         sh = (random.uniform(-1, 1) * self.shake,
               random.uniform(-1, 1) * self.shake)             if self.shake > 0.2 and prefs()["shake"] else (0, 0)
         draw_city(surf, self.city, self.cam, self.t, sh)
         gy = GROUND_Y + sh[1]
+        self.weather_under(surf, gy, sh)
 
         # the far ones first so a broodling never stands in front of mother
         order = sorted(self.enemies, key=lambda e: -e.kind.scale)
@@ -10783,7 +11076,7 @@ class Fight:
                 continue
             windup = 0.0
             if e.state == "windup" and e.attack:
-                full = e.attack["windup"] + self.mech.warn * 0.45
+                full = e.attack["windup"] + self.sight * 0.45
                 windup = clamp(1.0 - e.timer / max(0.12, full), 0, 1)
             draw_enemy(surf, e, x, gy + e.y * FSCALE, FSCALE, self.t, windup)
             if e.state == "windup" and e.attack and \
@@ -10808,6 +11101,7 @@ class Fight:
                 lf = clamp(getattr(a, "life", SCION_LIFE) / SCION_LIFE, 0, 1)
                 pygame.draw.rect(surf, shade(RYEZ_ACID, 0.55),
                                  (br.x, br.bottom + 3, int(br.w * lf), 2))
+        self.weather_over(surf, gy, sh)
         for m in self.mercs:                  # small, and in front of it
             self.draw_merc(surf, m, gy, sh)
         mx = self.sx(self.mx) + sh[0]
@@ -10885,7 +11179,7 @@ class Fight:
         A command head buys you half a second of this; a sensor pod does
         not, which is what the head is FOR."""
         f = clamp(1.0 - e.timer / max(0.12, e.attack["windup"]
-                                      + self.mech.warn * 0.45), 0, 1)
+                                      + self.sight * 0.45), 0, 1)
         reach = e.attack["reach"]
         x0 = self.sx(e.x - reach) + sh[0]
         x1 = self.sx(e.x) + sh[0]
@@ -11431,6 +11725,12 @@ class Run:
         # next one; nothing else in the game does, which is why they
         # only exist in the long campaign.
         self.ceiling = {s: BASE_CEILING for s in SOCKETS}
+        # what the weather is rolled off. Taken from the RNG ONCE, here,
+        # so a campaign is still reproducible from its seed - and every
+        # roll after this is a HASH of it, so the harness can play the
+        # same campaign with events on and off and match every other
+        # number in the table.
+        self.seed = random.getrandbits(30)
         self.flags = []              # what it decided, in the rooms
         self.seen = []               # ...and which rooms it has been in
         self.opened = []             # ...and the plans it bought on the road
@@ -11886,6 +12186,7 @@ class Run:
             got_s = int(kind.scrap
                         * (1.30 if self.mech.has("claws") else 1.0)
                         * (HUNGER_SCRAP if self.mech.has("hunger") else 1.0)
+                        * getattr(fight, "pay", 1.0)
                         * self.scrap_mult)
             got_a = (kind.alloy + (1 if self.yard >= 3 else 0)
                      + (1 if has_ware("hazmat") else 0)
@@ -11897,6 +12198,7 @@ class Run:
             self.alloy += got_a
             tbl = marks_table(self.mode)
             got_m = int(round(tbl[min(self.kaiju_index, len(tbl) - 1)]
+                              * getattr(fight, "marks_pay", 1.0)
                               * self.marks_mult))
             add_marks(got_m)
             lines.append("%s DOWN." % kind.name)
@@ -11980,6 +12282,7 @@ class Run:
     # -- saved ------------------------------------------------------------
     def to_json(self):
         return {"house": self.house, "mode": self.mode,
+                "seed": self.seed,
                 "opened": list(self.opened),
                 "ceiling": dict(self.ceiling),
                 "flags": list(self.flags), "seen": list(self.seen),
@@ -12011,6 +12314,7 @@ class Run:
             r.kaiju_index = int(clamp(int(d.get("kaiju_index", 0)), 0,
                                       len(schedule_for(r.mode))))
             r.killed = max(0, int(d.get("killed", 0)))
+            r.seed = int(d.get("seed", r.seed) or 0)
             r.flags = [str(x) for x in (d.get("flags") or [])]
             r.seen = [int(x) for x in (d.get("seen") or [])]
             r.opened = [str(x) for x in (d.get("opened") or [])
@@ -13758,13 +14062,37 @@ class Brief:
         # last five words stuck out of the side and the rest was painted
         # over. On the last day of the year that is guaranteed: the
         # mirror has the longest note in the game and never comes alone.
-        for line in wrap(k.note, 18, 560)[:3]:
+        # what else is happening tonight, ABOVE the datasheet, because
+        # STAND DOWN is a real button and a flood is a real reason to
+        # press it - this has to be readable before the player commits
+        #
+        # The budget is worked out here rather than counted by hand,
+        # because the block above the panel now holds an escort line, an
+        # EVENT and the datasheet's own note, and the number of lines in
+        # each of those depends on what is coming. STATS_AT is where the
+        # stats have to start; everything above shares what is left, and
+        # the note gives its lines up first because it is the only one of
+        # the three that repeats every campaign.
+        STATS_AT = 318
+        ev = event_at(run)
+        if ev:
+            good = event_good(ev)
+            lab = ("ALSO: " if good else "AND: ") + event_name(ev)
+            text(surf, lab, 20, (60, y), GOOD if good else BAD)
+            y += 26
+            for line in wrap(event_note(ev), 14, 560)[:2]:
+                text(surf, line, 14, (60, y),
+                     (150, 196, 158) if good else (214, 150, 140),
+                     bold=False)
+                y += 18
+            y += 4
+        room = max(1, ((STATS_AT - 30) - y) // 24)
+        for line in wrap(k.note, 18, 560)[:room]:
             text(surf, line, 18, (60, y), DIM, bold=False)
             y += 24
-        y += 10
         text(surf, "IT WILL WALK TO THE CITY. IT WILL ONLY STOP FOR YOU.",
-             17, (60, y), WARN)
-        y += 28
+             17, (60, min(y + 8, STATS_AT - 26)), WARN)
+        y = STATS_AT
         rows = [("HEALTH", "%d" % k.hp), ("SPEED", "%d" % k.speed),
                 ("HIDE", "-%d per hit" % k.dr if k.dr else "soft"),
                 ("POISE", "hard to stagger" if k.poise >= 1.6 else

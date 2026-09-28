@@ -83,6 +83,30 @@ seventh worse. That is the spiral the city's relief works are
 deliberately weak to avoid. These numbers are where they are because of
 that measurement, not by eye.
 
+EVENTS came in after all of the above, and TWO THINGS ABOUT THEM MATTER
+HERE. A `Run` now takes one number off the RNG for its weather seed, so
+every campaign at a given seed is a DIFFERENT campaign than it was before
+that line existed - do not compare any table above with one printed after
+it. And the roll itself is a hash rather than a draw, so `EVENT_CHANCE`
+can be set to 0 and the same ten campaigns replayed with the weather off,
+which is the only honest way to measure what it costs:
+
+    weather   KEAL endings over 10      CATHEDRAL win%
+    off       4 victories, 5 unfin.     40%
+    on        5 victories, 5 unfin.     50%
+    (RYEZ is 9 victories in 10 either way, to the second decimal)
+
+One campaign in ten, in the player's favour, which is inside the noise at
+this sample - six of the sixteen events are good and ten are bad, and the
+first pass was fourteen with six good, which measured two campaigns in
+ten EASIER. The two hazards that closed the gap are THEY ARE FAST TONIGHT
+and IT CAME ASHORE FED.
+
+Two blocks in this file pin `EVENT_CHANCE` to 0 around a Fight they build
+(the ladder's body count, and the MERCENARIES contract), because both are
+claims about the SCHEDULE or the SHOP and a swarm rolled onto the fourth
+landfall is neither.
+
 Watch `taken` as much as `win%`. A fight the pilot wins without being hurt
 is a fight with no texture in it, and three separate bugs hid behind a
 healthy-looking win rate: the shell collision window was empty, the
@@ -1990,17 +2014,20 @@ def yard():
     # the marks are the SAME marks every frame, and they are not drawn
     # out of the global RNG - the fight is seeded off that, so a draw
     # call that pulled from it would make the picture change the battle
-    random.seed(11)
-    a = [random.random() for _ in range(4)]
-    random.seed(11)
-    assert G._h01("torso", 3, 1) == G._h01("torso", 3, 1)
-    assert G._h01("torso", 3, 1) != G._h01("legs", 3, 1)
     surf2 = pygame.Surface((G.W, G.H))
+    # the machine is built BEFORE the seed is set: a Run takes one number
+    # off the stream for its weather, and this block is measuring what the
+    # DRAWING takes
     hurt = G.Run("keal").mech
     for s in hurt.sockets():
         if s not in G.HARDPOINTS:
             hurt.install(s, 3)
             hurt.hp[s] = hurt.max_hp(s) * 0.15
+    random.seed(11)
+    a = [random.random() for _ in range(4)]
+    random.seed(11)
+    assert G._h01("torso", 3, 1) == G._h01("torso", 3, 1)
+    assert G._h01("torso", 3, 1) != G._h01("legs", 3, 1)
     G.draw_mech_front(surf2, hurt, 590, 700, 1.0, {}, 1.0)
     assert [random.random() for _ in range(4)] == a, (
         "the damage layer drew from the global RNG")
@@ -2147,6 +2174,126 @@ def yard():
     print("  a part slides from full to %d%% between %d%% and 100%% "
           "damage, and every screen with a bar on it says the number"
           % (round(G.WEAR_FLOOR * 100), round(G.WEAR_FREE * 100)))
+
+    # -- WHAT ELSE HAPPENED THAT DAY --------------------------------------
+    # Fourteen events, rolled per landfall. The roll is a HASH of the
+    # run's seed and the rung, not a draw from the global RNG, for two
+    # reasons that are both tested here: a save reloaded on the morning
+    # of a landfall has to come back to the same weather, and the balance
+    # harness has to be able to play one campaign with events on and off
+    # with every other number matching.
+    assert len(G.EVENTS) == 16, len(G.EVENTS)
+    keys = [e[0] for e in G.EVENTS]
+    assert len(set(keys)) == len(keys)
+    good = [k for k in keys if G.event_good(k)]
+    assert 5 <= len(good) <= len(keys) - 5, (
+        "%d of %d are good - a table of nothing but hazards is a "
+        "difficulty slider with weather painted on it"
+        % (len(good), len(keys)))
+    for k, name, _g, note in G.EVENTS:
+        assert name == name.upper() and len(name) > 4, name
+        assert len(note) > 25 and note[0].islower(), (k, note)
+        assert G.event_name(k) == name and G.event_note(k) == note
+    assert G.event_name("nope") == "" and not G.event_good("nope")
+
+    G.set_house("keal")
+    r = G.Run("keal")
+    # the first landfall is never one - a player who has not seen a plain
+    # fight cannot tell which half of what is happening is the weather
+    for sd in range(200):
+        r.seed = sd
+        r.kaiju_index = 0
+        assert G.event_at(r) is None, sd
+    # ...and the same run asked twice gets the same answer
+    r.seed = 4321
+    for i in range(1, len(G.SCHEDULE)):
+        r.kaiju_index = i
+        assert G.event_at(r) == G.event_at(r)
+        assert G.event_at(r, i) == G.event_at(r)
+    # a save brings the weather back with it
+    r.kaiju_index = 3
+    was = G.event_at(r)
+    back = G.Run.from_json(r.to_json())
+    assert back.seed == r.seed
+    assert G.event_at(back) == was, "the tide went out over a save"
+    # and it does not touch the global RNG
+    random.seed(9)
+    a = [random.random() for _ in range(3)]
+    random.seed(9)
+    for sd in range(50):
+        r.seed = sd
+        G.event_at(r)
+    assert [random.random() for _ in range(3)] == a, (
+        "the weather is rolled out of the fight's own RNG")
+
+    # every one of the fourteen builds a fight and survives a few seconds
+    r = G.Run("keal")
+    r.kaiju_index = 3
+    for s in r.mech.sockets():
+        if s not in G.HARDPOINTS:
+            r.mech.install(s, 2)
+    r.mech.install("l_wpn", "pile")
+    r.mech.install("r_wpn", "auto")
+    surf3 = pygame.Surface((G.W, G.H))
+    for key in keys:
+        random.seed(7)
+        f = G.Fight(r, r.next_kind())
+        plain = len(f.enemies)
+        f.ev = key
+        f.apply_event()
+        for _ in range(120):
+            f.update(DT, {"fire_l": True, "right": True})
+        f.draw(surf3)                 # ...and it can be looked at
+        if key == "swarm":
+            assert len(f.enemies) >= plain, key
+        if key == "guard":
+            assert len(f.mercs) >= G.GUARD_SQUADS, key
+        if key == "flood":
+            assert f.wade < 1.0
+        if key == "runners":
+            assert f.wade > 1.0
+        if key == "storm":
+            assert f.sight == 0.0 and f.aim_spread > r.mech.spread
+        if key == "reveal":
+            assert f.sight > r.mech.warn
+        if key == "veteran":
+            assert f.boss() is None or f.boss().smart
+        if key == "blackout":
+            assert f.vent_mult < 1.0
+        if key in ("convoy", "bounty"):
+            assert f.pay > 1.0 or f.marks_pay > 1.0
+
+    # IT HAS DONE THIS BEFORE makes ONE body clever, not the species -
+    # a Kind is shared by every copy on the road and by the brief
+    random.seed(3)
+    f = G.Fight(r, r.next_kind())
+    f.ev = "veteran"
+    f.apply_event()
+    assert f.boss().smart
+    assert not f.kind.smart, "the datasheet learned it for good"
+    assert not G.Enemy(f.kind, 0.0).smart, "...and passed it on"
+
+    # a plain landfall is still a plain landfall
+    random.seed(7)
+    quiet = G.Fight(r, r.next_kind())
+    quiet.ev = None
+    quiet.apply_event()
+    assert quiet.wade == 1.0 and not quiet.blind and quiet.pay == 1.0
+    assert not quiet.quaking and quiet.city_hit == 1.0
+
+    # the brief says so before you commit, which is the whole point
+    for sd in range(6000):
+        r.seed = sd
+        if G.event_at(r):
+            break
+    assert G.event_at(r), "no seed in 6000 rolled anything"
+    br = G.Brief(r, r.next_kind())
+    br.t = 1.0
+    br.draw(surf3, (0, 0))
+    print("  %d events, %d of them good, none on the first landfall, and "
+          "the same seed rolls the same weather twice" % (len(G.EVENTS),
+                                                          len(good)))
+
 
 
 
@@ -2868,7 +3015,14 @@ def yard():
         for i in range(len(G.SCHEDULE)):
             run = G.Run(house)
             run.kaiju_index = i
-            f = G.Fight(run, run.next_kind())
+            # the LADDER, with the weather switched off - this block is a
+            # claim about what the schedule puts on the road, and a SWARM
+            # rolled onto the fourth landfall is not the schedule
+            was_ev, G.EVENT_CHANCE = G.EVENT_CHANCE, 0.0
+            try:
+                f = G.Fight(run, run.next_kind())
+            finally:
+                G.EVENT_CHANCE = was_ev
             assert f.boss() is f.enemies[0], i
             count[i] = len(f.enemies)
             threat[i] = sum(max(a["dmg"] / max(0.2, a["cool"])
@@ -3547,7 +3701,13 @@ def gov():
     G.set_house("keal")
     r = _rig(tier=1)
     r.kaiju_index = 4
-    f = G.Fight(r, G.roster_for("keal")[4])
+    # weather off: THE GUARD TURNED OUT puts a squad on the road for
+    # free, and this block is a claim about the CONTRACT
+    was_ev, G.EVENT_CHANCE = G.EVENT_CHANCE, 0.0
+    try:
+        f = G.Fight(r, G.roster_for("keal")[4])
+    finally:
+        G.EVENT_CHANCE = was_ev
     for _ in range(400):
         f.update(1 / 40.0, {})
     assert not f.mercs, "a squad turned up for somebody who has not paid"
