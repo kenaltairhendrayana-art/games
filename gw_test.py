@@ -196,6 +196,20 @@ def smoke():
             G.text(surf, "WRECKED" if f >= 1 else "%d%% GONE" % round(f * 100),
                    17, (x, 30), (220, 200, 160), center=True)
         snap("hurt_" + tag)
+    # ...and what the things on the road look like as they come apart,
+    # at the size the fight actually draws them
+    for house, tag in (("keal", "bio"), ("ryez", "mech")):
+        G.set_house(house)
+        surf.fill((22, 24, 34))
+        for i, k in enumerate(G.roster_for(house)[:3]):
+            for j, f in enumerate((0.0, 0.45, 0.85)):
+                fe = G.Enemy(k, 0.0)
+                fe.hp = fe.max_hp * (1.0 - f)
+                fe.walk, fe.moving = 1.2, 0.8
+                G.draw_enemy(surf, fe, 200 + j * 400, 250 + i * 250,
+                             G.FSCALE * 0.7, 1.0)
+            G.text(surf, k.name, 14, (16, 170 + i * 250), (220, 200, 160))
+        snap("foe_" + tag)
     G.set_house("keal")
 
     run = G.Run()
@@ -1976,6 +1990,70 @@ def yard():
         "the same machine drew two different sets of dents")
     print("  every wound lands on the body in both views and both houses, "
           "and the same machine draws the same dents twice")
+
+    # -- and everything on the road wears what it has taken --------------
+    # An enemy is not a Mech: one pool of health, no sockets, nothing to
+    # ask `damage_frac`. It gets the same five kinds of mark off a
+    # whole-body fraction, and the same rule applies - a wound has to be
+    # ON it, for every datasheet in the game and not just the one that
+    # was open when this was written.
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        for k in G.roster_for(house):
+            fresh = pygame.Surface((G.W, G.H))
+            fresh.fill(BLACK)
+            e = G.Enemy(k, 0.0)
+            e.walk, e.moving = 1.2, 0.8
+
+            def show(s, en=e):
+                G.draw_enemy(s, en, 590, 720, 0.8, 1.0)
+            show(fresh)
+            # nothing on a body that has not been hit
+            calls = []
+            real = G.draw_hurt
+            G.draw_hurt = lambda rig, spots, frac, *a: calls.append(frac)
+            try:
+                show(pygame.Surface((G.W, G.H)))
+            finally:
+                G.draw_hurt = real
+            assert not [f for f in calls if f >= G.HURT_AT], (
+                "%s is marked at full health" % k.name)
+
+            # ...and every anchor of a hurt one is on the body
+            e.hp = e.max_hp * 0.25
+            pts = []
+            real = G.draw_hurt
+
+            def spy(rig, spots, frac, wrecked, key, bio, t, base, dens=1.0):
+                pts.extend(rig.p(x, y) for x, y, _r in spots)
+            G.draw_hurt = spy
+            try:
+                show(pygame.Surface((G.W, G.H)))
+            finally:
+                G.draw_hurt = real
+            assert len(pts) >= 5, "%s has %d anchors" % (k.name, len(pts))
+            off = 0
+            for px, py in pts:
+                xi, yi = int(px), int(py)
+                if not (0 <= xi < G.W and 0 <= yi < G.H) or \
+                        fresh.get_at((xi, yi))[:3] == BLACK:
+                    off += 1
+            # a tail tip and a claw are a pixel wide and move, so a couple
+            # of anchors on the thinnest parts are allowed to miss
+            assert off <= max(1, len(pts) // 8), (
+                "%s puts %d of %d wounds in the air" % (k.name, off,
+                                                        len(pts)))
+    G.set_house("keal")
+
+    # a small body does not take a big body's worth of marks
+    small = sum(G.hurt_count(0.9, False, 0.35))
+    big = sum(G.hurt_count(0.9, False, 1.0))
+    assert small * 2 <= big, (small, big)
+    assert small >= 3, small
+    print("  all %d datasheets on both ladders wear what they have taken, "
+          "and a CRAWLER does not take a CATHEDRAL's worth of it"
+          % sum(len(G.roster_for(h)) for h in ("keal", "ryez")))
+
 
 
 

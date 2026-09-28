@@ -6959,20 +6959,25 @@ def _hs(key, i, n=1):
     return [_h01(key, i, j) for j in range(n)]
 
 
-def hurt_count(frac, wrecked):
-    """(scuffs, dents, scorches, cracks, holes) at this much damage."""
+def hurt_count(frac, wrecked, dens=1.0):
+    """(scuffs, dents, scorches, cracks, holes) at this much damage.
+
+    `dens` is how much body there is to put them on. A CRAWLER and a
+    CATHEDRAL take the same number of marks without it, and the CRAWLER
+    is a fifth of the size - at full wear it stopped reading as a hurt
+    animal and started reading as a different animal."""
     if wrecked:
-        return (3, 2, 2, 3, 2)
+        return tuple(max(1, int(v * dens + 0.5)) for v in (5, 4, 4, 5, 3))
     f = clamp((frac - HURT_AT) / (1.0 - HURT_AT), 0.0, 1.0)
     # the thresholds are where each KIND of mark first appears, and they
     # were set by reading the ramp out rather than by eye - the first
     # pass put the first hole at 100% damage exactly, so a part could go
     # from dented to gone with nothing in between
-    return (int(f * 6.0 + 0.6),                     # scuffs, from the start
-            int(max(0.0, f - 0.08) * 5.6),          # dents
-            int(max(0.0, f - 0.22) * 4.8),          # scorches
-            int(max(0.0, f - 0.42) * 4.8),          # cracks
-            int(max(0.0, f - 0.60) * 4.2))          # holes right through
+    return (int((f * 9.0 + 0.7) * dens),            # scuffs, from the start
+            int(max(0.0, f - 0.06) * 8.4 * dens),   # dents
+            int(max(0.0, f - 0.18) * 7.2 * dens),   # scorches
+            int(max(0.0, f - 0.36) * 7.0 * dens),   # cracks
+            int(max(0.0, f - 0.62) * 4.0 * dens))   # holes right through
 
 
 def hurt_paint(bio, base):
@@ -6987,12 +6992,12 @@ def hurt_paint(bio, base):
                 "deep": (54, 18, 26),
                 "char": (38, 12, 20),
                 "rim": (128, 46, 58),
-                "inner": (226, 214, 198)}          # bone
+                "inner": (206, 190, 170)}          # bone
     return {"scuff": shade(base, 0.58),
             "deep": (30, 30, 36),
             "char": (22, 20, 22),
             "rim": (96, 64, 48),
-            "inner": (176, 186, 206)}              # a strut, catching light
+            "inner": (148, 158, 182)}              # a strut, catching light
 
 
 def _spot(spots, u, v):
@@ -7012,12 +7017,12 @@ def _spot(spots, u, v):
     return (x + math.cos(a) * d, y + math.sin(a) * d, r)
 
 
-def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
+def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base, dens=1.0):
     """Lay the damage for one socket over the top of it."""
     if not spots or (frac < HURT_AT and not wrecked):
         return
     c = hurt_paint(bio, base)
-    n_sc, n_dt, n_ch, n_cr, n_ho = hurt_count(frac, wrecked)
+    n_sc, n_dt, n_ch, n_cr, n_ho = hurt_count(frac, wrecked, dens)
     i = 0
 
     # -- scuffs: a scrape along the plate, or a split in the hide --------
@@ -7026,7 +7031,7 @@ def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
         u, v, a, l = _hs(key, i, 4)
         x, y, r = _spot(spots, u, v)
         ang = a * TAU
-        ln = r * (0.55 + 0.6 * l)
+        ln = r * (0.7 + 0.8 * l)
         dx, dy = math.cos(ang) * ln * 0.5, math.sin(ang) * ln * 0.5
         rig.bar((x - dx, y - dy), (x + dx, y + dy),
                 max(1.4, r * 0.11), c["scuff"])
@@ -7036,7 +7041,7 @@ def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
         i += 1
         u, v, w, a = _hs(key, i, 4)
         x, y, r = _spot(spots, u, v)
-        rx = r * (0.30 + 0.20 * w)
+        rx = r * (0.34 + 0.26 * w)
         ry = rx * (0.55 + 0.4 * a)
         rig.poly([(x + rx * math.cos(q), y + ry * math.sin(q))
                   for q in (j * TAU / 7 for j in range(7))], c["deep"])
@@ -7048,7 +7053,7 @@ def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
         i += 1
         u, v, w = _hs(key, i, 3)
         x, y, r = _spot(spots, u, v)
-        rr = r * (0.34 + 0.26 * w)
+        rr = r * (0.40 + 0.32 * w)
         pts = []
         for j in range(9):
             q = j * TAU / 9
@@ -7064,7 +7069,7 @@ def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
         u, v, a, l = _hs(key, i, 4)
         x, y, r = _spot(spots, u, v)
         ang = a * TAU
-        step = r * (0.22 + 0.16 * l)
+        step = r * (0.28 + 0.2 * l)
         px, py = x, y
         for j in range(3):
             # a crack turns, but not by much - at a radian and a half per
@@ -7081,7 +7086,7 @@ def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
         i += 1
         u, v, w = _hs(key, i, 3)
         x, y, r = _spot(spots, u, v)
-        rr = r * (0.40 + 0.22 * w)
+        rr = r * (0.46 + 0.26 * w)
         pts = []
         for j in range(11):
             q = j * TAU / 11
@@ -7090,11 +7095,14 @@ def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
                         y + math.sin(q) * rr * wob))
         rig.poly(pts, (10, 10, 13))
         rig.poly(pts, c["char"], 2)
-        # what is under the plate: two struts, or two ribs
-        for j in (-1, 1):
-            rig.bar((x + j * rr * 0.42, y - rr * 0.9),
-                    (x + j * rr * 0.26, y + rr * 0.9),
-                    max(1.4, rr * 0.22), c["inner"])
+        # what is under the plate: a strut, or a rib. Not always - two
+        # bright bars in every hole turned a badly hurt thing into a
+        # white grille, and the hole is supposed to be the dark part
+        if _h01(key, i, "strut") > 0.38:
+            for j in (-1, 1):
+                rig.bar((x + j * rr * 0.34, y - rr * 0.62),
+                        (x + j * rr * 0.22, y + rr * 0.62),
+                        max(1.2, rr * 0.13), c["inner"])
         if wrecked:
             # a cable hanging out of it, and every few seconds it arcs
             hang = rr * (1.1 + 0.5 * w)
@@ -7241,16 +7249,25 @@ def damage_bio(rig, mech, t, pose=None, tones=None, rear=0.0, plan=None):
 
 
 def damage_side(rig, mech, t, lean, hip_y, body_top, front, back, limbs,
-                stance, bio, tones=None):
+                stance, bio, tones=None, worn=0.0):
+    """`worn` is for a body with no sockets to ask. An enemy machine is a
+    fixed rig with one pool of health behind it, so every part of it
+    wears the same fraction - shaken up per socket, or one number across
+    a whole machine reads as a stencil laid on evenly."""
     spots = hurt_spots_side(mech, hip_y, body_top, front, back, lean,
                             limbs, stance)
     base = (tones or (BIO_TONES if bio else TONES)).get("main", STEEL)
     for socket, pts in spots.items():
         if mech.fit.get(socket) is None:
             continue
+        frac = mech.damage_frac(socket)
+        gone = mech.hp[socket] <= 0
+        if worn > 0.0:
+            frac = clamp(worn * (0.6 + 0.85 * _h01(socket, "worn")),
+                         0.0, 1.0)
+            gone = False
         rig.zone = ZONE_OF.get(socket, "body")
-        draw_hurt(rig, pts, mech.damage_frac(socket),
-                  mech.hp[socket] <= 0, socket, bio, t, base)
+        draw_hurt(rig, pts, frac, gone, socket, bio, t, base)
     rig.zone = "body"
 
 
@@ -7472,7 +7489,7 @@ def draw_leg_side(rig, tier, hip, knee, ankle, dx, main, dark, light, sh,
 
 
 def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
-                   tones=None, bio=None):
+                   tones=None, bio=None, worn=0.0):
     """`tones` repaints the whole machine - that is how a KEAL model is
     drawn by the same routine that draws yours, in its own livery."""
     # WHICH BODY comes first, and it is decided before any repaint. A
@@ -7696,7 +7713,7 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
     # over the top of everything the frame added, because a chassis plate
     # bolted onto a holed torso does not un-hole it
     damage_side(rig, mech, t, lean, hip_y, body_top, front, back, limbs,
-                stance, False, tones)
+                stance, False, tones, worn)
     if pose.brace and mech.alive("l_arm") or pose.brace and mech.alive("r_arm"):
         # the guard: whatever arms are left, held across the front
         gx = front + 18 + lean
@@ -8390,13 +8407,78 @@ def _leg_chain(root, length, phase, moving, lean=0.0):
     return Vector2(root), knee, foot
 
 
+def hurt_spots_kaiju(kind, t, walk, moving, windup=0.0):
+    """Where a DATASHEET can be seen to be hurt.
+
+    An enemy is not a Mech - it has one pool of health and no sockets at
+    all - so there is nothing to ask `damage_frac` about and nothing to
+    hang a per-part table off. Everything here is rebuilt from the same
+    thirteen numbers in `kind.body` that the renderer draws from, which
+    is the only way a CRAWLER and a CATHEDRAL can share one routine and
+    both be marked where their own bodies are."""
+    (bl, bh, cy, pairs, leg, neck, neck_a, head, _hk, _cr, tail,
+     _ar, sac) = kind.body
+    cy = cy + math.sin(t * 2.0) * 1.0
+    out = []
+    for f in (-0.55, -0.15, 0.25, 0.62):
+        out.append((bl * f, cy - bh * 0.15, max(10.0, bh * 0.62)))
+    if sac:
+        out.append((-bl * 0.72, cy + 6, bh * 0.5))
+    for depth, dx in ((0, -10), (1, 10)):
+        for i in range(pairs):
+            f = (i / max(1, pairs - 1)) if pairs > 1 else 0.5
+            rx = lerp(-bl * 0.6, bl * 0.72, f)
+            root, knee, foot = _leg_chain((rx + dx, cy + bh * 0.5), leg,
+                                          walk + i * 1.9 + depth * math.pi,
+                                          moving)
+            out.append(((root.x + knee.x) * 0.5, (root.y + knee.y) * 0.5,
+                        max(7.0, leg * 0.16)))
+    nroot = Vector2(bl * 0.82, cy - bh * 0.3)
+    a = neck_a + math.sin(t * 1.6) * 0.06 - windup * 0.35
+    ntip = nroot + Vector2(math.cos(a), math.sin(a)) * neck
+    if neck > 8:
+        out.append(((nroot.x + ntip.x) * 0.5, (nroot.y + ntip.y) * 0.5,
+                    max(8.0, head * 0.6)))
+    hd = unit(ntip - nroot) if neck > 8 else Vector2(1, -0.15)
+    hc = ntip + hd * head * 0.4
+    out.append((hc.x, hc.y, max(9.0, head * 0.7)))
+    if tail > 4:
+        out.append((-bl - tail * 0.4, cy + 6, max(7.0, bh * 0.4)))
+    return out
+
+
+def damage_kaiju(rig, kind, frac, t, walk, moving, windup=0.0):
+    """A datasheet's wounds. One pool of health, so one fraction over the
+    whole body - broken up per REGION by a hash so it does not read as a
+    stencil laid on evenly, which is what one number over a whole animal
+    looks like without it."""
+    if frac < HURT_AT:
+        return
+    spots = hurt_spots_kaiju(kind, t, walk, moving, windup)
+    base = kind.hide
+    bio = kind.family != "mech"
+    # how much animal there is to mark. A CRAWLER is a fifth of a
+    # CATHEDRAL and was taking the same twenty wounds.
+    dens = clamp(kind.scale * 0.85, 0.3, 1.1)
+    for i, sp in enumerate(spots):
+        f = clamp(frac * (0.55 + 0.9 * _h01(kind.key, "reg", i)), 0.0, 1.0)
+        draw_hurt(rig, [sp], f, False, "%s%d" % (kind.key, i), bio, t, base,
+                  dens)
+
+
 def draw_kaiju(surf, kind, sx, gy, scale, t, walk=0.0, moving=1.0, face=-1,
-               windup=0.0, hurt=0.0, dead=0.0, open_maw=0.0):
+               windup=0.0, hurt=0.0, dead=0.0, open_maw=0.0, worn=0.0):
     """One animal, in profile, walking. `face` -1 means it is heading home."""
     (bl, bh, cy, pairs, leg, neck, neck_a, head, hkind, crest, tail,
      arms, sac) = kind.body
     rig = Side(surf, sx, gy, scale * kind.scale, face)
     hide = kind.hide
+    if worn > 0.01:
+        # it gets darker and dirtier as it comes apart. The marks are
+        # four pixels across at the size these are drawn at; the tint is
+        # what reads from the far end of the road, the same division of
+        # labour the player's own machine has.
+        hide = mix(hide, (58, 44, 44), clamp(worn, 0, 1) * 0.34)
     if hurt > 0.01:
         hide = mix(hide, (255, 230, 220), clamp(hurt, 0, 1) * 0.8)
     if dead > 0.01:
@@ -8404,6 +8486,7 @@ def draw_kaiju(surf, kind, sx, gy, scale, t, walk=0.0, moving=1.0, face=-1,
     dark = shade(hide, 0.58)
     mid = shade(hide, 0.8)
     lo = cy + bh * 0.2
+    _worn = clamp(worn, 0.0, 1.0)
     breathe = math.sin(t * 2.0) * 2.5 + windup * -8.0
     cy = cy + breathe * 0.4
 
@@ -8583,6 +8666,9 @@ def draw_kaiju(surf, kind, sx, gy, scale, t, walk=0.0, moving=1.0, face=-1,
                                       math.sin(aa + 1.15 + k * 0.35)) * bh * 0.5
                 rig.bar((hand.x, hand.y), (tipv.x, tipv.y), bh * 0.09,
                         shade(c, 0.8), bh * 0.03)
+    # last, over everything it has - the wounds are on the outside of it
+    if _worn > 0.0 and dead < 0.5:
+        damage_kaiju(rig, kind, _worn, t, walk, moving, windup)
 
 
 
@@ -8793,9 +8879,12 @@ def draw_enemy(surf, e, x, gy, scale, t, windup=0.0, face=-1):
     round, the one animal on the field that is on your side."""
     k = e.kind
     dead = clamp(e.dead_t * 0.7, 0, 0.85) if not e.alive else 0.0
+    # what it has taken so far, which is the only number an enemy has -
+    # there are no sockets on a datasheet, so the whole body wears it
+    worn = clamp(1.0 - e.hp / max(1.0, e.max_hp), 0.0, 1.0) if e.alive         else 1.0
     if k.family == "bio":
         draw_kaiju(surf, k, x, gy, scale, t, e.walk, e.moving, face, windup,
-                   e.hurt, dead, e.maw)
+                   e.hurt, dead, e.maw, worn)
         return
     pose = Pose()
     pose.face = -1
@@ -8812,6 +8901,8 @@ def draw_enemy(surf, e, x, gy, scale, t, windup=0.0, face=-1):
     elif e.state == "strike":
         pose.beam = {"l": 1.0, "r": 1.0}
     tint = k.hide
+    if worn > 0.01:
+        tint = mix(tint, (58, 44, 44), worn * 0.34)
     tones = {"main": tint, "dark": shade(tint, 0.6), "light": shade(tint, 1.3),
              "trim": mix(tint, KEAL_GOLD, 0.55),
              "plate": mix(tint, (150, 136, 112), 0.5), "hollow": tint}
@@ -8820,7 +8911,8 @@ def draw_enemy(surf, e, x, gy, scale, t, windup=0.0, face=-1):
         tones = {n: mix(c, (255, 235, 225), f) for n, c in tones.items()}
     if dead > 0.01:
         tones = {n: mix(c, (46, 44, 48), dead) for n, c in tones.items()}
-    draw_mech_side(surf, k.rig, x, gy, scale * k.scale, t, pose, tones=tones)
+    draw_mech_side(surf, k.rig, x, gy, scale * k.scale, t, pose,
+                   tones=tones, worn=worn)
 
 # ---------------------------------------------------------------------------
 # THE CITY
