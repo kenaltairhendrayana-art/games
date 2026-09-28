@@ -170,6 +170,34 @@ def smoke():
     st.draw(surf, st.bind_rect(3).center)
     snap("settings_bind")
 
+    # the damage ramp, which is the one thing in the game that is only
+    # ever seen a little at a time in play
+    for house, tag in (("keal", "mech"), ("ryez", "beast")):
+        G.set_house(house)
+        surf.fill((12, 13, 18))
+        for i, f in enumerate((0.2, 0.5, 0.8, 1.0)):
+            hr = G.Run(house, "standard")
+            for s in hr.mech.sockets():
+                if s in G.HARDPOINTS:
+                    opts = G.options_for(s, None, hr.mech.frame)
+                    if opts:
+                        hr.mech.install(s, opts[0].key)
+                else:
+                    hr.mech.install(s, 3)
+            for s in hr.mech.sockets():
+                if hr.mech.fit[s] is not None:
+                    hr.mech.hp[s] = hr.mech.max_hp(s) * (1.0 - f)
+            x = 160 + i * 290
+            G.draw_mech_front(surf, hr.mech, x, 400, 0.58, {}, 1.0)
+            pz = G.Pose()
+            pz.face, pz.walk, pz.moving = 1, 1.1, 1.0
+            G.draw_mech_side(surf, hr.mech, x, 730, 0.58, 1.0, pz,
+                             bio=house == "ryez")
+            G.text(surf, "WRECKED" if f >= 1 else "%d%% GONE" % round(f * 100),
+                   17, (x, 30), (220, 200, 160), center=True)
+        snap("hurt_" + tag)
+    G.set_house("keal")
+
     run = G.Run()
     h = G.Hangar(run)
     h.t = 3.0
@@ -1850,6 +1878,105 @@ def yard():
     print("  all %d rungs of all %d body sockets draw in both views and "
           "both houses, and each rung is bigger than the last"
           % (G.TOP_CEILING, len(G.CATALOGUE)))
+
+    # -- DAMAGE YOU CAN SEE, and it is ON the thing ----------------------
+    # A hurt part used to be the same part in a browner colour. It is
+    # shapes now - and the first pass handed the ANIMAL the machine's
+    # anchors, which scattered every wound into the air above it. So what
+    # is checked is not that marks exist but WHERE they land: every
+    # anchor, in both views, in both houses, on a pixel that the healthy
+    # drawing had painted.
+    BLACK = (0, 0, 0)
+
+    def hurt_anchors(draw):
+        """Every point the damage layer is asked to draw around, in
+        SCREEN coordinates, off the real renderer."""
+        got = []
+        real = G.draw_hurt
+
+        def spy(rig, spots, frac, wrecked, key, bio, t, base):
+            got.extend((key, rig.p(x, y)) for x, y, _r in spots)
+        G.draw_hurt = spy
+        try:
+            draw(pygame.Surface((G.W, G.H)))
+        finally:
+            G.draw_hurt = real
+        return got
+
+    for house in ("keal", "ryez"):
+        G.set_house(house)
+        hm = G.Run(house, "standard").mech
+        for s in hm.sockets():
+            if s in G.HARDPOINTS:
+                opts = G.options_for(s, None, hm.frame)
+                if opts:
+                    hm.install(s, opts[0].key)
+            else:
+                hm.install(s, 3)
+        pose = G.Pose()
+        pose.face, pose.walk, pose.moving = 1, 1.1, 1.0
+        for view, draw in (
+                ("gantry",
+                 lambda s: G.draw_mech_front(s, hm, 590, 700, 1.1, {}, 1.0)),
+                ("street",
+                 lambda s: G.draw_mech_side(s, hm, 590, 700, 1.1, 1.0, pose,
+                                            bio=house == "ryez"))):
+            shape = pygame.Surface((G.W, G.H))
+            shape.fill(BLACK)
+            draw(shape)
+            pts = hurt_anchors(draw)
+            assert len(pts) >= 10, "%s %s has %d anchors" % (house, view,
+                                                             len(pts))
+            off = {}
+            for key, (px, py) in pts:
+                xi, yi = int(px), int(py)
+                on = (0 <= xi < G.W and 0 <= yi < G.H
+                      and shape.get_at((xi, yi))[:3] != BLACK)
+                if not on:
+                    off[key] = off.get(key, 0) + 1
+            assert not off, "%s %s puts wounds in the air: %s" % (
+                house, view, off)
+
+    # ...and there is nothing to draw on a machine that is fine
+    G.set_house("keal")
+    fine = G.Run("keal").mech
+    for s in fine.sockets():
+        if s not in G.HARDPOINTS:
+            fine.install(s, 2)
+    assert G.hurt_count(0.0, False) == (0, 0, 0, 0, 0)
+    assert G.hurt_count(G.HURT_AT - 0.01, False)[0] <= 1
+    steps = [sum(G.hurt_count(f, False)) for f in (0.2, 0.45, 0.7, 0.95)]
+    assert steps == sorted(steps) and steps[-1] > steps[0] + 3, steps
+    assert sum(G.hurt_count(1.0, True)) > steps[-1] * 0.6, "a wreck is tidy"
+    # holes are the last thing to arrive, not the first
+    assert G.hurt_count(0.3, False)[4] == 0
+    assert G.hurt_count(0.95, False)[4] > 0
+
+    # the marks are the SAME marks every frame, and they are not drawn
+    # out of the global RNG - the fight is seeded off that, so a draw
+    # call that pulled from it would make the picture change the battle
+    random.seed(11)
+    a = [random.random() for _ in range(4)]
+    random.seed(11)
+    assert G._h01("torso", 3, 1) == G._h01("torso", 3, 1)
+    assert G._h01("torso", 3, 1) != G._h01("legs", 3, 1)
+    surf2 = pygame.Surface((G.W, G.H))
+    hurt = G.Run("keal").mech
+    for s in hurt.sockets():
+        if s not in G.HARDPOINTS:
+            hurt.install(s, 3)
+            hurt.hp[s] = hurt.max_hp(s) * 0.15
+    G.draw_mech_front(surf2, hurt, 590, 700, 1.0, {}, 1.0)
+    assert [random.random() for _ in range(4)] == a, (
+        "the damage layer drew from the global RNG")
+    once = pygame.image.tostring(surf2, "RGB")
+    surf2.fill(BLACK)
+    G.draw_mech_front(surf2, hurt, 590, 700, 1.0, {}, 1.0)
+    assert pygame.image.tostring(surf2, "RGB") == once, (
+        "the same machine drew two different sets of dents")
+    print("  every wound lands on the body in both views and both houses, "
+          "and the same machine draws the same dents twice")
+
 
 
     wipe_meta()

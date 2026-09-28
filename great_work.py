@@ -5724,8 +5724,11 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
     rig.zone = "body"
     if grown:
         strain_overlay(rig, mech, t, tones, "over")
+        damage_bio(rig, mech, t, None, tones, 0.0,
+                   (mech.frame.style or {}).get("beast"))
     else:
         chassis_overlay_front(rig, mech, t)
+        damage_front(rig, mech, t, False, tones)
     # the core light, which is the only thing on the machine that is alive
     if mech.alive("reactor") and lit:
         tier = mech.fit["reactor"]
@@ -6868,6 +6871,9 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
         rig.bar((TRUNK_FRONT + 26, TRUNK_TOP + 20),
                 (TRUNK_FRONT + 34, TRUNK_BELLY - 6), 7, (210, 200, 230))
     strain_overlay(rig, mech, t, tones, "over", rear)
+    # over the strain's own plates, and posed with the limbs, so a wound
+    # on a foreleg is on the foreleg wherever the stride has put it
+    damage_bio(rig, mech, t, pose, tones, rear, plan)
     if pose.flash > 0.01:
         blit_glow(surf, (sx, gy - 200 * scale), 150 * scale,
                   (255, 236, 220), int(150 * clamp(pose.flash, 0, 1)))
@@ -6901,6 +6907,363 @@ BIO_SHAPE = {"legs": bio_legs, "torso": bio_torso, "head": bio_head,
              "armour": bio_armour}
 BIO_TONES = {"main": FLESH, "dark": FLESH_D, "light": FLESH_L,
              "trim": RYEZ_ACID, "plate": CHITIN, "hollow": FLESH_L}
+
+
+# ---------------------------------------------------------------------------
+# DAMAGE YOU CAN SEE
+#
+# A hurt part used to be the same part in a browner colour. That reads as
+# a lighting change rather than an injury - the machine at 20% and the
+# machine at 80% were the same drawing twice, and the only way to know
+# which socket was about to go was to open the panel and read a number.
+#
+# So damage is SHAPES now, laid over the part after it is drawn: scuffs,
+# then dents and scorches, then cracks, then a hole with the frame
+# showing through it and a cable hanging out. The tint stays - it is
+# doing the work at a distance, where a six-pixel gouge is nothing - and
+# the marks do the work up close.
+#
+# Two rules the whole thing turns on:
+#
+# EVERY MARK IS DETERMINISTIC. It is placed from a hash of the socket and
+# the mark number, never from `random`, for two reasons: a mark that
+# moves every frame is a shimmer rather than a dent, and - the one that
+# actually matters - the fight's outcomes come out of the global RNG, so
+# a draw call that pulled from it would make the picture change the
+# battle. `_h01` is the whole of the machinery and it touches nothing.
+#
+# NOTHING IS ADDED BELOW A THRESHOLD. A part at 4% is not scratched; it
+# is fine. The first mark lands at HURT_AT, so a full-health machine that
+# clips a wall does not look like it has been in a war.
+# ---------------------------------------------------------------------------
+HURT_AT = 0.10                   # nothing shows below this
+WRECK_SPARK = 2.6                # seconds between sparks off a dead part
+
+
+def _h01(*vals):
+    """A stable 0..1 from whatever it is handed.
+
+    Deliberately NOT `random`: the fight is seeded, and a drawing routine
+    that draws from the same stream changes the fight depending on how
+    many frames were rendered."""
+    h = 2166136261
+    for v in vals:
+        s = v if isinstance(v, str) else repr(v)
+        for ch in s:
+            h = ((h ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    return ((h >> 8) & 0xFFFF) / 65535.0
+
+
+def _hs(key, i, n=1):
+    """n numbers in 0..1 for mark `i` of `key`."""
+    return [_h01(key, i, j) for j in range(n)]
+
+
+def hurt_count(frac, wrecked):
+    """(scuffs, dents, scorches, cracks, holes) at this much damage."""
+    if wrecked:
+        return (3, 2, 2, 3, 2)
+    f = clamp((frac - HURT_AT) / (1.0 - HURT_AT), 0.0, 1.0)
+    # the thresholds are where each KIND of mark first appears, and they
+    # were set by reading the ramp out rather than by eye - the first
+    # pass put the first hole at 100% damage exactly, so a part could go
+    # from dented to gone with nothing in between
+    return (int(f * 6.0 + 0.6),                     # scuffs, from the start
+            int(max(0.0, f - 0.08) * 5.6),          # dents
+            int(max(0.0, f - 0.22) * 4.8),          # scorches
+            int(max(0.0, f - 0.42) * 4.8),          # cracks
+            int(max(0.0, f - 0.60) * 4.2))          # holes right through
+
+
+def hurt_paint(bio, base):
+    """The five colours a mark is made of, in this house's materials.
+
+    Steel bruises, chars and tears down to a pale strut. Flesh splits,
+    bruises dark red and tears down to bone - the same five jobs, and it
+    has to be the same five or the marks read as a machine's marks on an
+    animal."""
+    if bio:
+        return {"scuff": shade(base, 0.62),
+                "deep": (54, 18, 26),
+                "char": (38, 12, 20),
+                "rim": (128, 46, 58),
+                "inner": (226, 214, 198)}          # bone
+    return {"scuff": shade(base, 0.58),
+            "deep": (30, 30, 36),
+            "char": (22, 20, 22),
+            "rim": (96, 64, 48),
+            "inner": (176, 186, 206)}              # a strut, catching light
+
+
+def _spot(spots, u, v):
+    """A point inside the part, from two 0..1 numbers. `spots` is a list
+    of (x, y, radius) the caller knows are ON the part - a limb hands over
+    points along its own bones, a torso hands over its middle - so a mark
+    never lands in the air beside the machine, which is what a bounding
+    box would have done to every posed limb in the game."""
+    if not spots:
+        return (0.0, 0.0, 10.0)
+    x, y, r = spots[int(u * (len(spots) - 1) + 0.5)]
+    a = v * TAU
+    # the angle and the distance come off DIFFERENT numbers. Sharing one
+    # put every mark on a spiral out of the middle of the part, which
+    # reads as a pattern rather than as damage.
+    d = r * (0.10 + 0.55 * ((v * 7.31 + u * 3.17) % 1.0))
+    return (x + math.cos(a) * d, y + math.sin(a) * d, r)
+
+
+def draw_hurt(rig, spots, frac, wrecked, key, bio, t, base):
+    """Lay the damage for one socket over the top of it."""
+    if not spots or (frac < HURT_AT and not wrecked):
+        return
+    c = hurt_paint(bio, base)
+    n_sc, n_dt, n_ch, n_cr, n_ho = hurt_count(frac, wrecked)
+    i = 0
+
+    # -- scuffs: a scrape along the plate, or a split in the hide --------
+    for k in range(n_sc):
+        i += 1
+        u, v, a, l = _hs(key, i, 4)
+        x, y, r = _spot(spots, u, v)
+        ang = a * TAU
+        ln = r * (0.55 + 0.6 * l)
+        dx, dy = math.cos(ang) * ln * 0.5, math.sin(ang) * ln * 0.5
+        rig.bar((x - dx, y - dy), (x + dx, y + dy),
+                max(1.4, r * 0.11), c["scuff"])
+
+    # -- dents: pressed in, and the lower lip catches the light ----------
+    for k in range(n_dt):
+        i += 1
+        u, v, w, a = _hs(key, i, 4)
+        x, y, r = _spot(spots, u, v)
+        rx = r * (0.30 + 0.20 * w)
+        ry = rx * (0.55 + 0.4 * a)
+        rig.poly([(x + rx * math.cos(q), y + ry * math.sin(q))
+                  for q in (j * TAU / 7 for j in range(7))], c["deep"])
+        rig.bar((x - rx * 0.8, y + ry * 0.7), (x + rx * 0.8, y + ry * 0.5),
+                max(1.2, r * 0.08), c["rim"])
+
+    # -- scorches: burnt through the paint, ragged, no straight edge -----
+    for k in range(n_ch):
+        i += 1
+        u, v, w = _hs(key, i, 3)
+        x, y, r = _spot(spots, u, v)
+        rr = r * (0.34 + 0.26 * w)
+        pts = []
+        for j in range(9):
+            q = j * TAU / 9
+            wob = 0.66 + 0.5 * _h01(key, i, j)
+            pts.append((x + math.cos(q) * rr * wob,
+                        y + math.sin(q) * rr * wob))
+        rig.poly(pts, c["char"])
+        rig.poly(pts, c["rim"], 1)
+
+    # -- cracks: three segments, because two is a bend and four is a web -
+    for k in range(n_cr):
+        i += 1
+        u, v, a, l = _hs(key, i, 4)
+        x, y, r = _spot(spots, u, v)
+        ang = a * TAU
+        step = r * (0.22 + 0.16 * l)
+        px, py = x, y
+        for j in range(3):
+            # a crack turns, but not by much - at a radian and a half per
+            # segment the three of them close into an X, which reads as a
+            # strut somebody bolted on rather than a split in the plate
+            ang += (_h01(key, i, 10 + j) - 0.5) * 0.85
+            nx = px + math.cos(ang) * step
+            ny = py + math.sin(ang) * step
+            rig.bar((px, py), (nx, ny), max(1.3, r * 0.09), c["char"])
+            px, py = nx, ny
+
+    # -- holes: the part is open, and there is something behind it -------
+    for k in range(n_ho):
+        i += 1
+        u, v, w = _hs(key, i, 3)
+        x, y, r = _spot(spots, u, v)
+        rr = r * (0.40 + 0.22 * w)
+        pts = []
+        for j in range(11):
+            q = j * TAU / 11
+            wob = 0.6 + 0.55 * _h01(key, i, 30 + j)
+            pts.append((x + math.cos(q) * rr * wob,
+                        y + math.sin(q) * rr * wob))
+        rig.poly(pts, (10, 10, 13))
+        rig.poly(pts, c["char"], 2)
+        # what is under the plate: two struts, or two ribs
+        for j in (-1, 1):
+            rig.bar((x + j * rr * 0.42, y - rr * 0.9),
+                    (x + j * rr * 0.26, y + rr * 0.9),
+                    max(1.4, rr * 0.22), c["inner"])
+        if wrecked:
+            # a cable hanging out of it, and every few seconds it arcs
+            hang = rr * (1.1 + 0.5 * w)
+            sway = math.sin(t * 1.4 + u * 6.0) * rr * 0.35
+            rig.bar((x, y + rr * 0.4), (x + sway, y + hang),
+                    max(1.0, rr * 0.13), c["scuff"])
+            ph = (t / WRECK_SPARK + u) % 1.0
+            if ph < 0.08:
+                col = (255, 226, 150) if not bio else (190, 240, 170)
+                rig.circle((x + sway, y + hang), rr * 0.22, col)
+
+
+def hurt_spots_side(mech, hip_y, body_top, front, back, lean, limbs,
+                    stance):
+    """Where each socket can be SEEN, in the profile view, as a list of
+    (x, y, radius) points that are on the part.
+
+    Everything here comes off the anchors the renderer has already
+    solved - the joints the kinematics produced, the body box the torso
+    was drawn from - rather than a box per socket. A leg is posed, so a
+    box around a leg is mostly empty road."""
+    out = {}
+    cx = (front + back) * 0.5 + lean
+    cy = (body_top - hip_y) * 0.5
+    hw = max(12.0, (front - back) * 0.34)
+    hh = max(16.0, (-hip_y - body_top) * 0.28)
+    out["torso"] = [(cx, cy - hh * 0.5, hw), (cx, cy + hh * 0.5, hw)]
+    # armour is the outside of the same box, so its marks sit on the edge
+    out["armour"] = [(cx + hw * 0.7, cy, hw * 0.7),
+                     (cx - hw * 0.7, cy + hh * 0.4, hw * 0.6)]
+    out["reactor"] = [(cx, cy, hw * 0.5)]
+    # the head is FORWARD of the centreline in profile - it hangs off the
+    # front of the chest at `front - 12`, and a spot on the centreline
+    # put every mark on it into the air behind the jaw
+    ht = mech.fit["head"] or 1
+    hw = five(17, 21, 23)[ht - 1]
+    hh = five(30, 40, 46)[ht - 1]
+    out["head"] = [(front - 12 + lean * 1.8, body_top - hh * 0.5,
+                    max(10.0, hw * 0.8))]
+    for side, key in (("l", "l_arm"), ("r", "r_arm")):
+        seg = (limbs or {}).get(side)
+        if not seg:
+            continue
+        sh, elbow, hand, w = seg
+        out[key] = [((sh[0] + elbow[0]) * 0.5, (sh[1] + elbow[1]) * 0.5,
+                     max(8.0, w * 1.5)),
+                    ((elbow[0] + hand[0]) * 0.5, (elbow[1] + hand[1]) * 0.5,
+                     max(7.0, w * 1.3))]
+    legs = []
+    for hip, knee, ankle, dx, _sh in (stance or ()):
+        legs.append(((hip.x + knee.x) * 0.5 + dx, (hip.y + knee.y) * 0.5,
+                     14.0))
+        legs.append(((knee.x + ankle.x) * 0.5 + dx,
+                     (knee.y + ankle.y) * 0.5, 12.0))
+    if legs:
+        out["legs"] = legs
+    return out
+
+
+def hurt_spots_front(mech):
+    """The same, front on, where nothing is posed and the numbers come
+    off the same `five()` tables the parts are drawn from - so a rung
+    four leg is marked where a rung four leg actually is."""
+    out = {}
+    lt = mech.fit["legs"] or 1
+    tt = mech.fit["torso"] or 1
+    at = mech.fit["l_arm"] or mech.fit["r_arm"] or 1
+    ht = mech.fit["head"] or 1
+    hip_x = five(30, 34, 40)[lt - 1]
+    knee = five(-118, -122, -130)[lt - 1]
+    out["legs"] = [(-hip_x, (knee - 198) * 0.5, 15.0),
+                   (hip_x, (knee - 198) * 0.5, 15.0),
+                   (-hip_x, (knee - 42) * 0.5, 13.0),
+                   (hip_x, (knee - 42) * 0.5, 13.0)]
+    top = -336 if tt >= 3 else (-330 if tt == 2 else -324)
+    out["torso"] = [(0, top + 52, 30.0), (0, -234, 28.0)]
+    out["armour"] = [(-34, top + 70, 22.0), (34, -228, 22.0)]
+    out["reactor"] = [(0, -284, 16.0)]
+    out["head"] = [(0, five(-356, -366, -370)[ht - 1] + 6, 17.0)]
+    sx = five(66, 76, 88)[at - 1]
+    for key, sgn in (("l_arm", -1), ("r_arm", 1)):
+        out[key] = [(sgn * sx, -300, 13.0), (sgn * (sx + 8), -216, 12.0)]
+    return out
+
+
+def hurt_spots_bio(mech, pose=None, rear=0.0, plan=None):
+    """The same, on an animal.
+
+    The grown body is not the machine reskinned - it is authored in
+    PROFILE with its own coordinate layout, legs out of the belly at
+    -162 and a heart at (-8, -206). Handed the machine's anchors, the
+    first pass scattered every wound into the air above the thing, which
+    is the wrong-coordinate-space mistake this file keeps making. These
+    come off the animal's own helpers, so they follow a limb that is
+    mid-stride the way the limb does."""
+    out = {}
+    tt = mech.fit["torso"] or 1
+    cx = (TRUNK_BACK + TRUNK_FRONT) * 0.5
+    cy = (TRUNK_TOP + TRUNK_BELLY) * 0.5
+    rx = (TRUNK_FRONT - TRUNK_BACK) * 0.30
+    out["torso"] = [(cx - rx * 0.6, cy, rx), (cx + rx * 0.7, cy - 8, rx),
+                    (cx, cy + 22, rx * 0.8)]
+    out["armour"] = [(cx - rx * 0.4, cy - 30, rx * 0.7),
+                     (cx + rx * 0.5, cy + 26, rx * 0.7)]
+    out["reactor"] = [(HEART_AT[0], HEART_AT[1], 22.0)]
+    if mech.fit["head"] is not None:
+        # with the head's REAR, or a wound sits where the head was
+        # standing when it was not looking up
+        e, hs = head_eye(mech.fit["head"], rear)
+        out["head"] = [(e.x - hs * 0.5, e.y + hs * 0.2, hs * 0.8)]
+    for side, key in (("l", "l_arm"), ("r", "r_arm")):
+        at = mech.fit[key]
+        if at is None:
+            continue
+        reach = (pose.swing[side] if pose is not None else 0.0)
+        root, elb, hand = bio_hand(at, side, reach)
+        out[key] = [((root.x + elb.x) * 0.5, (root.y + elb.y) * 0.5, 15.0),
+                    ((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5, 12.0)]
+    lt = mech.fit["legs"]
+    if lt:
+        legs = []
+        phase = pose.walk if pose is not None else 0.0
+        moving = pose.moving if pose is not None else 0.0
+        for dx, off in ((-16.0, 0.0), (14.0, math.pi)):
+            for i, lx in enumerate(leg_xs(lt)):
+                root, knee, foot, w = _one_leg(lx, lt, phase + off + i * 1.7,
+                                               moving, dx=dx, plan=plan)
+                legs.append(((root.x + knee.x) * 0.5,
+                             (root.y + knee.y) * 0.5, max(9.0, w * 1.6)))
+        out["legs"] = legs
+    return out
+
+
+def damage_bio(rig, mech, t, pose=None, tones=None, rear=0.0, plan=None):
+    spots = hurt_spots_bio(mech, pose, rear, plan)
+    base = (tones or BIO_TONES).get("main", FLESH)
+    for socket, pts in spots.items():
+        if mech.fit.get(socket) is None:
+            continue
+        rig.zone = ZONE_OF.get(socket, "body")
+        draw_hurt(rig, pts, mech.damage_frac(socket),
+                  mech.hp[socket] <= 0, socket, True, t, base)
+    rig.zone = "body"
+
+
+def damage_side(rig, mech, t, lean, hip_y, body_top, front, back, limbs,
+                stance, bio, tones=None):
+    spots = hurt_spots_side(mech, hip_y, body_top, front, back, lean,
+                            limbs, stance)
+    base = (tones or (BIO_TONES if bio else TONES)).get("main", STEEL)
+    for socket, pts in spots.items():
+        if mech.fit.get(socket) is None:
+            continue
+        rig.zone = ZONE_OF.get(socket, "body")
+        draw_hurt(rig, pts, mech.damage_frac(socket),
+                  mech.hp[socket] <= 0, socket, bio, t, base)
+    rig.zone = "body"
+
+
+def damage_front(rig, mech, t, bio, tones=None):
+    spots = hurt_spots_front(mech)
+    base = (tones or (BIO_TONES if bio else TONES)).get("main", STEEL)
+    for socket, pts in spots.items():
+        if mech.fit.get(socket) is None:
+            continue
+        rig.zone = ZONE_OF.get(socket, "body")
+        draw_hurt(rig, pts, mech.damage_frac(socket),
+                  mech.hp[socket] <= 0, socket, bio, t, base)
+    rig.zone = "body"
 
 
 # ---------------------------------------------------------------------------
@@ -7330,6 +7693,10 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
                               shade(c, 0.86 if side == "la" else 1.0), lean)
     rig.zone = "body"
     chassis_overlay(rig, mech, t, lean, hip_y, limbs, stance)
+    # over the top of everything the frame added, because a chassis plate
+    # bolted onto a holed torso does not un-hole it
+    damage_side(rig, mech, t, lean, hip_y, body_top, front, back, limbs,
+                stance, False, tones)
     if pose.brace and mech.alive("l_arm") or pose.brace and mech.alive("r_arm"):
         # the guard: whatever arms are left, held across the front
         gx = front + 18 + lean
