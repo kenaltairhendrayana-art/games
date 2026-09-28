@@ -308,6 +308,100 @@ def bar(surf, rect, frac, colour, back=(30, 33, 44), edge=None):
         pygame.draw.rect(surf, edge, rect, 1, border_radius=3)
 
 
+# ---------------------------------------------------------------------------
+# LIGHT
+#
+# Everything in this game is a filled polygon in one flat colour. That is
+# the look and it is staying - but a flat polygon has no VOLUME, so a
+# machine reads as a sticker of a machine, and the bigger the part the
+# flatter it looks.
+#
+# So there is one light, in one place, for the whole game, and every
+# filled shape gets two things from it: a bright line along the edges
+# facing it and a dark line along the edges facing away. Nothing else -
+# no gradients, no per-pixel anything, no second pass over the buffer.
+# An edge either faces the light or it does not, and the width of the
+# line is how hard the light is.
+#
+# It goes in the ONE place each renderer turns a list of points into
+# pixels, for the same reason the damage marks and the proportion warp
+# do: there are about two hundred `poly` calls in this file and none of
+# them should have to know where the sun is.
+#
+# Two rules keep it from turning into noise:
+#
+# EDGE LENGTH. A three-pixel facet does not get a highlight - it gets a
+# lighter dot, which reads as a speck of dirt. Below MIN_EDGE nothing is
+# drawn at all.
+#
+# AND IT IS INSET. The line is drawn just inside the shape rather than on
+# it, so it never enlarges a silhouette. The silhouette is measured by
+# the tests and it is how six frames are told apart; a lighting pass that
+# quietly fattened everything by a pixel would break that and look like a
+# drawing bug.
+# ---------------------------------------------------------------------------
+LIGHT = (-0.52, -0.855)          # up, and over your left shoulder
+LIT = 1.52                       # what a facing edge is worth
+UNLIT = 0.56                     # ...and one turned away
+MIN_EDGE = 7.0                   # below this a highlight is a speck
+SHADE_ON = [True]                # off for a flat-colour silhouette test
+
+
+def lit_edges(surf, pts, colour, hard=1.0):
+    """The bright and dark edges of one filled shape.
+
+    `hard` scales the whole effect - a small part takes less of it, so a
+    rivet is not lit like a hull."""
+    if not SHADE_ON[0] or hard <= 0.01 or len(pts) < 3:
+        return
+    lx, ly = LIGHT
+    hi = shade(colour, 1.0 + (LIT - 1.0) * hard)
+    lo = shade(colour, 1.0 - (1.0 - UNLIT) * hard)
+    n = len(pts)
+    # which way is OUT. Signed area tells us the winding, and without it
+    # half the shapes in the file would be lit on the wrong side.
+    area = 0.0
+    for i in range(n):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % n]
+        area += x1 * y2 - x2 * y1
+    turn = 1.0 if area > 0 else -1.0
+    for i in range(n):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % n]
+        ex, ey = x2 - x1, y2 - y1
+        ln = math.hypot(ex, ey)
+        if ln < MIN_EDGE:
+            continue
+        # the outward normal of this edge
+        nx, ny = (ey / ln) * turn, (-ex / ln) * turn
+        d = nx * lx + ny * ly
+        if d > 0.25:
+            c, w = hi, 3 if ln > 42 else (2 if ln > 18 else 1)
+        elif d < -0.3:
+            c, w = lo, 3 if ln > 52 else (2 if ln > 26 else 1)
+        else:
+            continue
+        # INSET by half the width, so the silhouette does not grow
+        ox, oy = -nx * (w * 0.5), -ny * (w * 0.5)
+        pygame.draw.line(surf, c, (x1 + ox, y1 + oy), (x2 + ox, y2 + oy), w)
+
+
+def ground_shadow(surf, cx, gy, half, strength=96, squash=0.16):
+    """What a thing standing on a road puts under itself.
+
+    Nothing had one. A body with no shadow does not stand on the ground,
+    it hovers a little way above it, and at this scale that reads as the
+    whole picture being flat rather than as a missing shadow."""
+    if not SHADE_ON[0] or half < 2:
+        return
+    h = max(3, int(half * squash))
+    s = pygame.Surface((int(half * 2), h * 2), pygame.SRCALPHA)
+    pygame.draw.ellipse(s, (6, 7, 12, int(clamp(strength, 0, 255))),
+                        s.get_rect())
+    surf.blit(s, (int(cx - half), int(gy - h)))
+
+
 def dashed_poly(surf, pts, colour, width=2, dash=7, gap=6, closed=True):
     """An empty socket is drawn as a dashed ghost of the part that goes
     there, so the machine always shows its own whole silhouette - what is
@@ -4633,8 +4727,12 @@ class Rig:
     def pts(self, pts):
         return [self.p(x, y) for x, y in pts]
 
-    def poly(self, pts, colour, width=0):
-        pygame.draw.polygon(self.surf, colour, self.pts(pts), width)
+    def poly(self, pts, colour, width=0, hard=1.0):
+        q = self.pts(pts)
+        pygame.draw.polygon(self.surf, colour, q, width)
+        if not width:
+            lit_edges(self.surf, q, colour, hard * clamp(self.s * 1.4,
+                                                         0.0, 1.0))
 
     def ghost(self, pts, colour=GHOST, width=2):
         dashed_poly(self.surf, self.pts(pts), colour,
@@ -7417,9 +7515,12 @@ class Side:
                        0.0, self.LEGW_DAMP)
         return (self.x + x * self.s * self.f, self.gy + y * self.s)
 
-    def poly(self, pts, colour, width=0):
-        pygame.draw.polygon(self.surf, colour, [self.p(*q) for q in pts],
-                            width)
+    def poly(self, pts, colour, width=0, hard=1.0):
+        q = [self.p(*x) for x in pts]
+        pygame.draw.polygon(self.surf, colour, q, width)
+        if not width:
+            lit_edges(self.surf, q, colour, hard * clamp(self.s * 1.4,
+                                                         0.0, 1.0))
 
     def bar(self, a, b, w1, colour, w2=None, edge=None):
         q = limb(a, b, w1, w2)
@@ -11143,6 +11244,13 @@ class Fight:
             if e.state == "windup" and e.attack:
                 full = e.attack["windup"] + self.sight * 0.45
                 windup = clamp(1.0 - e.timer / max(0.12, full), 0, 1)
+            # ...on the ground, not above it. A flier's shadow stays
+            # down on the road and shrinks, which is the only thing in
+            # the picture that says how high up it is
+            lift = clamp(1.0 + e.y / 220.0, 0.35, 1.0)
+            ground_shadow(surf, x, gy + 4,
+                          e.kind.body[0] * FSCALE * e.kind.scale * 1.15
+                          * lift, int(104 * lift))
             draw_enemy(surf, e, x, gy + e.y * FSCALE, FSCALE, self.t, windup)
             if e.state == "windup" and e.attack and \
                     e.attack["kind"] in ("swipe", "slam", "kick"):
@@ -11154,6 +11262,8 @@ class Fight:
             ax = self.sx(a.x) + sh[0]
             if not (-400 < ax < W + 400):
                 continue
+            ground_shadow(surf, ax, gy + 4,
+                          a.kind.body[0] * FSCALE * a.kind.scale * 1.15, 104)
             draw_enemy(surf, a, ax, gy, FSCALE, self.t,
                        face=getattr(a, "face", 1))
             if a.hp > 0:
@@ -11183,6 +11293,7 @@ class Fight:
                                  gy - 120 - ((self.t * 30 + i * 40) % 140)),
                           40, (90, 74, 66), 34)
         else:
+            ground_shadow(surf, mx, gy + 4, 78 * FSCALE, 112)
             draw_mech_side(surf, self.mech, mx, gy, FSCALE, self.t, self.pose)
             self.draw_brood_sac(surf, mx, gy)
             for side in self.mech.sides():

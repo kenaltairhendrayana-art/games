@@ -2060,6 +2060,83 @@ def yard():
     print("  every wound lands on the body in both views and both houses, "
           "and the same machine draws the same dents twice")
 
+    # -- ONE LIGHT, AND IT DOES NOT FATTEN ANYTHING -----------------------
+    # Every filled shape gets a bright edge where it faces the light and
+    # a dark one where it does not. The thing that has to be checked is
+    # not that it looks nicer - it is that the SILHOUETTE is unchanged,
+    # because six frames are told apart in this file by measuring their
+    # outlines and a lighting pass that quietly added a pixel all the way
+    # round would break that and read as a drawing bug.
+    assert abs(math.hypot(*G.LIGHT) - 1.0) < 0.02, G.LIGHT
+    assert G.LIGHT[1] < 0, "the light is under the floor"
+    assert G.LIT > 1.0 > G.UNLIT > 0.0, (G.LIT, G.UNLIT)
+
+    def painted(draw):
+        s = pygame.Surface((G.W, G.H))
+        s.fill((0, 0, 0))
+        draw(s)
+        return pygame.mask.from_surface(s, 1)
+
+    G.set_house("keal")
+    sil = G.Run("keal").mech
+    for s in sil.sockets():
+        if s in G.HARDPOINTS:
+            opts = G.options_for(s, None, sil.frame)
+            if opts:
+                sil.install(s, opts[0].key)
+        else:
+            sil.install(s, 3)
+    pz = G.Pose()
+    pz.face, pz.walk, pz.moving = 1, 1.1, 1.0
+    for view, draw in (
+            ("gantry",
+             lambda s: G.draw_mech_front(s, sil, 590, 700, 1.2, {}, 1.0)),
+            ("street",
+             lambda s: G.draw_mech_side(s, sil, 590, 700, 1.2, 1.0, pz))):
+        G.SHADE_ON[0] = False
+        flat = painted(draw)
+        G.SHADE_ON[0] = True
+        lit = painted(draw)
+        assert flat.count() > 4000, (view, flat.count())
+        # everything the light painted is inside the shape it lit, give
+        # or take the odd pixel on a diagonal
+        outside = lit.overlap_area(flat, (0, 0))
+        spill = lit.count() - outside
+        assert spill < flat.count() * 0.02, (
+            "%s: the light spilled %d pixels outside a %d pixel body"
+            % (view, spill, flat.count()))
+        fr, lr = flat.get_bounding_rects()[0], lit.get_bounding_rects()[0]
+        assert lr.width <= fr.width + 2 and lr.height <= fr.height + 2, (
+            "%s grew from %s to %s" % (view, fr.size, lr.size))
+        # ...and it IS doing something
+        assert lit.count() >= flat.count(), view
+    G.SHADE_ON[0] = True
+
+    # turning it off gives back exactly the picture that was there before
+    G.SHADE_ON[0] = False
+    a = pygame.Surface((G.W, G.H))
+    a.fill((0, 0, 0))
+    G.draw_mech_front(a, sil, 590, 700, 1.2, {}, 1.0)
+    b = pygame.Surface((G.W, G.H))
+    b.fill((0, 0, 0))
+    G.draw_mech_front(b, sil, 590, 700, 1.2, {}, 1.0)
+    assert pygame.image.tostring(a, "RGB") == pygame.image.tostring(b, "RGB")
+    G.SHADE_ON[0] = True
+
+    # -- and everything standing on the road has something under it -------
+    sh = pygame.Surface((400, 400))
+    sh.fill((90, 90, 90))
+    G.ground_shadow(sh, 200, 300, 80)
+    assert sh.get_at((200, 300))[:3] != (90, 90, 90), "no shadow at all"
+    assert sh.get_at((200, 240))[:3] == (90, 90, 90), "it shaded the sky"
+    assert sh.get_at((200, 360))[:3] == (90, 90, 90), "it shaded the road"
+    assert sh.get_at((10, 300))[:3] == (90, 90, 90), "it shaded the county"
+    G.ground_shadow(sh, 200, 300, 1)          # too small to draw at all
+    print("  one light, %d%% up and %d%% over; it adds volume to both "
+          "views and adds nothing to either silhouette"
+          % (round(abs(G.LIGHT[1]) * 100), round(abs(G.LIGHT[0]) * 100)))
+
+
     # -- and everything on the road wears what it has taken --------------
     # An enemy is not a Mech: one pool of health, no sockets, nothing to
     # ask `damage_frac`. It gets the same five kinds of mark off a
