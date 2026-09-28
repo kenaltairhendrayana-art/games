@@ -7450,24 +7450,79 @@ LEG_GEOM = {1: (196, 78, 76, 8, 9, 20),
 #            hip  thigh shin  w1  w2  foot
 
 
-def _leg_points(tier, phase, moving):
-    """Forward kinematics for one leg. Screen space: +y is down."""
+GROUND_AT = -12.0                # where a foot stands, in mech coordinates
+STANCE = 0.62                    # ...and how much of a stride it is down for
+
+
+def _leg_points(tier, phase, moving, bob=0.0):
+    """One leg, from where the FOOT has to be rather than from two angles.
+
+    It used to be forward kinematics off a pair of sines: the whole leg
+    swung on `sin(phase)` and the knee bent on `max(0, -cos(phase))`. Two
+    things are wrong with that and both of them read as goofy.
+
+    The foot never PLANTED. It slid along the road for the whole stride,
+    which is a moonwalk - a real step puts a foot down, leaves it there
+    while the body travels over it, and only then picks it up. So the
+    cycle is split: for STANCE of it the foot is pinned to the ground and
+    the target slides backwards under the hip at a constant rate, and for
+    the rest it lifts through an arc and comes forward.
+
+    And the knee bent on a schedule rather than because of where the foot
+    was, so it bent in mid-stance, when a leg is straight. The knee is
+    solved now - two-bone inverse kinematics onto the foot target - which
+    means it bends exactly as much as the geometry needs and never in the
+    wrong half of the stride."""
     hip_y, L1, L2, _, _, _ = LEG_GEOM[tier]
-    swing = math.sin(phase) * 0.46 * moving
-    bend = max(0.0, -math.cos(phase)) * 0.62 * moving
-    hip = Vector2(0.0, -hip_y)
-    a1 = math.pi / 2 + swing
+    # the hip rises and falls; the FOOT does not. That is the whole
+    # point of solving for the foot - the body can move without the
+    # machine looking like it is on castors.
+    hip = Vector2(0.0, -hip_y + bob)
+    m = clamp(moving, 0.0, 1.0)
+    step = L1 * 0.34 * m
+    lift = L2 * 0.26 * m
+    f = (phase / TAU) % 1.0
+    if f < STANCE:
+        u = f / STANCE
+        fx = step * (1.0 - 2.0 * u)          # planted, travelling back
+        fy = 0.0
+    else:
+        u = (f - STANCE) / (1.0 - STANCE)
+        fx = step * (2.0 * u - 1.0)          # in the air, coming forward
+        fy = -lift * math.sin(u * math.pi)
+    target = Vector2(fx, GROUND_AT + fy)
+    d = target - hip
+    dist = clamp(d.length(), 1e-3, (L1 + L2) * 0.998)
+    # the angle between the thigh and the straight line hip-to-foot
+    cosa = clamp((L1 * L1 + dist * dist - L2 * L2) / (2.0 * L1 * dist),
+                 -1.0, 1.0)
+    base = math.atan2(d.y, d.x)
+    a1 = base - math.acos(cosa)              # the knee goes FORWARD
     knee = hip + Vector2(math.cos(a1), math.sin(a1)) * L1
-    a2 = a1 - bend
-    ankle = knee + Vector2(math.cos(a2), math.sin(a2)) * L2
-    # the machine does not sink into the road
-    if ankle.y > -12:
-        ankle.y = -12
-    return hip, knee, ankle
+    return hip, knee, target
+
+
+def walk_bob(phase, moving, amount=3.4):
+    """How far the hips drop. They are lowest at contact and highest at
+    mid-stance, which is twice a stride - a body that does not do this
+    reads as a puppet being slid along a table."""
+    return abs(math.sin(phase)) * amount * clamp(moving, 0.0, 1.0)
+
+
+def foot_angle(phase, moving):
+    """Heel down, flat, toe off, and level again in the air."""
+    f = (phase / TAU) % 1.0
+    m = clamp(moving, 0.0, 1.0)
+    if f < STANCE:
+        u = f / STANCE
+        # rolls from heel-strike through flat to toe-off
+        return (-0.22 + 0.52 * u if u > 0.55 else -0.22 + 0.18 * u) * m
+    u = (f - STANCE) / (1.0 - STANCE)
+    return (0.30 * (1.0 - u) - 0.16 * u) * m
 
 
 def draw_leg_side(rig, tier, hip, knee, ankle, dx, main, dark, light, sh,
-                  trim=None):
+                  trim=None, roll=0.0):
     """One leg in profile, with as much on it as the body above it has.
 
     The torso got plates, the shoulders got spikes and the head got a
@@ -7543,23 +7598,27 @@ def draw_leg_side(rig, tier, hip, knee, ankle, dx, main, dark, light, sh,
                   q + sn * (w2 - 1) + shin_d * 3.5], shade(cd, 1.2))
 
     # -- ankle and foot ------------------------------------------------------
+    # The foot ROLLS, about the ankle: heel down as it lands, flat under
+    # the body, toe off as it leaves. It was a rectangle at a fixed
+    # angle, so the machine walked with two planks nailed to its shins.
+    ca, sa = math.cos(roll), math.sin(roll)
+
+    def fp(ox, oy):
+        return (ankle.x + ox * ca - oy * sa, ankle.y + ox * sa + oy * ca)
     rig.circle((ankle.x, ankle.y), w2 * 0.7, cd)
-    heel = ankle.x - fw * 0.42
-    toe = ankle.x + fw * 0.78
-    rig.poly([(heel, ankle.y - 3), (toe, ankle.y - 2),
-              (toe - 2, ankle.y + 13), (heel + 2, ankle.y + 13)], cd)
-    rig.poly([(heel + 2, ankle.y - 1), (ankle.x + fw * 0.16, ankle.y - 1),
-              (ankle.x + fw * 0.14, ankle.y + 6), (heel + 3, ankle.y + 6)],
-             shade(cd, 1.35))
+    heel = -fw * 0.42
+    toe = fw * 0.78
+    rig.poly([fp(heel, -3), fp(toe, -2), fp(toe - 2, 13), fp(heel + 2, 13)],
+             cd)
+    rig.poly([fp(heel + 2, -1), fp(fw * 0.16, -1), fp(fw * 0.14, 6),
+              fp(heel + 3, 6)], shade(cd, 1.35))
     if tier >= 2:                              # a toe that is its own plate
-        rig.poly([(ankle.x + fw * 0.26, ankle.y + 1), (toe, ankle.y),
-                  (toe - 2, ankle.y + 13), (ankle.x + fw * 0.26,
-                                            ankle.y + 13)], cl)
-    rig.poly([(heel, ankle.y + 11), (toe, ankle.y + 11),
-              (toe - 1, ankle.y + 14), (heel + 1, ankle.y + 14)],
+        rig.poly([fp(fw * 0.26, 1), fp(toe, 0), fp(toe - 2, 13),
+                  fp(fw * 0.26, 13)], cl)
+    rig.poly([fp(heel, 11), fp(toe, 11), fp(toe - 1, 14), fp(heel + 1, 14)],
              shade(cd, 0.72))
     if tier >= 3 and trim:                     # one warm light, low down
-        rig.circle((ankle.x + fw * 0.1, ankle.y + 4), 2.0, shade(trim, sh))
+        rig.circle(fp(fw * 0.1, 4), 2.0, shade(trim, sh))
 
 
 def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
@@ -7594,6 +7653,11 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
     # the kinematics produced rather than at a fixed spot on the body
     stance = []
     hip_y = LEG_GEOM[legs_t][0] if legs_t else 190
+    # the hips drop at contact and lift at mid-stance. Everything above
+    # them is drawn off `hip_y`, so taking it off here moves the whole
+    # machine and not just the pelvis.
+    bob = walk_bob(pose.walk, pose.moving) if legs_t else 0.0
+    hip_y -= bob
     tt0 = mech.fit["torso"] or 1
     rig.hip = -float(hip_y)
     rig.neck = -336.0 if tt0 == 3 else (-330.0 if tt0 == 2 else -324.0)
@@ -7610,11 +7674,12 @@ def draw_mech_side(surf, mech, sx, gy, scale, t, pose, alpha_dead=False,
         spread = 1.0 + ((mech.frame.prop or {}).get("legw", 1.0) - 1.0) * 0.9
         for i, (dx, sh) in enumerate(((-13 * spread, 0.62),
                                       (11 * spread, 1.0))):
-            hip, knee, ankle = _leg_points(legs_t, pose.walk + i * math.pi,
-                                           pose.moving)
+            ph = pose.walk + i * math.pi
+            hip, knee, ankle = _leg_points(legs_t, ph, pose.moving, bob)
             stance.append((hip, knee, ankle, dx, sh))
             draw_leg_side(rig, legs_t, hip, knee, ankle, dx,
-                          main, dark, light, sh, trim)
+                          main, dark, light, sh, trim,
+                          foot_angle(ph, pose.moving))
     else:
         # no legs at all: the frame is on a cradle and is not going anywhere
         pygame.draw.polygon(surf, (44, 48, 60),
@@ -11484,12 +11549,143 @@ STORY_LADDER = (("crawler", 1.00), ("spitter", 1.00), ("bulwark", 1.00),
                 ("brood", 1.80), ("cathedral", 1.60), ("leviathan", 2.00))
 
 
+# ---------------------------------------------------------------------------
+# THE FIVE WAYS TO PLAY IT
+#
+# A mode is a SCHEDULE and a LADDER and nothing else - which is the whole
+# reason there can be five of them. Every screen in the game already asks
+# `schedule_for(run.mode)` rather than reading SCHEDULE, so a new mode is
+# a row in this table plus whatever its own calendar does, and no screen
+# has to be told.
+#
+#   THE SEASON    seven landfalls over seventy days. The game as written.
+#   SHORT NOTICE  the same seven on half the calendar. You will not
+#                 finish the machine; the question is which half.
+#   ONE NIGHT     all seven back to back, no yard, no repairs, and a
+#                 machine handed to you built. The fighting on its own.
+#   THE LONG WATCH  it never stops. Every nine days, for ever, harder
+#                 every lap, and the only ending is the city.
+#   THE YEAR      365 days, field posts, cutscenes, four endings.
+#
+# What is NOT here is a difficulty setting. Every one of these is a
+# different shape of run - a different calendar or a different ladder -
+# rather than the same run with the numbers pushed about, because the
+# game has one set of balance numbers and they took a long time.
+# ---------------------------------------------------------------------------
+RUSH_SCHEDULE = (5, 10, 16, 22, 29, 37, 46)
+RUSH_MARKS = (16, 23, 32, 41, 53, 69, 96)
+
+NIGHT_SCHEDULE = (1, 1, 1, 1, 1, 1, 1)     # no calendar at all
+NIGHT_TIER = 3                             # what you are handed, per socket
+NIGHT_BAYS = ("stride", "link", "shutters")   # ...and what is in the rack
+# NOTHING mends between the seven. That is the mode, and it is the whole
+# of the mode: measured over sixteen runs a side, a 30% patch between
+# fights made it 16 victories in 16 and no patch at all makes it 7 in 16.
+# A machine that is handed to you finished and never repaired is an
+# attrition problem, and an attrition problem with a top-up is arithmetic.
+# One arm that hits and one that reaches, both the REFIT of a family and
+# neither the best thing in the book. Measured: handed the dearest gun the
+# socket would take, both arms came out holding a SUN LANCE and the mode
+# went 20 wins in 20. Handed the first gun offered it went 0 in 20.
+NIGHT_GUNS = ("ripper", "tempest")
+
+
+WATCH_EVERY = 9                            # days between landfalls, for ever
+WATCH_LAP = 0.34                           # ...and what each lap adds
+WATCH_MARKS = 18                           # marks for a body, per lap
+
+MODES = (
+    ("landfall", "THE SEASON", None,
+     "seven landfalls over seventy days - the shape the game was written "
+     "in"),
+    ("rush", "SHORT NOTICE", None,
+     "the same seven on half the calendar. You will not finish it; the "
+     "question is which half you finish"),
+    ("night", "ONE NIGHT", "won",
+     "all seven back to back. No yard, no repairs, and a machine handed "
+     "to you already built"),
+    ("watch", "THE LONG WATCH", "won",
+     "it does not stop. One every nine days, harder every lap, and the "
+     "only thing that ends it is the city"),
+    ("story", "THE YEAR", "both",
+     "365 days, the posts on the road, and an ending you argue for"),
+)
+MODE_BY = {m[0]: m for m in MODES}
+MODE_KEYS = tuple(m[0] for m in MODES)
+
+
+def mode_name(key):
+    row = MODE_BY.get(key)
+    return row[1] if row else "THE SEASON"
+
+
+def mode_note(key):
+    row = MODE_BY.get(key)
+    return row[3] if row else ""
+
+
+def mode_locked_because(key, best=None):
+    """Why this mode is shut, or None. `best` lets a screen ask about the
+    record it is SHOWING rather than the one on disk."""
+    row = MODE_BY.get(key)
+    if row is None or row[2] is None:
+        return None
+    best = best if best is not None else (load_save().get("best") or {})
+    if row[2] == "won":
+        if best.get("won_keal") or best.get("won_ryez"):
+            return None
+        return "CARRY ONE CAMPAIGN HOME FIRST"
+    need = [h for h in ("keal", "ryez") if not best.get("won_" + h)]
+    if not need:
+        return None
+    if len(need) == 2:
+        return "WIN A CAMPAIGN AS EACH COMPANY FIRST"
+    return "WIN A CAMPAIGN AS %s FIRST" % HOUSES[need[0]].name
+
+
+def mode_open(key, best=None):
+    return mode_locked_because(key, best) is None
+
+
+def endless(mode):
+    """Whether this one has an end in it at all."""
+    return mode == "watch"
+
+
+def watch_day(i):
+    return WATCH_EVERY * (i + 1)
+
+
+def watch_rung(house, i):
+    """Round the LADDER, again, harder every lap.
+
+    The ladder and not the roster. The roster is eleven bodies now and
+    the last four of them are the small ones that walk in beside a
+    boss - cycling all eleven made the eighth landfall of the watch a
+    HOUND, so the mode got easier the longer you survived it."""
+    return i % len(SCHEDULE)
+
+
+def watch_laps(i):
+    return i // len(SCHEDULE)
+
+
+def watch_mult(i):
+    return 1.0 + WATCH_LAP * watch_laps(i)
+
+
 def schedule_for(mode):
-    return STORY_SCHEDULE if mode == "story" else SCHEDULE
+    """The calendar this mode runs on.
+
+    THE LONG WATCH has no table because it has no end - `Run.landfall`
+    generates its days, and everything that asks how LONG a mode is has
+    to ask `endless()` first."""
+    return {"story": STORY_SCHEDULE, "rush": RUSH_SCHEDULE,
+            "night": NIGHT_SCHEDULE}.get(mode, SCHEDULE)
 
 
 def marks_table(mode):
-    return STORY_MARKS if mode == "story" else MARKS_FOR
+    return {"story": STORY_MARKS, "rush": RUSH_MARKS}.get(mode, MARKS_FOR)
 
 # WHAT ELSE COMES ASHORE.
 #
@@ -11576,6 +11772,12 @@ def escorts_at(index, mode="landfall"):
     """[(rung, count, hp multiplier)] for everything walking in beside
     the boss. The multiplier is optional and defaults to ESCORT_HP."""
     table = STORY_ESCORTS if mode == "story" else ESCORTS
+    if endless(mode):
+        # round the season's column, for ever. The escalation in this
+        # mode is the multiplier on the boss, not an unbounded pile of
+        # bodies - four things on a road is the most this fight holds
+        # and that was measured a long time ago.
+        index = index % len(ESCORTS)
     out = []
     for row in (table[index] if 0 <= index < len(table) else ()):
         rung, count = _rung_of(row[0]), row[1]
@@ -11692,7 +11894,7 @@ class Run:
     def __init__(self, house_key="keal", chassis="standard",
                  mode="landfall"):
         self.house = house_key if house_key in HOUSES else "keal"
-        self.mode = mode if mode in ("landfall", "story") else "landfall"
+        self.mode = mode if mode in MODE_BY else "landfall"
         set_house(self.house)
         self.day = 1
         self.scrap = 170
@@ -11734,6 +11936,31 @@ class Run:
         self.flags = []              # what it decided, in the rooms
         self.seen = []               # ...and which rooms it has been in
         self.opened = []             # ...and the plans it bought on the road
+        if self.mode == "night":
+            # no yard, no calendar, no building - so the machine is
+            # handed over built, and what it is handed is the middle
+            # rung of everything rather than the best of anything. The
+            # mode is about the fighting; it is not a free top-tier run.
+            for s in self.mech.sockets():
+                if s in HARDPOINTS:
+                    opts = options_for(s, None, self.mech.frame)
+                    if not opts:
+                        continue
+                    want = NIGHT_GUNS[0 if s in ("l_wpn", "l_aux") else 1]
+                    got = next((w for w in opts if w.key == want), None)
+                    # a frame that only mounts its own guns - a CYCLOPS -
+                    # takes the dearest of those instead
+                    self.mech.install(
+                        s, (got or max(opts, key=lambda w: w.scrap)).key)
+                else:
+                    self.mech.install(s, min(NIGHT_TIER,
+                                             len(CATALOGUE.get(s, (1,)))))
+            for key in NIGHT_BAYS:
+                self.mech.fit_module(key)
+            self.crew = self.max_crew
+            self.news = ["THEY ARE ALL COMING TONIGHT.",
+                         "THE MACHINE IS AS FINISHED AS IT IS GOING TO GET.",
+                         "THERE IS NO YARD TO GO BACK TO."]
         if has_ware("warchest"):
             self.scrap += 200
         if has_ware("earlyshift"):
@@ -11754,6 +11981,8 @@ class Run:
         return days
 
     def landfall(self, i):
+        if endless(self.mode):
+            return watch_day(i) + self.grace
         sch = schedule_for(self.mode)
         return sch[i] + self.grace if i < len(sch) else None
 
@@ -11767,6 +11996,9 @@ class Run:
         return None if nl is None else nl - self.day
 
     def next_kind(self):
+        if endless(self.mode):
+            return kind_at(self.house,
+                           watch_rung(self.house, self.kaiju_index))
         if self.mode != "story":
             return kind_at(self.house, self.kaiju_index)
         i = self.kaiju_index
@@ -11777,7 +12009,13 @@ class Run:
         return kind_at(self.house, rung if rung >= 0 else 0)
 
     def story_mult(self):
+        """What the thing walking up the road is multiplied by.
+
+        Named for the mode it was written for; it is every mode's now,
+        which is the price of having called it that."""
         i = self.kaiju_index
+        if endless(self.mode):
+            return watch_mult(i)
         if self.mode != "story" or i >= len(STORY_LADDER):
             return 1.0
         return STORY_LADDER[i][1]
@@ -12274,6 +12512,12 @@ class Run:
         # same length until there was a seventh landfall, and reading
         # the roster here meant the seventh was scheduled, printed on
         # the brief, and then never happened
+        if endless(self.mode):
+            # there is no end of the ladder to reach, so the only ending
+            # in this mode is the city. `killed` is the score.
+            lines.append("NEXT LANDFALL: DAY %d"
+                         % self.landfall(self.kaiju_index))
+            return None, lines
         if self.kaiju_index >= len(schedule_for(self.mode)):
             return ("victory" if fight.over == "won" else "unfinished"), lines
         lines.append("NEXT LANDFALL: DAY %d" % self.landfall(self.kaiju_index))
@@ -17123,6 +17367,13 @@ class Title:
         text(surf, "Every graphic and every note in this game is drawn or "
              "synthesised in code.", 12, (74, H - 28), (56, 60, 76))
 
+    def mode_at(self, step):
+        """The next mode round the list, OPEN or not - a locked one is
+        shown with the reason on it rather than skipped, because a mode
+        a player cannot see is a mode they will never go and earn."""
+        i = (MODE_KEYS.index(self.mode) if self.mode in MODE_KEYS else 0)
+        return MODE_KEYS[(i + step) % len(MODE_KEYS)]
+
     def draw_modes(self, surf, mouse):
         """Which campaign BEGIN begins.
 
@@ -17131,32 +17382,41 @@ class Title:
         one they are about to start will start the wrong one and find out
         on day seventy. It also has somewhere to say WHY the long one is
         shut, which a greyed-out button on its own does not."""
+        # A ROW OF BUTTONS DOES NOT HOLD FIVE. It held two, and then
+        # there were five, and 348 pixels across five chips is 66 each,
+        # which is not a label. So it is a cycler: one name, an arrow
+        # either side, and the line underneath says what it is.
         self.modes = []
-        shut = story_locked_because(self.save.get("best") or {})
+        best = self.save.get("best") or {}
+        shut = mode_locked_because(self.mode, best)
         y = self.SLOT_Y + 92
-        for i, (key, lab) in enumerate((("landfall", "THE SEASON"),
-                                        ("story", "THE YEAR"))):
-            r = pygame.Rect(74 + i * 178, y, 170, 28)
-            on = self.mode == key
-            live = key == "landfall" or not shut
-            hot = r.collidepoint(mouse) and live and not on
-            panel(surf, r, (32, 34, 46) if (on or hot) else (18, 19, 26),
-                  PAINT if on else (LINE if not hot else DIM), 5,
-                  2 if on else 1)
-            text(surf, lab, fit(lab, 14, r.w - 14), r.center,
-                 INK if on else (DIM if live else (58, 62, 78)),
-                 center=True)
-            self.modes.append((r, key, live))
+        left = pygame.Rect(74, y, 30, 28)
+        right = pygame.Rect(392, y, 30, 28)
+        box = pygame.Rect(108, y, 280, 28)
+        for r, step, ch in ((left, -1, "<"), (right, 1, ">")):
+            hot = r.collidepoint(mouse)
+            panel(surf, r, (32, 34, 46) if hot else (18, 19, 26),
+                  PAINT if hot else LINE, 5)
+            text(surf, ch, 16, r.center, INK if hot else DIM, center=True)
+            # the STEP, not the key it pointed at when this was drawn.
+            # Storing the key meant two clicks inside one frame both
+            # moved to the same mode, because the list was not rebuilt
+            # in between - the same stale-rect bug the cutscene had.
+            self.modes.append((r, step, True))
+        panel(surf, box, (30, 32, 44), PAINT if not shut else WARN, 5, 2)
+        lab = mode_name(self.mode)
+        text(surf, lab, fit(lab, 15, box.w - 16), box.center,
+             INK if not shut else WARN, center=True)
+        live = shut is None
         if self.no_t > 0:
             note, tone = self.no, BAD
         elif shut:
-            note, tone = shut, FAINT
+            note, tone = shut, WARN
         elif self.mode == "story":
-            ends = endings_seen(self.save.get("best") or {})
+            ends = endings_seen(best)
             tone = ALLOY_C
             if not ends:
-                note = ("365 days, posts on the road, and an ending you "
-                        "argue for")
+                note = mode_note("story")
             elif "broke" in ends:
                 note = ("%d of %d endings, and you have found the true one"
                         % (len(ends), len(ENDINGS)))
@@ -17164,8 +17424,12 @@ class Title:
                 note = ("%d of %d endings - the last one is not on any list"
                         % (len(ends), len(ENDINGS)))
         else:
-            note, tone = "seventy days and seven of them", FAINT
-        text(surf, note, 12, (74, y + 34), tone)
+            note, tone = mode_note(self.mode), FAINT
+        # BESIDE the cycler, not under it. Under it there is room for one
+        # line and every one of these notes is three, so the second one
+        # was drawn through the CONTINUE button.
+        for k, ln in enumerate(wrap(note, 12, 250)[:4]):
+            text(surf, ln, 12, (446, y - 4 + k * 14), tone)
 
     def draw_slot(self, surf, n, mouse):
         r = self.slot_rect(n)
@@ -17201,17 +17465,11 @@ class Title:
         self.buttons.append(Button(r, "", ("slot%d" % n, None)))
 
     def click(self, pos):
-        for r, key, live in self.modes:
+        for r, step, _live in self.modes:
             if not r.collidepoint(pos):
                 continue
-            if live:
-                self.mode = key
-                SFX.play("click", 0.5)
-            else:
-                self.no = story_locked_because(
-                    self.save.get("best") or {}) or ""
-                self.no_t = 2.6
-                SFX.play("deny", 0.45)
+            self.mode = self.mode_at(step)
+            SFX.play("click", 0.5)
             return None
         for b in self.buttons:
             if b.hit(pos):
@@ -17225,8 +17483,8 @@ class Title:
                         # the ladder is recorded per slot, so a slot that
                         # has not finished both campaigns shuts the long
                         # one again rather than starting it locked
-                        if self.mode == "story" and story_locked_because(
-                                self.save.get("best") or {}):
+                        if not mode_open(self.mode,
+                                         self.save.get("best") or {}):
                             self.mode = "landfall"
                         SFX.play("click", 0.5)
                     return None
@@ -17808,7 +18066,8 @@ class App:
         ending = None
         if self.run.integrity <= 0:
             ending = "over"
-        elif self.run.kaiju_index >= len(schedule_for(self.run.mode)):
+        elif (not endless(self.run.mode)
+              and self.run.kaiju_index >= len(schedule_for(self.run.mode))):
             # the same roster-for-ladder mix-up `resolve` had. Standing
             # down on the eleventh of seventeen ended the campaign.
             ending = "unfinished"
@@ -17837,6 +18096,10 @@ class App:
             self.ending_screen = Ending(self.run, won, st)
             self.state = "end"
             music("ending")
+        elif self.run.mode == "night":
+            # there is no yard in this one. The next one is already on
+            # the road, and whatever came off the machine stays off.
+            self.to_brief()
         elif post_open(self.run):
             # on the ground, while it is still cooling. Only ever here.
             self.posts = FieldPosts(self.run)
@@ -18082,6 +18345,15 @@ class App:
         if act == "shop":
             self.to_shop("title")
         elif act == "new":
+            shut = mode_locked_because(self.title.mode,
+                                       self.title.save.get("best") or {})
+            if shut:
+                # the refusal is on the button that was pressed, not on
+                # the mode chip - a greyed chip says "not yet" and a
+                # player who has clicked BEGIN wants to know why not
+                self.title.no, self.title.no_t = shut, 2.6
+                SFX.play("deny", 0.5)
+                return
             self.choose = Choose(self.title.mode)
             self.state = "choose"
         elif act == "continue":

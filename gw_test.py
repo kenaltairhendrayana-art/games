@@ -186,7 +186,7 @@ def smoke():
                            "endings": ["stood", "datasheet", "broke"]}})
     t2.t = 2.0
     t2.draw(surf, mouse)
-    t2.click(t2.modes[1][0].center)
+    t2.mode = "story"
     t2.draw(surf, mouse)
     snap("title_year")
     # the record, half done and then all of it
@@ -255,6 +255,27 @@ def smoke():
                              G.FSCALE * 0.7, 1.0)
             G.text(surf, k.name, 14, (16, 170 + i * 250), (220, 200, 160))
         snap("foe_" + tag)
+    # one whole stride, which is the only way to look at a walk in a
+    # still picture
+    for house, tag in (("keal", "mech"), ("ryez", "beast")):
+        G.set_house(house)
+        surf.fill((14, 16, 22))
+        wr = G.Run(house, "standard")
+        for s in wr.mech.sockets():
+            if s in G.HARDPOINTS:
+                opts = G.options_for(s, None, wr.mech.frame)
+                if opts:
+                    wr.mech.install(s, opts[0].key)
+            else:
+                wr.mech.install(s, 3)
+        for i in range(6):
+            pz = G.Pose()
+            pz.face, pz.walk, pz.moving = 1, i * G.TAU / 6, 1.0
+            G.draw_mech_side(surf, wr.mech, 110 + i * 190, 700, 0.8, 1.0,
+                             pz, bio=house == "ryez")
+            G.text(surf, "%d" % i, 13, (110 + i * 190, 712),
+                   (180, 180, 200), center=True)
+        snap("stride_" + tag)
     G.set_house("keal")
 
     run = G.Run()
@@ -2294,6 +2315,107 @@ def yard():
           "the same seed rolls the same weather twice" % (len(G.EVENTS),
                                                           len(good)))
 
+    # -- FIVE WAYS TO PLAY IT ---------------------------------------------
+    # A mode is a SCHEDULE and a LADDER and nothing else, which is why
+    # there can be five. What is checked is that each one is actually a
+    # different SHAPE of run rather than the same run with the numbers
+    # pushed about - and that the two with no table behind them, the
+    # endless one and the one with no calendar, do not fall off the end
+    # of anything that assumes a table.
+    assert len(G.MODES) == 5, len(G.MODES)
+    assert G.MODE_KEYS[0] == "landfall", "the default is not first"
+    for key, name, _need, note in G.MODES:
+        assert name == name.upper() and len(name) > 4, name
+        assert len(note) > 30, (key, note)
+        assert G.mode_name(key) == name and G.mode_note(key) == note
+    assert G.mode_name("nope") == "THE SEASON"
+
+    # the gates, asked about a record rather than a file
+    none_ = {}
+    one = {"won_keal": True}
+    both = {"won_keal": True, "won_ryez": True}
+    assert G.mode_open("landfall", none_) and G.mode_open("rush", none_)
+    for k in ("night", "watch"):
+        assert not G.mode_open(k, none_), k
+        assert G.mode_open(k, one), k
+    assert not G.mode_open("story", one) and G.mode_open("story", both)
+    assert "RYEZ" in G.mode_locked_because("story", one)
+
+    # every mode is a different calendar, and none of them share one
+    G.set_house("keal")
+    cals = {}
+    for k in G.MODE_KEYS:
+        r = G.Run("keal", "standard", k)
+        assert r.mode == k
+        cals[k] = tuple(r.landfall(i) for i in range(7))
+        assert all(d is not None for d in cals[k]), (k, cals[k])
+    assert len(set(cals.values())) == len(cals), (
+        "two modes run on the same calendar: %s" % cals)
+    assert cals["rush"][-1] < cals["landfall"][-1] < cals["story"][-1]
+    # ...and ONE NIGHT is all on the same day, whichever day the grace
+    # days off the market have moved it to
+    assert len(set(cals["night"])) == 1, cals["night"]
+
+    # THE LONG WATCH has no end, and nothing that asks for one breaks
+    w = G.Run("keal", "standard", "watch")
+    assert G.endless("watch") and not G.endless("landfall")
+    assert w.landfall(200) is not None, "the watch ran out of days"
+    assert w.landfall(20) > w.landfall(19)
+    seen = []
+    for i in range(30):
+        w.kaiju_index = i
+        k = w.next_kind()
+        assert k is not None, i
+        seen.append(k.key)
+    # it goes round the LADDER, not the roster - the roster's tail is the
+    # small bodies that walk in beside a boss, and cycling those made the
+    # eighth landfall of a watch easier than the seventh
+    assert seen[:7] == seen[7:14] == seen[14:21], seen[:21]
+    ladder = [G.kind_at("keal", i).key for i in range(len(G.SCHEDULE))]
+    assert seen[:7] == ladder, (seen[:7], ladder)
+    prev = None
+    for i in (0, 6, 7, 13, 14, 20):
+        w.kaiju_index = i
+        v = w.story_mult()
+        assert prev is None or v >= prev, (i, v, prev)
+        prev = v
+    w.kaiju_index = 0
+    assert w.story_mult() == 1.0
+    w.kaiju_index = len(G.SCHEDULE)
+    assert w.story_mult() > 1.0, "the second lap is the same as the first"
+    # ...and it never ends in a victory, only in the city
+    w.kaiju_index = 40
+    w.integrity = 50.0
+
+    class _Won(object):
+        over, wrecked, taken, dealt, t = "won", 0, 0.0, 0.0, 60.0
+        integrity = 50.0
+        kind = G.kind_at("keal", 0)
+    end, _ln = w.resolve(_Won())
+    assert end is None, "the watch ended in a %s" % end
+
+    # ONE NIGHT is handed a machine and never gets it back
+    nt = G.Run("keal", "standard", "night")
+    assert G.run_built(nt) > 0.9, round(G.run_built(nt) * 100)
+    assert nt.mech.mods, "no rack at all"
+    assert nt.mech.fit["l_wpn"] and nt.mech.fit["r_wpn"]
+    assert nt.mech.fit["l_wpn"] != nt.mech.fit["r_wpn"], (
+        "both arms got the same gun")
+    hurt_at = {}
+    for s in nt.mech.sockets():
+        if nt.mech.fit[s] is not None:
+            nt.mech.hp[s] = nt.mech.max_hp(s) * 0.4
+            hurt_at[s] = nt.mech.hp[s]
+    nt.kaiju_index = 2
+    nt.resolve(_Won())
+    for s, was in hurt_at.items():
+        assert nt.mech.hp[s] <= was + 1e-6, (
+            "%s mended between two fights of ONE NIGHT" % s)
+    print("  %d modes, %d calendars and no two alike; the watch goes "
+          "round the ladder for ever and one night never mends"
+          % (len(G.MODES), len(set(cals.values()))))
+
+
 
 
 
@@ -2442,10 +2564,8 @@ def yard():
     t = G.Title({"run": None, "best": shown})
     t.mode = "story"
     t.draw(surf, (0, 0))
-    assert t.modes[1][2], "the year is shut on a record that opened it"
-    t2 = G.Title({"run": None, "best": {}})
-    t2.draw(surf, (0, 0))
-    assert not t2.modes[1][2], "an empty record opened the year"
+    assert G.mode_open("story", shown),         "the year is shut on a record that opened it"
+    assert not G.mode_open("story", {}), "an empty record opened the year"
     wipe_meta()
     _d = G.load_save()
     _d["best"] = {}
@@ -2738,12 +2858,26 @@ def yard():
     t = G.Title()
     t.draw(surf, (0, 0))
     assert t.mode == "landfall"
+    # the picker is a CYCLER now - two buttons would not hold five modes -
+    # so an arrow always moves, and the refusal is on BEGIN
     assert len(t.modes) == 2, t.modes
-    season, year = t.modes[0][0], t.modes[1][0]
-    assert not t.modes[1][2], "the year is open on a fresh ledger"
-    t.click(year.center)
-    assert t.mode == "landfall", "the lock is decorative"
-    assert t.no and t.no_t > 0, "it refused without saying why"
+    back, fwd = t.modes[0][0], t.modes[1][0]
+    seen = []
+    for _ in range(len(G.MODE_KEYS)):
+        seen.append(t.mode)
+        t.click(fwd.center)
+    assert t.mode == "landfall", "it did not come back round"
+    assert sorted(seen) == sorted(G.MODE_KEYS), seen
+    t.click(back.center)
+    assert t.mode == G.MODE_KEYS[-1], "the left arrow does not go left"
+
+    # ...and the locked one refuses at the door it is pressed on
+    app0 = G.App()
+    app0.title.draw(surf, (0, 0))
+    app0.title.mode = "story"
+    app0.pick("new")
+    assert app0.state == "title", "a locked mode started"
+    assert app0.title.no and app0.title.no_t > 0, "it refused in silence"
     for house in ("keal", "ryez"):
         G.set_house(house)
         rr = G.Run(house)
@@ -2752,26 +2886,23 @@ def yard():
     G.set_house("keal")
     t = G.Title()
     t.draw(surf, (0, 0))
-    assert t.modes[1][2], "it stayed shut after both wins"
-    t.click(year.center)
-    assert t.mode == "story", t.mode
-    t.click(season.center)
-    assert t.mode == "landfall"
-    t.click(year.center)
-    # a slot that has not earned it shuts it again rather than starting
-    # a year the ledger does not allow
+    assert G.mode_open("story", t.save.get("best") or {}), \
+        "it stayed shut after both wins"
+    t.mode = "story"
+    # a slot that has not earned it drops back rather than starting a
+    # year the ledger does not allow
     was = G.SLOT[0]
     t.click(t.slot_rect(2 if was != 2 else 3).center)
     assert t.mode == "landfall", "the year followed the switch to a new slot"
     G.set_slot(was)
-    print("  the switch is refused with a reason, opens on two wins, and "
-          "does not follow you into an unearned slot")
+    print("  the picker cycles all %d, the left arrow goes left, and a "
+          "mode nobody has earned refuses on BEGIN" % len(G.MODE_KEYS))
 
     # and it actually reaches a Run
     G.clear_run()
     app = G.App()
     app.title.draw(surf, (0, 0))
-    app.title.click(app.title.modes[1][0].center)
+    app.title.mode = "story"
     assert app.title.mode == "story"
     new_btn = next(b for b in app.title.buttons if b.key[0] == "new")
     app.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
@@ -3652,7 +3783,13 @@ def gov():
 
     # -- MILITARY SUPPORT and BETTER WALLS ---------------------------------
     kind = G.roster_for("keal")[2]
-    f = G.Fight(_rig(), kind)
+    # weather off: IT CAME ASHORE FED puts a quarter back on, and this is
+    # a claim about what the guns on the ridge take OFF
+    was_ev, G.EVENT_CHANCE = G.EVENT_CHANCE, 0.0
+    try:
+        f = G.Fight(_rig(), kind)
+    finally:
+        G.EVENT_CHANCE = was_ev
     assert f.boss().max_hp < kind.hp, "it landed at full health"
     assert f.city_mult < 1.0, "the walls do nothing"
     # the same wall has to count for NOT turning up, or a player who has
@@ -3853,10 +3990,17 @@ def gov():
             if f.over:
                 break
         return f, (left if left is not None else 0.0)
-    easy, easy_left = _run_one()
-    for w in deals:
-        G.arm_ware(w.key, True)
-    hard, hard_left = _run_one()
+    # weather off for both halves. Each `_run_one` builds its own Run and
+    # therefore draws its own weather seed, so with events live the two
+    # sides of this comparison were not the same fight at all.
+    was_ev, G.EVENT_CHANCE = G.EVENT_CHANCE, 0.0
+    try:
+        easy, easy_left = _run_one()
+        for w in deals:
+            G.arm_ware(w.key, True)
+        hard, hard_left = _run_one()
+    finally:
+        G.EVENT_CHANCE = was_ev
     assert hard.t > easy.t, (easy.t, hard.t)
     assert hard_left > easy_left, (easy_left, hard_left)
     print("  same build, same animal: dead in %.0fs -> %.0fs, and at 20s "
