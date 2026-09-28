@@ -1705,7 +1705,10 @@ class Sfx:
         try:
             ch = pygame.mixer.find_channel(True)
             if ch:
-                ch.set_volume(clamp(vol, 0.0, 1.0))
+                # the dial is a multiplier on what the caller asked for,
+                # so the mix between one sound and another is still the
+                # mix somebody wrote rather than whatever the slider is
+                ch.set_volume(clamp(vol, 0.0, 1.0) * prefs()["sfx"])
                 ch.play(s)
         except pygame.error:
             pass
@@ -2454,6 +2457,7 @@ def _cache_save(name, raw):
         pass                                     # a cache miss is not a bug
 
 
+MUSIC_BASE = 0.42                    # what a loop is worth at full dial
 _queue = []                          # names still to render, in order
 _job = [None]                        # [name, Score, packer] being rendered
 BAKE_BUDGET = 0.006                  # seconds of synthesis per frame
@@ -2544,7 +2548,7 @@ def music(name):
         pygame.mixer.music.stop()
         if _playing[0] and _music.get(_playing[0]):
             _music[_playing[0]].stop()
-        snd.set_volume(0.42)
+        snd.set_volume(MUSIC_BASE * prefs()["music"])
         snd.play(loops=-1)
         _playing[0] = name
     except pygame.error:
@@ -2558,6 +2562,163 @@ def music_stop():
         except pygame.error:
             pass
     _playing[0] = None
+
+
+# ---------------------------------------------------------------------------
+# PREFERENCES
+#
+# NOT in a save slot. Three slots are three campaigns; they are not three
+# people, and nobody wants to set the volume again because they started a
+# new machine. This is one file beside the slots and it is read once.
+#
+# Every rebindable action is a FIGHT action. The menus keep ESC, SPACE and
+# RETURN forever and are not offered here, because a player who rebinds
+# "back" onto a key they then rebind onto something else is a player who
+# cannot leave the screen they did it on. For the same reason every fight
+# action keeps a fixed second binding that cannot be taken away - the
+# arrows, the shift keys and the mouse buttons - so there is always a way
+# to walk and a way to fire whatever else has been done to the keyboard.
+# ---------------------------------------------------------------------------
+PREFS_NAME = "prefs.json"
+
+# action -> (label, default key, the fixed alternate nobody can unbind)
+BINDS = (
+    ("left", "WALK LEFT", pygame.K_a, "or LEFT"),
+    ("right", "WALK RIGHT", pygame.K_d, "or RIGHT"),
+    ("brace", "BRACE", pygame.K_s, "or DOWN"),
+    ("boost", "BOOST", pygame.K_SPACE, "or SHIFT"),
+    ("fire_l", "FIRE LEFT", pygame.K_j, "or LEFT MOUSE"),
+    ("fire_r", "FIRE RIGHT", pygame.K_k, "or RIGHT MOUSE"),
+    ("flush", "COOLANT FLUSH", pygame.K_v, ""),
+    ("emp", "EMP LANCE", pygame.K_e, ""),
+    ("nuke", "THE CHARGE", pygame.K_u, ""),
+    ("lungs", "EXPANDED LUNGS", pygame.K_l, ""),
+    ("scream", "SHRIEK GLAND", pygame.K_q, ""),
+    ("sac", "THE GREAT SAC", pygame.K_y, ""),
+    ("jar1", "JAR ONE", pygame.K_1, ""),
+    ("jar2", "JAR TWO", pygame.K_2, ""),
+    ("jar3", "JAR THREE", pygame.K_3, ""),
+)
+BIND_BY = {b[0]: b for b in BINDS}
+
+DIALS = (
+    ("music", "MUSIC", 0.7),
+    ("sfx", "EFFECTS", 0.9),
+)
+SWITCHES = (
+    ("shake", "SCREEN SHAKE", True,
+     "the camera moves when something lands"),
+    ("full", "FULLSCREEN", False, "it also toggles on F11"),
+    ("numbers", "DAMAGE NUMBERS", True,
+     "what every blow was worth, over the thing it hit"),
+)
+
+_PREFS = [None]
+
+
+def _prefs_path():
+    return os.path.join(_save_dir(), PREFS_NAME)
+
+
+def prefs():
+    if _PREFS[0] is None:
+        raw = {}
+        try:
+            with open(_prefs_path(), encoding="utf-8") as fh:
+                raw = json.load(fh) or {}
+        except (OSError, ValueError, TypeError):
+            raw = {}
+        keys = {}
+        for act, _lab, dflt, _alt in BINDS:
+            v = (raw.get("keys") or {}).get(act)
+            keys[act] = int(v) if isinstance(v, int) and 0 < v < 0x40000000 \
+                else dflt
+        p = {"keys": keys}
+        for k, _lab, dflt in DIALS:
+            p[k] = clamp(float(raw.get(k, dflt) or 0.0), 0.0, 1.0)
+        for k, _lab, dflt, _note in SWITCHES:
+            p[k] = bool(raw.get(k, dflt))
+        _PREFS[0] = p
+    return _PREFS[0]
+
+
+def prefs_save():
+    p = prefs()
+    try:
+        with open(_prefs_path(), "w", encoding="utf-8") as fh:
+            json.dump(p, fh, indent=1)
+    except OSError:
+        pass
+
+
+def prefs_forget():
+    _PREFS[0] = None
+
+
+def prefs_reset():
+    """Back to the keyboard it shipped with."""
+    p = prefs()
+    p["keys"] = {act: d for act, _l, d, _a in BINDS}
+    for k, _lab, d in DIALS:
+        p[k] = d
+    for k, _lab, d, _n in SWITCHES:
+        p[k] = d
+    prefs_save()
+    apply_volumes()
+
+
+def key_for(action):
+    return prefs()["keys"].get(action, BIND_BY[action][2])
+
+
+def key_name(code):
+    """What to print on the button. pygame's own name is lowercase and
+    says things like 'left shift'; this is the one on the keycap."""
+    try:
+        nm = pygame.key.name(int(code)) or "?"
+    except (TypeError, ValueError, pygame.error):
+        return "?"
+    return {"space": "SPACE", "return": "ENTER", "escape": "ESC"}.get(
+        nm, nm.upper())
+
+
+def bind_conflict(action, code):
+    """Who else already has that key, if anybody."""
+    for act, lab, _d, _a in BINDS:
+        if act != action and key_for(act) == code:
+            return lab
+    return None
+
+
+def set_bind(action, code):
+    """Take a key. If somebody else had it they lose it, because two
+    actions on one key is a thing the player cannot see and cannot fix
+    without knowing which one to look for - the one that is taken away
+    is drawn UNSET, which is visible."""
+    if action not in BIND_BY:
+        return False
+    for act in list(prefs()["keys"]):
+        if act != action and prefs()["keys"][act] == code:
+            prefs()["keys"][act] = 0
+    prefs()["keys"][action] = int(code)
+    prefs_save()
+    return True
+
+
+# keys the menus keep, and which nothing may be bound onto
+RESERVED = (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_KP_ENTER,
+            pygame.K_F11, pygame.K_TAB)
+
+
+def apply_volumes():
+    """Push the dials at whatever is currently making a noise."""
+    p = prefs()
+    snd = _music.get(_playing[0])
+    if snd is not None:
+        try:
+            snd.set_volume(MUSIC_BASE * p["music"])
+        except pygame.error:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -9506,6 +9667,8 @@ class Fight:
                                  random.uniform(2, 4)))
 
     def number(self, wx, wy, v, crit=False):
+        if not prefs()["numbers"]:
+            return
         self.numbers.append(Number((wx, wy), str(v),
                                    (255, 206, 96) if crit else (236, 240, 250)))
 
@@ -10075,7 +10238,7 @@ class Fight:
     # -- drawing ----------------------------------------------------------
     def draw(self, surf):
         sh = (random.uniform(-1, 1) * self.shake,
-              random.uniform(-1, 1) * self.shake) if self.shake > 0.2 else (0, 0)
+              random.uniform(-1, 1) * self.shake)             if self.shake > 0.2 and prefs()["shake"] else (0, 0)
         draw_city(surf, self.city, self.cam, self.t, sh)
         gy = GROUND_Y + sh[1]
 
@@ -16065,11 +16228,14 @@ class Title:
         # here, one misplaced click from a campaign; it is on the record
         # screen now, which is the screen that shows what it would take.
         got = len(awards_won(self.save.get("best") or {}))
-        self.buttons.append(Button(
-            pygame.Rect(74, y, 170, 46), "RECORD %d/%d" % (got, len(AWARDS)),
-            ("record", None), tone=GOOD if got == len(AWARDS) else PAINT))
-        self.buttons.append(Button(pygame.Rect(252, y, 170, 46), "QUIT",
-                                   ("quit", None), tone=BAD))
+        for i, (lab, key, tone) in enumerate(
+                (("RECORD %d/%d" % (got, len(AWARDS)), "record",
+                  GOOD if got == len(AWARDS) else PAINT),
+                 ("SETTINGS", "settings", PAINT),
+                 ("QUIT", "quit", BAD))):
+            self.buttons.append(Button(
+                pygame.Rect(74 + i * 119, y, 110, 46), lab, (key, None),
+                tone=tone))
         for b in self.buttons:
             b.hover(mouse)
             if not b.key[0].startswith("slot"):
@@ -16192,6 +16358,218 @@ class Title:
                     return None
                 SFX.play("click", 0.6)
                 return key
+        return None
+
+
+class Settings:
+    """The dials, the switches and the keyboard.
+
+    Two columns: everything that is a number or a yes-or-no on the left,
+    the fifteen fight actions on the right. Nothing here is a MENU key -
+    ESC, SPACE and RETURN stay what they are forever, because a player
+    who rebinds BACK and then rebinds whatever they put it on is a player
+    stuck on the screen they did it on."""
+
+    ROW = 30
+
+    def __init__(self, back="title"):
+        self.t = 0.0
+        self.back = back             # the screen that opened it
+        self.waiting = None          # the action listening for a key
+        self.no = None
+        self.no_t = 0.0
+        self.dials = []
+        self.switches = []
+        self.binds = []
+        self.buttons = []
+        self.dragging = None
+
+    def update(self, dt):
+        self.t += dt
+        self.no_t = max(0.0, self.no_t - dt)
+
+    # -- geometry ---------------------------------------------------------
+    def dial_rect(self, i):
+        return pygame.Rect(230, 178 + i * 46, 300, 16)
+
+    def switch_rect(self, i):
+        return pygame.Rect(230, 320 + i * 46, 74, 26)
+
+    def bind_rect(self, i):
+        return pygame.Rect(W - 260, 152 + i * self.ROW, 130, 24)
+
+    # -- drawing ----------------------------------------------------------
+    def draw(self, surf, mouse):
+        surf.fill(BG)
+        sky(surf, self.t * 0.1)
+        ov = pygame.Surface((W, H), pygame.SRCALPHA)
+        ov.fill((8, 9, 14, 194))
+        surf.blit(ov, (0, 0))
+        p = prefs()
+        text(surf, "SETTINGS", 34, (40, 28), PAINT)
+        text(surf, "kept beside the save slots and not inside one - they "
+             "are yours, not the campaign's.   F1 opens this from the "
+             + word("yard", "YARD").lower(), 13, (40, 72), FAINT)
+
+        text(surf, "SOUND", 19, (40, 134), PAINT)
+        self.dials = []
+        for i, (key, lab, _d) in enumerate(DIALS):
+            r = self.dial_rect(i)
+            v = p[key]
+            text(surf, lab, 16, (40, r.y - 3), INK if v > 0 else FAINT)
+            hot = r.inflate(20, 18).collidepoint(mouse)
+            bar(surf, r, v, (70, 74, 92) if SFX.muted else PAINT,
+                edge=DIM if hot else LINE)
+            knob = pygame.Rect(0, 0, 10, 26)
+            knob.center = (r.x + int(r.w * v), r.centery)
+            panel(surf, knob, INK if hot else DIM, LINE, 3)
+            text(surf, "%d%%" % round(v * 100), 15, (r.right + 52, r.y - 2),
+                 DIM, right=True)
+            self.dials.append((r, key))
+        text(surf, "EVERYTHING IS MUTED  -  PRESS M" if SFX.muted
+             else "M mutes the lot, wherever you are", 13, (40, 272),
+             WARN if SFX.muted else FAINT)
+
+        text(surf, "THE SCREEN", 19, (40, 296), PAINT)
+        self.switches = []
+        for i, (key, lab, _d, note) in enumerate(SWITCHES):
+            r = self.switch_rect(i)
+            on = p[key]
+            text(surf, lab, 16, (40, r.y + 4), INK if on else DIM)
+            hot = r.collidepoint(mouse)
+            panel(surf, r, (32, 46, 38) if on else (24, 25, 34),
+                  GOOD if on else (DIM if hot else LINE), 6, 2 if hot else 1)
+            dot = pygame.Rect(0, 0, 18, 18)
+            dot.center = (r.right - 14 if on else r.x + 14, r.centery)
+            panel(surf, dot, GOOD if on else (60, 64, 80), LINE, 4)
+            if on:
+                text(surf, "ON", 12, (r.x + 10, r.centery), INK, left=True)
+            else:
+                text(surf, "OFF", 12, (r.right - 10, r.centery), DIM,
+                     right=True)
+            text(surf, note, 12, (320, r.y + 7), FAINT)
+            self.switches.append((r, key))
+
+        # -- the keyboard --------------------------------------------------
+        # anchored off the LEFT of the label column, not the left of the
+        # key boxes - the hint ran off the side of the screen there
+        text(surf, "THE FIGHT", 19, (W - 420, 114), PAINT)
+        text(surf, "click one, then press the key you want it on", 12,
+             (W - 420, 138), FAINT)
+        self.binds = []
+        for i, (act, lab, _d, alt) in enumerate(BINDS):
+            r = self.bind_rect(i)
+            code = key_for(act)
+            listening = self.waiting == act
+            hot = r.collidepoint(mouse) and not listening
+            panel(surf, r, (44, 38, 24) if listening else
+                  ((30, 32, 42) if hot else (21, 22, 30)),
+                  WARN if listening else (PAINT if hot else LINE), 5,
+                  2 if listening else 1)
+            nm = "PRESS A KEY" if listening else (
+                key_name(code) if code else "UNSET")
+            text(surf, nm, fit(nm, 14, r.w - 12), r.center,
+                 WARN if listening else (INK if code else BAD), center=True)
+            text(surf, lab, 14, (r.x - 12, r.centery), INK if code else DIM,
+                 right=True)
+            if alt:
+                text(surf, alt, 11, (r.right + 8, r.centery), FAINT,
+                     left=True)
+            self.binds.append((r, act))
+
+        self.buttons = []
+        self.buttons.append(Button(pygame.Rect(40, H - 62, 250, 42),
+                                   "PUT IT ALL BACK", ("reset", None),
+                                   tone=BAD))
+        self.buttons.append(Button(pygame.Rect(W // 2 - 60, H - 62, 260, 42),
+                                   "DONE", ("go", None), primary=True))
+        for b in self.buttons:
+            b.hover(mouse)
+            b.draw(surf, 18)
+        if self.no and self.no_t > 0:
+            text(surf, self.no, 15, (W // 2 + 70, H - 84), BAD, center=True)
+        elif self.waiting:
+            text(surf, "ESC to leave it as it was", 13,
+                 (W // 2 + 70, H - 84), FAINT, center=True)
+
+    # -- input ------------------------------------------------------------
+    def key(self, code):
+        """A key went down while something was listening for one."""
+        act = self.waiting
+        if act is None:
+            return None
+        self.waiting = None
+        if code == pygame.K_ESCAPE:
+            return None
+        if code in RESERVED:
+            self.no = "%s BELONGS TO THE MENUS" % key_name(code)
+            self.no_t = 2.4
+            SFX.play("deny", 0.5)
+            return None
+        took = bind_conflict(act, code)
+        set_bind(act, code)
+        if took:
+            # the one that lost it is drawn UNSET, in red, which is a
+            # thing the player can see. Two actions quietly sharing a key
+            # is a thing they cannot.
+            self.no = "%s TAKEN FROM %s" % (key_name(code), took)
+            self.no_t = 2.6
+        SFX.play("click", 0.6)
+        return None
+
+    def drag(self, pos):
+        """A slider being held. It follows the mouse until it is let go,
+        because a slider you have to click exactly is not a slider."""
+        if self.dragging is None:
+            return
+        i = [k for _r, k in self.dials].index(self.dragging)
+        r = self.dial_rect(i)
+        prefs()[self.dragging] = clamp((pos[0] - r.x) / float(r.w), 0.0, 1.0)
+        apply_volumes()
+
+    def release(self):
+        if self.dragging is not None:
+            self.dragging = None
+            prefs_save()
+
+    def click(self, pos):
+        if self.waiting is not None:
+            self.waiting = None
+            return None
+        for r, key in self.dials:
+            if not r.inflate(20, 18).collidepoint(pos):
+                continue
+            self.dragging = key
+            self.drag(pos)
+            if key == "sfx":
+                SFX.play("click", 0.9)       # so the dial can be heard
+            return None
+        for r, key in self.switches:
+            if not r.collidepoint(pos):
+                continue
+            prefs()[key] = not prefs()[key]
+            prefs_save()
+            SFX.play("click", 0.6)
+            if key == "full":
+                try:
+                    pygame.display.toggle_fullscreen()
+                except pygame.error:
+                    pass
+            return None
+        for r, act in self.binds:
+            if r.collidepoint(pos):
+                self.waiting = act
+                SFX.play("click", 0.5)
+                return None
+        for b in self.buttons:
+            if not b.hit(pos):
+                continue
+            if b.key[0] == "reset":
+                prefs_reset()
+                SFX.play("wreck", 0.4)
+                return None
+            SFX.play("click", 0.6)
+            return "go"
         return None
 
 
@@ -16425,6 +16803,7 @@ class App:
         self.choose = None
         self.bazaar = None
         self.record = None
+        self.settings = None
         self.run = None
         self.hangar = None
         self.fight = None
@@ -16600,6 +16979,25 @@ class App:
         self.state = "hangar"
         music("yard")
 
+    def to_settings(self, back):
+        """The dials, from wherever. `back` is the screen to put the
+        player down on afterwards, because the settings are reachable
+        from the gantry as well as the front door and the two are not the
+        same place to be returned to."""
+        self.settings = Settings(back)
+        self.state = "settings"
+
+    def settings_done(self):
+        prefs_save()
+        b = self.settings.back
+        self.settings = None
+        if b == "hangar" and self.run is not None:
+            self.hangar = Hangar(self.run)
+            self.state = "hangar"
+            music("yard")
+        else:
+            self.to_title()
+
     def to_title(self):
         self.title = Title()
         self.frames = None
@@ -16623,6 +17021,14 @@ class App:
                 return
             if ev.key == pygame.K_F11:
                 pygame.display.toggle_fullscreen()
+                prefs()["full"] = not prefs()["full"]
+                prefs_save()
+                return
+            if ev.key == pygame.K_F1 and self.state in ("hangar", "title"):
+                # the dials without leaving the campaign. A year is 365
+                # days long and nobody should have to quit to the front
+                # door to turn the music down.
+                self.to_settings(self.state)
                 return
         if self.state == "title":
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -16632,6 +17038,19 @@ class App:
                 self.pick("continue" if self.title.save.get("run") else "new")
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 self.running = False
+        elif self.state == "settings":
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                if self.settings.click(ev.pos) == "go":
+                    self.settings_done()
+            elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+                self.settings.release()
+            elif ev.type == pygame.MOUSEMOTION:
+                self.settings.drag(ev.pos)
+            elif ev.type == pygame.KEYDOWN:
+                if self.settings.waiting is not None:
+                    self.settings.key(ev.key)      # it is listening
+                elif ev.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                    self.settings_done()
         elif self.state == "record":
             act = None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -16796,29 +17215,35 @@ class App:
         elif act == "record":
             self.record = Record(self.title.save)
             self.state = "record"
+        elif act == "settings":
+            self.to_settings("title")
         elif act == "quit":
             self.running = False
 
     def fight_input(self):
+        """What is held down, by ACTION rather than by key.
+
+        Each action reads whatever the player has bound to it plus a
+        fixed alternate that cannot be taken away - the arrows, the shift
+        keys and the mouse. Somebody who rebinds every letter onto the
+        same key can still walk and still fire, which is the reason the
+        alternates are not in the table on the settings screen."""
         k = pygame.key.get_pressed()
         mb = pygame.mouse.get_pressed()
-        return {
-            "left": k[pygame.K_a] or k[pygame.K_LEFT],
-            "right": k[pygame.K_d] or k[pygame.K_RIGHT],
-            "brace": k[pygame.K_s] or k[pygame.K_DOWN],
-            "boost": (k[pygame.K_SPACE] or k[pygame.K_LSHIFT]
-                      or k[pygame.K_RSHIFT]),
-            "emp": k[pygame.K_e],
-            "lungs": k[pygame.K_l],
-            "scream": k[pygame.K_q],
-            "nuke": k[pygame.K_u],
-            "sac": k[pygame.K_y],
-            "fire_l": k[pygame.K_j] or mb[0],
-            "fire_r": k[pygame.K_k] or mb[2],
-            "flush": k[pygame.K_v],
-            "jar1": k[pygame.K_1], "jar2": k[pygame.K_2],
-            "jar3": k[pygame.K_3],
-        }
+
+        def down(act):
+            c = key_for(act)
+            return bool(c) and c < len(k) and k[c]
+
+        out = {act: down(act) for act, _l, _d, _a in BINDS}
+        out["left"] = out["left"] or k[pygame.K_LEFT]
+        out["right"] = out["right"] or k[pygame.K_RIGHT]
+        out["brace"] = out["brace"] or k[pygame.K_DOWN]
+        out["boost"] = (out["boost"] or k[pygame.K_LSHIFT]
+                        or k[pygame.K_RSHIFT])
+        out["fire_l"] = out["fire_l"] or mb[0]
+        out["fire_r"] = out["fire_r"] or mb[2]
+        return out
 
     # -- the frame --------------------------------------------------------
     def frame(self):
@@ -16837,6 +17262,9 @@ class App:
         elif self.state == "frame":
             self.frames.t += dt
             self.frames.draw(s, mouse)
+        elif self.state == "settings":
+            self.settings.update(dt)
+            self.settings.draw(s, mouse)
         elif self.state == "record":
             self.record.update(dt)
             self.record.draw(s, mouse)

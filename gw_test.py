@@ -92,6 +92,8 @@ import great_work as G                                          # noqa: E402
 _TMP = tempfile.mkdtemp(prefix="gwtest")
 G._save_dir = lambda: _TMP
 G.meta_forget()                  # the ledger caches, and we moved its home
+G._prefs_path = lambda: os.path.join(_TMP, G.PREFS_NAME)
+G.prefs_forget()                 # ...and the settings live beside them
 G.SFX.ok = False
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -159,6 +161,14 @@ def smoke():
                          "awards": [a[0] for a in G.AWARDS]}}
     rec.draw(surf, mouse)
     snap("record_full")
+    st = G.Settings("title")
+    st.t = 1.0
+    st.draw(surf, mouse)
+    snap("settings")
+    st.waiting = "boost"
+    st.no, st.no_t = "SPACE BELONGS TO THE MENUS", 2.0
+    st.draw(surf, st.bind_rect(3).center)
+    snap("settings_bind")
 
     run = G.Run()
     h = G.Hangar(run)
@@ -2150,6 +2160,117 @@ def yard():
     G.set_house("keal")
     print("  the record is per-slot, draws inside the screen, and the "
           "erase is two doors in now")
+
+    # -- SETTINGS: not in a slot, and no way to lock yourself out ---------
+    # Three slots are three campaigns, not three people. The dials and
+    # the keyboard live beside the slots so a new machine does not turn
+    # the music back up.
+    G.prefs_forget()
+    p = G.prefs()
+    assert set(p["keys"]) == {a[0] for a in G.BINDS}, p["keys"]
+    for act, lab, dflt, _alt in G.BINDS:
+        assert G.key_for(act) == dflt, act
+        assert lab == lab.upper() and len(lab) > 2, lab
+    codes = [d for _a, _l, d, _x in G.BINDS]
+    assert len(set(codes)) == len(codes), "two actions ship on one key"
+    for c in codes:
+        assert c not in G.RESERVED, "%s ships on a menu key" % G.key_name(c)
+    assert len({d[0] for d in G.DIALS} & {s[0] for s in G.SWITCHES}) == 0
+
+    # it survives being written and read back
+    G.prefs()["music"] = 0.25
+    G.set_bind("boost", pygame.K_z)
+    G.prefs_save()
+    G.prefs_forget()
+    assert abs(G.prefs()["music"] - 0.25) < 1e-6, G.prefs()["music"]
+    assert G.key_for("boost") == pygame.K_z
+
+    # a key taken from somebody leaves them UNSET rather than shared -
+    # two actions quietly on one key is a thing a player cannot see
+    G.set_bind("brace", pygame.K_z)
+    assert G.key_for("brace") == pygame.K_z
+    assert G.key_for("boost") == 0, "two actions kept the same key"
+    assert G.bind_conflict("left", pygame.K_z) == G.BIND_BY["brace"][1]
+    assert G.bind_conflict("brace", pygame.K_z) is None
+
+    # and the fight reads ACTIONS, so an unset one is simply not held,
+    # while the fixed alternates can never be taken away
+    st = G.Settings("title")
+    assert st.key(pygame.K_x) is None, "it took a key nobody asked for"
+    st.waiting = "sac"
+    st.key(pygame.K_ESCAPE)
+    assert G.key_for("sac") == G.BIND_BY["sac"][2], "ESC rebound something"
+    st.waiting = "sac"
+    st.key(pygame.K_RETURN)
+    assert G.key_for("sac") == G.BIND_BY["sac"][2], "a menu key was taken"
+    assert st.no and "MENUS" in st.no, st.no
+    st.waiting = "sac"
+    st.key(pygame.K_p)
+    assert G.key_for("sac") == pygame.K_p
+
+    # the dials reach the things that make a noise
+    G.prefs_reset()
+    for act, _l, d, _a in G.BINDS:
+        assert G.key_for(act) == d, "reset left %s bound elsewhere" % act
+    assert abs(G.prefs()["music"] - dict((k, v) for k, _l, v
+                                         in G.DIALS)["music"]) < 1e-6
+    st = G.Settings("title")
+    st.draw(surf, (0, 0))
+    st.click(st.dial_rect(0).midleft)          # drag the music to nothing
+    st.drag((st.dial_rect(0).x - 40, st.dial_rect(0).centery))
+    st.release()
+    assert G.prefs()["music"] == 0.0, G.prefs()["music"]
+    st.drag((st.dial_rect(0).right + 40, st.dial_rect(0).centery))
+    assert G.prefs()["music"] == 0.0, "a released slider kept following"
+    st.click(st.dial_rect(0).midright)
+    st.drag((st.dial_rect(0).right + 40, st.dial_rect(0).centery))
+    st.release()
+    assert G.prefs()["music"] == 1.0
+
+    # the switches switch, and stick
+    for r, key in list(st.switches):
+        was = G.prefs()[key]
+        st.click(r.center)
+        assert G.prefs()[key] is not was, key
+        G.prefs_forget()
+        assert G.prefs()[key] is not was, "%s did not survive the write" % key
+        st.draw(surf, (0, 0))
+    st.draw(surf, (0, 0))
+    done = next(b for b in st.buttons if b.key[0] == "go")
+    assert st.click(done.rect.center) == "go"
+    G.prefs_reset()
+    print("  %d keys, %d dials and %d switches, all off one file beside "
+          "the slots" % (len(G.BINDS), len(G.DIALS), len(G.SWITCHES)))
+
+    # -- and the fight is driven by the bindings, not by the letters ------
+    app_keys = G.App.fight_input.__doc__ or ""
+    assert "action" in app_keys.lower()
+    G.set_bind("left", pygame.K_n)
+    held = {pygame.K_n}
+    real = pygame.key.get_pressed
+
+    class _Keys(object):
+        def __len__(self):
+            return 512
+
+        def __getitem__(self, i):
+            return i in held
+    pygame.key.get_pressed = lambda: _Keys()
+    try:
+        inp = G.App.fight_input(None)
+        assert inp["left"] and not inp["right"], inp
+        held.clear()
+        held.add(pygame.K_a)                  # the old key does nothing now
+        assert not G.App.fight_input(None)["left"]
+        held.clear()
+        held.add(pygame.K_LEFT)               # ...but the arrow always works
+        assert G.App.fight_input(None)["left"]
+    finally:
+        pygame.key.get_pressed = real
+        G.prefs_reset()
+    print("  a rebound key moves the machine and the arrow keys cannot "
+          "be taken away")
+
 
 
     wipe_meta()
