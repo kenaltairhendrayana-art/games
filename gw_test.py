@@ -62,6 +62,27 @@ built-at-the-finale from 61% to 96%. Nothing else tried came close: a
 bigger DEEP HUNGER payout moved the end-of-year scrap pile by 600 and
 the win rate by nothing at all.
 
+A HURT PART IS WORTH LESS now (`wear_mult`), which is a change to the
+feedback LOOP rather than to a datasheet, so it was measured against
+itself - the same ten campaigns with the wear switched off and on:
+
+    floor      endings over 10          CATHEDRAL win%   taken
+    none       8 victories, 2 unfin.    80%              1636
+    0.92       7 victories, 3 unfin.    70%              1825
+    0.95       7 victories, 3 unfin.    70%              1952
+
+One campaign in ten, and nothing measurable for RYEZ, which arrives at
+its finale less hurt. Note that 0.95 costs exactly what 0.92 does: past a
+point it is the EXISTENCE of the debuff on the hardest fight that shows
+up, not its size, so there is nothing to buy by softening it further.
+
+The first pass was a floor of 0.84 and a free band of 0.25, and that read
+37% and three victories in eight - because damage CARRIES between
+landfalls, so a machine that limps into the sixth fight limps into the
+seventh worse. That is the spiral the city's relief works are
+deliberately weak to avoid. These numbers are where they are because of
+that measurement, not by eye.
+
 Watch `taken` as much as `win%`. A fight the pilot wins without being hurt
 is a fight with no texture in it, and three separate bugs hid behind a
 healthy-looking win rate: the shell collision window was empty, the
@@ -2053,6 +2074,80 @@ def yard():
     print("  all %d datasheets on both ladders wear what they have taken, "
           "and a CRAWLER does not take a CATHEDRAL's worth of it"
           % sum(len(G.roster_for(h)) for h in ("keal", "ryez")))
+
+    # -- A HURT PART IS WORTH LESS, and only slightly ---------------------
+    # A socket used to be binary - full value until it hit zero. So a
+    # machine at 30% health walked as fast and shrugged off as much as
+    # one out of the gantry, and damage did nothing at all before it
+    # killed a part. What is checked here is the SHAPE of the slide, not
+    # that it exists: this is the exact kind of feedback loop that turns
+    # one bad landfall into a lost campaign.
+    G.set_house("keal")
+    wm = G.Run("keal").mech
+    for s in wm.sockets():
+        if s not in G.HARDPOINTS:
+            wm.install(s, 3)
+
+    def at(f):
+        for s in wm.sockets():
+            if wm.fit[s] is not None:
+                wm.hp[s] = wm.max_hp(s) * (1.0 - f)
+        return (wm.speed, wm.dr, wm.vent, wm.spread, wm.dmg_mult,
+                wm.arm_stat("l", "cycle"))
+    whole = at(0.0)
+    # under the free band, a scratch is free
+    assert at(G.WEAR_FREE - 0.01) == whole, "a scratch cost something"
+    assert at(0.0) == whole
+    worst = at(0.999)
+    # ...and at the bottom it is exactly the floor, no further
+    for i, (a, b) in enumerate(zip(whole, worst)):
+        if i in (3, 5):                      # spread and cycle go UP
+            assert b > a, i
+            assert b <= a / G.WEAR_FLOOR + 1e-6, (i, a, b)
+        else:
+            assert b < a, i
+            assert b >= a * G.WEAR_FLOOR - 1e-6, (i, a, b)
+    assert 0.85 <= G.WEAR_FLOOR < 1.0, (
+        "the floor is %.2f - that is a spiral, not a texture"
+        % G.WEAR_FLOOR)
+    # and it is monotonic all the way down, with no step in it
+    prev = None
+    for f in (0.3, 0.45, 0.6, 0.75, 0.9, 0.99):
+        v = at(f)[0]
+        assert prev is None or v <= prev + 1e-9, f
+        prev = v
+    at(0.0)
+    assert wm.speed == whole[0], "it did not come back when mended"
+
+    # a wrecked socket is still all-or-nothing - wear is what happens
+    # BEFORE that, not a softer version of it
+    wm.hp["legs"] = 0.0
+    assert wm.speed == 0.0
+    wm.hp["legs"] = wm.max_hp("legs")
+
+    # the two stats where WORSE means BIGGER are the two that were going
+    # the wrong way: a smaller spread is a tighter group and a smaller
+    # cycle is a faster arm, so wearing those down was a reward
+    assert set(G.WEAR_UP) == {"spread", "cycle"}
+    assert G.wear_mult(0.9, "speed") < 1.0 < G.wear_mult(0.9, "spread")
+    assert G.wear_mult(0.9, "boost") == 1.0, "a flag was worn down"
+    assert G.wear_mult(0.0, "speed") == 1.0
+
+    # and it SAYS so, on both screens that show a health bar
+    at(0.0)
+    assert all(G.wear_note(wm, s) is None for s in wm.sockets())
+    at(0.85)
+    said = {s: G.wear_note(wm, s) for s in wm.sockets()}
+    for s in ("legs", "armour", "head", "l_arm", "reactor"):
+        assert said[s] and said[s].startswith("-") and "%" in said[s], (
+            "%s is costing something and does not say so: %r" % (s, said[s]))
+    assert said["l_wpn"] is None, "a hardpoint claimed a wear it has not got"
+    wm.hp["legs"] = 0.0
+    assert G.wear_note(wm, "legs") is None, "a dead part is still quoting"
+    print("  a part slides from full to %d%% between %d%% and 100%% "
+          "damage, and every screen with a bar on it says the number"
+          % (round(G.WEAR_FLOOR * 100), round(G.WEAR_FREE * 100)))
+
 
 
 

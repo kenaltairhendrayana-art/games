@@ -4108,6 +4108,74 @@ REFINE_RYEZ_BLURB = ("Slow, wasteful, and it works. It is still better than "
                      "going out short.")
 
 # ---------------------------------------------------------------------------
+# WHAT A HURT PART IS WORTH
+#
+# A socket used to be binary: full value until its health hit zero and
+# then nothing at all. So a machine at 30% health walked as fast, shot as
+# straight and shrugged off as much as one straight out of the gantry,
+# and the only thing damage did before it killed a part was change the
+# colour of it.
+#
+# Now a part slides. Two numbers hold the whole of it, and both are
+# deliberately timid:
+#
+# WEAR_FREE is how much damage costs NOTHING. A landfall where something
+# clips you should not be a landfall you limp home from, and the yard
+# should not be a place you go after every scratch - under a quarter
+# gone, a part is a part.
+#
+# WEAR_FLOOR is the worst a part ever performs, at one hit point left.
+# It is 0.84 rather than something dramatic because this is the exact
+# shape of feedback loop that turns a bad landfall into a lost campaign:
+# hurt machine fights worse, takes more damage, fights worse still. The
+# game already has one of those on the city and it is deliberately weak
+# for the same reason. Sixteen per cent is felt and is not a spiral.
+#
+# It lives in `Mech.stat` and nowhere else, which is why it reaches
+# everything - speed, venting, plate, sensors, aim and both arms come
+# through that one function, and none of them had to be told.
+# ---------------------------------------------------------------------------
+WEAR_FREE = 0.35                 # damage under this costs nothing at all
+WEAR_FLOOR = 0.92                # ...and this is the worst it ever gets
+# the stats where WORSE means BIGGER. A spread of 1.0 is a tight group
+# and a cycle of 0.6 is a fast arm, so wearing those DOWN would be a
+# reward for having been hit.
+WEAR_UP = ("spread", "cycle")
+WEAR_SKIP = ("boost", "hp")      # a flag and a health pool, not a rating
+
+
+def wear_mult(frac, key="speed"):
+    """What a part at `frac` damage is worth, as a multiplier."""
+    f = clamp((frac - WEAR_FREE) / (1.0 - WEAR_FREE), 0.0, 1.0)
+    if f <= 0.0 or key in WEAR_SKIP:
+        return 1.0
+    loss = (1.0 - WEAR_FLOOR) * f
+    return 1.0 / (1.0 - loss) if key in WEAR_UP else 1.0 - loss
+
+
+# what each socket is actually costing you, in the words of the thing it
+# does - "-11%" on its own is a number, "-11% WALK" is a decision
+WEAR_WORD = {"legs": ("speed", "WALK"), "reactor": ("vent", "VENTING"),
+             "armour": ("dr", "PLATE"), "head": ("dmg", "AIM"),
+             "l_arm": ("cycle", "SWING"), "r_arm": ("cycle", "SWING")}
+
+
+def wear_note(mech, socket):
+    """One short line for a socket that is hurt enough to be costing
+    something, or None. The panel that offers the repair says what the
+    repair buys - an effect nobody can see is an effect nobody has."""
+    row = WEAR_WORD.get(socket)
+    if row is None or mech.fit[socket] is None or mech.hp[socket] <= 0:
+        return None
+    key, word_ = row
+    m = wear_mult(mech.damage_frac(socket), key)
+    if key in WEAR_UP:
+        m = 1.0 / m
+    down = int(round((1.0 - m) * 100))
+    return ("-%d%% %s" % (down, word_)) if down >= 1 else None
+
+
+# ---------------------------------------------------------------------------
 # THE MACHINE
 #
 # The mech is nine numbers and nine hit points. Everything else about it -
@@ -4198,10 +4266,16 @@ class Mech:
         return self.fit[socket] is not None and self.hp[socket] > 0
 
     def stat(self, socket, key, default=0.0):
+        """What this socket is worth RIGHT NOW.
+
+        Everything the machine can do comes through here - speed, heat,
+        venting, plate, sensors, aim, and both arms - so this is the one
+        place a hurt part has to be made to matter, and the rest of the
+        file did not have to be told. See `wear_mult`."""
         p = self.held(socket)
         if p is None or self.hp[socket] <= 0:
             return default
-        return p.get(key, default)
+        return p.get(key, default) * wear_mult(self.damage_frac(socket), key)
 
     def weapon(self, side):
         """The weapon on a side, or None if the weapon or its arm is out."""
@@ -10867,7 +10941,11 @@ class Fight:
             lab = (RYEZ_HUD.get(s) if CURRENT["house"] == "ryez" else None)
             lab = lab or HUD_LABEL.get(s, s.upper())
             text(surf, lab, 13, (26, y), DIM if f > 0 else FAINT)
-            bar(surf, pygame.Rect(140, y + 2, 96, 8), f, col)
+            note = wear_note(m, s) if f > 0 else None
+            bar(surf, pygame.Rect(140, y + 2, 96 if not note else 52, 8),
+                f, col)
+            if note:
+                text(surf, note.split()[0], 12, (236, y), WARN, right=True)
             y += 17
         # heat, which is the only ammunition in the game
         hb = pygame.Rect(14, 208, 236, 26)
@@ -13082,9 +13160,18 @@ class Hangar:
                 if p is not None:
                     f = run.mech.hp[s] / max(1.0, run.mech.max_hp(s))
                     col = GOOD if f > 0.6 else (WARN if f > 0.25 else BAD)
-                    bar(surf, pygame.Rect(row.x + 24, row.y + 34,
-                                          row.w - 38, 5), f,
+                    # what the damage is COSTING, next to the bar that
+                    # shows it. A bar says a part is hurt; it does not
+                    # say the machine is walking eight per cent slower,
+                    # and that is the half that decides whether the
+                    # repair is worth a crew
+                    note = wear_note(run.mech, s)
+                    bw = row.w - 38 - (56 if note else 0)
+                    bar(surf, pygame.Rect(row.x + 24, row.y + 34, bw, 5), f,
                         col if f > 0 else (70, 64, 70))
+                    if note:
+                        text(surf, note, 12, (row.right - 8, row.y + 29),
+                             WARN, right=True)
             if job is not None:
                 bar(surf, pygame.Rect(row.x + 24, row.y + 34, row.w - 38, 5),
                     job.prog, CORE)
