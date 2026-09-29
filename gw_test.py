@@ -83,6 +83,21 @@ seventh worse. That is the spiral the city's relief works are
 deliberately weak to avoid. These numbers are where they are because of
 that measurement, not by eye.
 
+THE MONTHS are the other half of the weather and they are not luck: day
+340 is midwinter in every campaign that gets there. Measured the same
+way, four years a side with the season table emptied and filled:
+
+    seasons   KEAL endings over 4     RYEZ over 4      last landfall
+    off       1 victory               2 victories      50% / 50%
+    on        2 victories             3 victories      67% / 75%
+
+One campaign in four a side, in the player's favour, and it is the FINALE
+that moves - the year ends on day 365, which is midwinter, and midwinter
+is the month that vents. At the first pass it was +42% venting there and
+the last landfall went 50% to 100%; it is +14% now, and winter carries an
+ICE dial that only the machine pays, because a cold that slows everything
+on the road equally is fair and therefore worth nothing.
+
 EVENTS came in after all of the above, and TWO THINGS ABOUT THEM MATTER
 HERE. A `Run` now takes one number off the RNG for its weather seed, so
 every campaign at a given seed is a DIFFERENT campaign than it was before
@@ -2392,6 +2407,96 @@ def yard():
           "the same seed rolls the same weather twice" % (len(G.EVENTS),
                                                           len(good)))
 
+    # -- TWELVE MONTHS, AND THEY ARE NOT LUCK -----------------------------
+    # The weather is rolled. The season is on the CALENDAR: day 340 is
+    # midwinter in every campaign that ever gets there, which is the
+    # whole point - a shape you can read off the wall in the yard six
+    # weeks early is a shape you can build for.
+    assert len(G.SEASONS) == 12, len(G.SEASONS)
+    keys = [s[0] for s in G.SEASONS]
+    assert len(set(keys)) == 12
+    for key, name, note, dials in G.SEASONS:
+        assert name == name.upper() and len(name) > 3, name
+        assert len(note) > 30 and note[0].islower(), (key, note)
+        assert dials, "%s is a month that does nothing" % key
+        for d in dials:
+            assert d in ("vent", "wade", "ice", "spread", "warn", "hp",
+                         "city", "pay", "marks", "fog"), (key, d)
+        assert G.season_line(key), "%s says nothing on the wall" % key
+
+    assert G.month_of(1) == 0 and G.month_of(365) == 11
+    seen = [G.month_of(d) for d in range(1, 366)]
+    assert seen == sorted(seen), "the year goes backwards somewhere"
+    assert len(set(seen)) == 12, sorted(set(seen))
+
+    # only a mode long enough for a year to mean anything
+    G.set_house("keal")
+    for m in G.MODE_KEYS:
+        r = G.Run("keal", "standard", m)
+        got = G.season_at(r)
+        assert (got is not None) == G.seasonal(m), (m, got)
+    assert G.seasonal("story") and G.seasonal("watch")
+    assert not G.seasonal("landfall") and not G.seasonal("rush")
+
+    # a year walks through the months in order and ends in winter
+    yr = G.Run("keal", "standard", "story")
+    months = []
+    for i in range(len(G.STORY_SCHEDULE)):
+        yr.day = yr.landfall(i)
+        months.append(G.season_at(yr))
+    assert months[0] == "jan" and months[-1] == "dec", months
+    assert len(set(months)) >= 9, months
+
+    # -- and every dial reaches the fight ---------------------------------
+    def fight_in(month, ev=None):
+        rr = G.Run("keal", "standard", "story")
+        rr.kaiju_index = 4
+        rr.day = int(G.MONTH_DAYS * month) + 5
+        for s in rr.mech.sockets():
+            if s not in G.HARDPOINTS:
+                rr.mech.install(s, 3)
+        rr.mech.install("l_wpn", "pile")
+        f = G.Fight(rr, rr.next_kind())
+        f.ev = ev
+        f.__init__(rr, rr.next_kind())
+        f.ev = ev
+        f.apply_season()
+        f.apply_event()
+        return f
+    jul, dec = fight_in(6), fight_in(11)
+    assert jul.vent_mult < 1.0 < dec.vent_mult, (jul.vent_mult,
+                                                 dec.vent_mult)
+    assert dec.wade < 1.0 and dec.wade_me < 1.0, (dec.wade, dec.wade_me)
+    mar = fight_in(2)
+    assert mar.aim_spread > jul.aim_spread
+    oct_ = fight_in(9)
+    assert oct_.sight == 0.0, "the dark did not take the warning"
+    assert oct_.fogged
+    jun = fight_in(5)
+    assert jun.sight > jul.sight, "the long light bought nothing"
+    may = fight_in(4)
+    plain = fight_in(8)
+    assert may.boss().max_hp > plain.boss().max_hp, "spawning was empty"
+    aug = fight_in(7)
+    assert aug.pay > 1.0 and fight_in(8).marks_pay > 1.0
+
+    # the month and the weather MULTIPLY, so a storm in October is worse
+    # than a storm in June and nobody had to write that down
+    s_jun = fight_in(5, "storm")
+    s_oct = fight_in(9, "storm")
+    assert s_oct.aim_spread > s_jun.aim_spread, (s_jun.aim_spread,
+                                                 s_oct.aim_spread)
+    assert s_jun.sight == s_oct.sight == 0.0
+
+    # ICE is the half of winter only the machine pays. The cold slows
+    # everything, which is fair and therefore worth nothing.
+    assert dec.wade_me < 1.0 and jul.wade_me == 1.0
+    assert G.season_dials("dec").get("ice", 1.0) < 1.0
+    print("  12 months, %d of them in a year's landfalls, and a storm in "
+          "the dark is worse than a storm in June"
+          % len(set(months)))
+
+
     # -- FIVE WAYS TO PLAY IT ---------------------------------------------
     # A mode is a SCHEDULE and a LADDER and nothing else, which is why
     # there can be five. What is checked is that each one is actually a
@@ -3957,6 +4062,10 @@ def gov():
     assert len(deals) == 5, len(deals)
     assert all(w.seller == "zach" for w in deals), "somebody else is dealing"
     kind = G.roster_for("keal")[2]
+    # weather off for both halves of the comparison: IT CAME ASHORE FED
+    # and SPAWNING both put health on a boss, and this block is a claim
+    # about the CONTRACTS
+    was_ev, G.EVENT_CHANCE = G.EVENT_CHANCE, 0.0
     bare = G.Run("keal")
     bare.kaiju_index = 2
     was = {"walk": G.Enemy(kind, 0).walk_speed,
@@ -3979,6 +4088,7 @@ def gov():
            "marks": run.marks_mult,
            "scrap": run.scrap_mult,
            "days": [run.landfall(i) for i in range(6)]}
+    G.EVENT_CHANCE = was_ev
     assert now["walk"] > was["walk"], (was["walk"], now["walk"])
     assert now["hide"] < was["hide"], "the hide did not thicken"
     assert now["hp"] > was["hp"] * 1.15

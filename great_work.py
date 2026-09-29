@@ -9007,6 +9007,136 @@ EVENTS = (
 EVENT_BY = {e[0]: e for e in EVENTS}
 
 
+# ---------------------------------------------------------------------------
+# THE TIME OF YEAR
+#
+# A landfall's WEATHER is rolled and is luck. A landfall's SEASON is on
+# the calendar and is not: day 340 is midwinter in every campaign that
+# ever gets there, and a player who knows that can build for it.
+#
+# That is the whole reason this exists next to the events rather than
+# inside them. The events make a year VARY; the seasons give it a SHAPE,
+# and a shape you can read off the wall in the yard six weeks early is a
+# shape you can plan around - fit the heat sinks in June, take them out
+# in December, and go into October with something that does not need to
+# see what it is hitting.
+#
+# The dials are the ones the fight already has, and they MULTIPLY with
+# whatever the weather rolled, so a storm in October is worse than a
+# storm in June and nobody had to write that down.
+#
+# Only in a mode long enough for a year to mean anything. Ten weeks is
+# two and a half months and picking one of them would be arbitrary.
+# ---------------------------------------------------------------------------
+MONTH_DAYS = 30.5
+
+# key, name, the line on the brief, and the dials it turns
+SEASONS = (
+    ("jan", "DEEP WINTER",
+     "cold enough to matter. The core sheds heat like it never does, and "
+     "there is ice the length of the road",
+     {"vent": 1.12, "wade": 0.88, "ice": 0.86}),
+    ("feb", "THE THAW",
+     "everything that froze in January is water now, and it is all in "
+     "the streets behind you",
+     {"wade": 0.90, "city": 1.14}),
+    ("mar", "THE GALES",
+     "wind straight off the water. Nothing you fire goes quite where you "
+     "put it",
+     {"spread": 1.42}),
+    ("apr", "THE RAINS",
+     "grey from the sea to the ridge, and the spotters are working off "
+     "sound",
+     {"wade": 0.93, "warn": -0.25}),
+    ("may", "SPAWNING",
+     "whatever is out there has been breeding. They come ashore heavier "
+     "and they do not come alone",
+     {"hp": 1.12}),
+    ("jun", "LONG LIGHT",
+     "you can see it from the ridge. You can also feel the deck through "
+     "your boots",
+     {"warn": 0.40, "vent": 0.92}),
+    ("jul", "THE HEAT",
+     "the worst month to run a reactor in. Everything you fire costs more "
+     "than it says on the card",
+     {"vent": 0.72}),
+    ("aug", "THE DOG DAYS",
+     "still hot, and the yards up the coast are buying salvage faster "
+     "than they can store it",
+     {"vent": 0.80, "pay": 1.18}),
+    ("sep", "THE TURN",
+     "the first cool nights, and the desk is paying properly again",
+     {"marks": 1.15}),
+    ("oct", "THE DARK",
+     "dark by four and fog off the water by five. You will not see it "
+     "wind up and you will not group tightly",
+     {"warn": -1.0, "spread": 1.62, "fog": 1}),
+    ("nov", "FIRST FROST",
+     "cold coming back, which the core likes and the road does not",
+     {"vent": 1.10, "wade": 0.94, "ice": 0.92}),
+    ("dec", "MIDWINTER",
+     "the slowest month of the year and the coolest running. Nothing out "
+     "there is in a hurry either - and nobody gets out of a street in "
+     "this",
+     {"vent": 1.14, "wade": 0.84, "ice": 0.80, "city": 1.15}),
+)
+SEASON_BY = {s[0]: s for s in SEASONS}
+
+
+def month_of(day):
+    """0..11. Day one is the first of the first month."""
+    return int(clamp(int((max(1, day) - 1) // MONTH_DAYS), 0, 11))
+
+
+def seasonal(mode):
+    """Whether this mode is long enough for a year to mean anything."""
+    return mode == "story" or endless(mode)
+
+
+def season_at(run, day=None):
+    if run is None or not seasonal(getattr(run, "mode", "landfall")):
+        return None
+    return SEASONS[month_of(run.day if day is None else day)][0]
+
+
+def season_name(key):
+    row = SEASON_BY.get(key)
+    return row[1] if row else ""
+
+
+def season_note(key):
+    row = SEASON_BY.get(key)
+    return row[2] if row else ""
+
+
+def season_dials(key):
+    row = SEASON_BY.get(key)
+    return row[3] if row else {}
+
+
+def season_line(key):
+    """The short form, for a header that has a day count on it already."""
+    d = season_dials(key)
+    bits = []
+    if d.get("vent", 1.0) != 1.0:
+        bits.append("VENT %+d%%" % round((d["vent"] - 1) * 100))
+    if d.get("wade", 1.0) != 1.0:
+        bits.append("WALK %+d%%" % round((d["wade"] - 1) * 100))
+    if d.get("spread", 1.0) != 1.0:
+        bits.append("SPREAD %+d%%" % round((d["spread"] - 1) * 100))
+    if d.get("warn", 0.0):
+        bits.append("SIGHT %+.1fs" % d["warn"])
+    if d.get("hp", 1.0) != 1.0:
+        bits.append("THEM %+d%%" % round((d["hp"] - 1) * 100))
+    if d.get("city", 1.0) != 1.0:
+        bits.append("BLOCKS %+d%%" % round((d["city"] - 1) * 100))
+    if d.get("pay", 1.0) != 1.0:
+        bits.append("SALVAGE %+d%%" % round((d["pay"] - 1) * 100))
+    if d.get("marks", 1.0) != 1.0:
+        bits.append("MARKS %+d%%" % round((d["marks"] - 1) * 100))
+    return "   ".join(bits)
+
+
 def event_at(run, index=None):
     """The event for a landfall, or None. Deterministic, and free of the
     global RNG - see the note above."""
@@ -9711,6 +9841,7 @@ class Fight:
         self.jars = []               # what came out in the log
         self.tutorial = 4.0 if run.kaiju_index == 0 else 0.0
         self.ev = event_at(run)
+        self.season = season_at(run)
         self.wade = 1.0              # what the water leaves of a walk
         self.blind = False           # no warning, and a wide group
         self.quaking = False
@@ -9721,7 +9852,42 @@ class Fight:
         self.city_hit = 1.0          # ...and what a block costs tonight
         self.vent_mult = 1.0
         self.warn_bonus = 0.0
+        self.season_spread = 1.0
+        self.wade_me = 1.0           # ...and what only the machine pays
+        self.apply_season()
         self.apply_event()
+
+    def apply_season(self):
+        """The month, applied before the weather so the two multiply.
+
+        A storm in October is worse than a storm in June and nobody had
+        to write that down - the storm sets `blind` and October has
+        already widened the group and taken the sight."""
+        d = season_dials(self.season)
+        if not d:
+            return
+        self.wade *= d.get("wade", 1.0)
+        # ICE is the half of winter that only YOU pay. The cold slows
+        # everything on the road, which is fair and therefore worth
+        # nothing; what a frozen road actually does is take the feet out
+        # from under the thing with feet. Without it the winter months
+        # were a straight gift - measured, they took the last landfall
+        # of the year from 50% to 100%.
+        self.wade_me *= d.get("ice", 1.0)
+        self.vent_mult *= d.get("vent", 1.0)
+        self.season_spread = d.get("spread", 1.0)
+        self.warn_bonus += d.get("warn", 0.0)
+        self.city_hit *= d.get("city", 1.0)
+        self.pay *= d.get("pay", 1.0)
+        self.marks_pay *= d.get("marks", 1.0)
+        if d.get("fog"):
+            self.fogged = True
+        if d.get("hp", 1.0) != 1.0:
+            for e in self.enemies:
+                e.max_hp *= d["hp"]
+                e.hp = e.max_hp
+        if d:
+            self.say(season_name(self.season))
 
     def apply_event(self):
         """Everything one event does, in one place.
@@ -9733,6 +9899,7 @@ class Fight:
         ev = self.ev
         if ev is None:
             return
+
         if ev == "flood":
             self.wade = WADE
         elif ev == "runners":
@@ -9793,12 +9960,16 @@ class Fight:
     # -- what the weather leaves you ---------------------------------------
     @property
     def sight(self):
-        """Seconds of telegraph, here, tonight."""
-        return 0.0 if self.blind else self.mech.warn + self.warn_bonus
+        """Seconds of telegraph, here, tonight. The month can take it
+        away as surely as the weather can - October is dark by four."""
+        if self.blind:
+            return 0.0
+        return max(0.0, self.mech.warn + self.warn_bonus)
 
     @property
     def aim_spread(self):
-        return self.mech.spread * (BLIND_SPREAD if self.blind else 1.0)
+        return (self.mech.spread * self.season_spread
+                * (BLIND_SPREAD if self.blind else 1.0))
 
     def quake_tick(self, dt):
         """The ground, still moving. It takes BOTH of you - an aftershock
@@ -10970,7 +11141,7 @@ class Fight:
             (self.mech.alive("l_arm") or self.mech.alive("r_arm"))
         if self.pose.brace:
             move = 0.0
-        speed = self.mech.speed * self.wade
+        speed = self.mech.speed * self.wade * self.wade_me
         if self.boost > 0:
             speed *= 2.3
         self.mvel = approach(self.mvel, move * speed, speed * 5.0 * dt)
@@ -13722,6 +13893,18 @@ class Hangar:
         r = pygame.Rect(14, 12, W - 28, 46)
         panel(surf, r, PANEL, LINE, 6)
         text(surf, "DAY %d" % run.day, 26, (r.x + 14, r.y + 10), INK)
+        # the month, in the yard, where it is still worth something. A
+        # season on the brief is a warning; a season on the wall six
+        # weeks early is a decision about what to put in the rack.
+        se = season_at(run)
+        if se:
+            text(surf, season_name(se), 13, (r.x + 14, r.y + 34 - 4),
+                 ALLOY_C)
+            line = season_line(se)
+            if line:
+                text(surf, line, 11,
+                     (r.x + 18 + font(13).size(season_name(se))[0], r.y + 32),
+                     FAINT)
         nl = run.days_left
         kind = run.next_kind()
         if nl is not None and kind is not None:
@@ -14429,6 +14612,22 @@ class Brief:
         # the note gives its lines up first because it is the only one of
         # the three that repeats every campaign.
         STATS_AT = 318
+        # THE MONTH goes on the right, over the empty half of the sky.
+        # The left column already holds an escort line, the weather and
+        # the datasheet's own note, and a fourth thing stacked on top of
+        # those put the stats through the loadout panel - which is the
+        # third time this screen has run out of room downwards.
+        se = season_at(run)
+        if se:
+            sx0 = W - 470
+            text(surf, season_name(se), 22, (sx0, 44), ALLOY_C)
+            sy = 74
+            for line in wrap(season_note(se), 14, 420)[:3]:
+                text(surf, line, 14, (sx0, sy), (176, 158, 120), bold=False)
+                sy += 18
+            bits = season_line(se)
+            if bits:
+                text(surf, bits, 13, (sx0, sy + 6), PAINT)
         ev = event_at(run)
         if ev:
             good = event_good(ev)
