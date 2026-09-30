@@ -1043,6 +1043,18 @@ WARE_LIST = [
          "mending costs 30% less, for good",
          "A proper set, indexed, and nobody is allowed to borrow them."),
     # -- Jack: the menagerie ------------------------------------------------
+    Ware("ch_kittle", "nobody", "THE KITTLE", 0, "cheat",
+         "a frame nobody at KEAL will admit to drawing",
+         "Somebody in the drawing office has a cat. That is the whole "
+         "of the explanation and nobody is going to give you another.",
+         house="keal"),
+    Ware("st_kittle", "nobody", "THE KITTLE STRAIN", 0, "cheat",
+         "a strain nobody at RYEZ will admit to growing",
+         "It came out of a tank nobody signed for, it will not stop "
+         "sitting in the doorway, and Vask says it was always meant to "
+         "look like that.",
+         house="ryez"),
+
     Ware("spec_shriek", "jack", "SHRIEKER", 22, "specimen",
          "one jar: staggers whatever is in front of you",
          "Do not open it indoors. He is not joking about that."),
@@ -1672,6 +1684,45 @@ def apply_service(key, run):
         run.news.append("+400 %s FROM THE LAB" % word("scrap", "SCRAP"))
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# THE CODE
+#
+# Type it on the front door. There is no box to type it into and there is
+# not going to be one: a cheat with a text field on the title screen is a
+# menu item, and a word you just try is a secret.
+#
+# It is per SLOT, like everything else the ledger holds, because a slot
+# is a career and this is a thing that happened in one of them.
+# ---------------------------------------------------------------------------
+CODES = {"KITTLE": ("ch_kittle", "st_kittle")}
+CODE_BUFFER = 12                 # how many keys back it looks
+
+
+def grant_ware(key):
+    """Put a line in the ledger without taking anything for it."""
+    if key not in WARES or bought(key):
+        return False
+    m = dict(meta())
+    m["owned"] = list(m["owned"]) + [key]
+    _meta_put(m)
+    return True
+
+
+def try_code(typed):
+    """Whatever has just been typed, or None. Returns the code that
+    landed, so the screen can say something."""
+    up = (typed or "").upper()
+    for word, wares in CODES.items():
+        if not up.endswith(word):
+            continue
+        if all(bought(k) for k in wares):
+            return None          # this slot has already got it
+        for k in wares:
+            grant_ware(k)
+        return word
+    return None
 
 
 def buy_ware(key):
@@ -3077,6 +3128,41 @@ CHASSIS_LIST = [
             prop={"leg": 1.30, "legw": 0.68, "body": 0.84, "wide": 0.76,
                   "head": 0.88, "arm": 1.10}),
 
+    # -- what the code gets you, one a side ------------------------------
+    # Cream and gold with a cyan core, a round helm with two ears on it,
+    # and four claws. It is not a joke frame: it is quick, it is light,
+    # it mends itself a little and it has almost no plate, so it plays
+    # like nothing else in the book.
+    Chassis("kittle", "THE KITTLE", "ch_kittle",
+            "Somebody in the drawing office has a cat. It is a very good "
+            "frame and nobody will say whose idea the ears were.",
+            "quick, light, lands on its feet; almost no plate",
+            mult={"speed": 1.30, "hp": 0.88, "dr": 0.62, "heat": 1.05,
+                  "vent": 1.22, "dmg": 1.06, "crit": 1.45, "melee": 1.18,
+                  "spread": 0.82},
+            guns=("rendclaw",), flags=("mends",),
+            tones={"main": (236, 232, 220), "dark": (108, 96, 74),
+                   "light": (252, 250, 244), "trim": (196, 158, 96),
+                   "plate": (206, 172, 108)},
+            style={"head": "cat", "shoulder": "pauldron", "core": True,
+                   "eye": "lens", "build": "hero"},
+            prop={"leg": 1.02, "legw": 1.22, "body": 1.04, "wide": 1.24,
+                  "head": 1.06, "arm": 1.16}),
+
+    Chassis("kittlestrain", "THE KITTLE", "st_kittle",
+            "It came out of a tank nobody signed for. It will not stop "
+            "sitting in the doorway and it is not sorry.",
+            "quick, light, lands on its feet; almost no hide",
+            mult={"speed": 1.30, "hp": 0.88, "dr": 0.62, "heat": 1.05,
+                  "vent": 1.22, "dmg": 1.06, "crit": 1.45, "melee": 1.18,
+                  "spread": 0.82},
+            guns=("rendclaw",), flags=("mends",),
+            style={"beast": "kittle"},
+            tones={"main": (234, 231, 223), "dark": (118, 104, 84),
+                   "light": (252, 251, 247), "trim": (198, 124, 120)},
+            prop={"leg": 0.98, "legw": 1.04, "body": 0.96, "wide": 1.04,
+                  "head": 1.52, "arm": 0.98}),
+
     Chassis("gravid", "GRAVID MOTHER", "st_gravid",
             "Carrying, and it has been carrying for months. There is room "
             "on it for things there is no room for on anything else.",
@@ -3658,6 +3744,12 @@ WEAPON_FAMILIES = (("fist", "pile"), ("saw", "ripper"), ("auto", "revolver"),
                    ("storm", "tempest"), ("mortar", "bombard"),
                    ("tether", "harpoon"))
 # what is not in the book until somebody has sold you the book
+# THE CODE. Two lines that are in the book and in nobody's stall: the
+# seller is a counter that does not exist, so no shop lists them, and the
+# kind is one the cupboard award skips, so completing the book does not
+# require knowing a word nobody has been told.
+CHEAT_WARES = ("ch_kittle", "st_kittle")
+
 BLUEPRINT_WEAPONS = {"rail": "bp_rail", "hook": "bp_hook",
                      "claw": "bp_claw", "flame": "bp_flame",
                      "blight": "bp_blight", "acid": "bp_acid",
@@ -5627,6 +5719,27 @@ def chassis_overlay_front(rig, mech, t):
         rig.poly([(-21, hy - 2), (21, hy - 2), (21, hy + 7), (-21, hy + 7)],
                  trim)
         rig.light((0, hy + 2), 36, trim, 95)
+    elif head == "cat":                          # ears, and one visor
+        for sgn in (-1, 1):
+            ear = [(sgn * 8, hy - 12), (sgn * 26, hy - 8),
+                   (sgn * 22, hy - 46)]
+            rig.poly(ear, main)
+            rig.poly(ear, shade(dark, 1.1), 1)
+            rig.poly([(sgn * 13, hy - 12), (sgn * 22, hy - 10),
+                      (sgn * 20, hy - 38)], trim)
+        rig.poly([(-26, hy - 12), (26, hy - 12), (28, hy + 18),
+                  (-28, hy + 18)], main)
+        rig.poly([(-26, hy - 12), (26, hy - 12), (28, hy + 18),
+                  (-28, hy + 18)], shade(dark, 1.1), 1)
+        rig.poly([(-21, hy - 3), (21, hy - 3), (21, hy + 6), (-21, hy + 6)],
+                 trim)
+        rig.light((0, hy + 1), 36, trim, 92)
+        rig.poly([(-5, hy + 9), (5, hy + 9), (0, hy + 15)],
+                 shade(trim, 0.78))
+        for sgn in (-1, 1):                      # whiskers
+            for k in (-1, 0, 1):
+                rig.bar((sgn * 7, hy + 11 + k * 2),
+                        (sgn * 30, hy + 9 + k * 5), 1.4, shade(main, 0.8))
     elif head == "slab":                         # a visor band, no face
         rig.poly([(-26, hy - 10), (26, hy - 10), (28, hy + 18), (-28, hy + 18)],
                  dark)
@@ -5995,10 +6108,15 @@ def _taper(ax, ay, bx, by, wa, wb, bow=0.0):
     return out
 
 
-def leg_xs(tier):
+def leg_xs(tier, plan=None):
     """Where the pairs of legs come out of the belly. Two pairs or three -
-    the count is the loudest thing about the silhouette, so it is the thing
-    the tier changes."""
+    the count is the loudest thing about the silhouette, so it is the
+    thing the tier changes.
+
+    A PLAN can override it, and exactly one does: a cat has four legs at
+    every tier, because a six-legged cat is not a cat."""
+    if plan == "kittle":
+        return (64.0, -40.0)
     return (66.0, -34.0) if tier == 1 else (72.0, 8.0, -58.0)
 
 
@@ -6013,7 +6131,8 @@ LEG_PLAN = {"hollow":  (1.18, 1.22, 0.58, 0.34, 1.20),   # long, thin, splayed
             "spire":   (0.50, 0.54, 2.05, -0.14, 0.52),  # a plinth
             "stalker": (1.34, 1.30, 0.54, 0.26, 1.42),   # spidery
             "gravid":  (0.80, 0.86, 1.52, 0.36, 0.95),   # short, wide apart
-            "bloom":   (0.96, 1.00, 1.14, -0.16, 0.58)}  # stiff, rooted
+            "bloom":   (0.96, 1.00, 1.14, -0.16, 0.58),  # stiff, rooted
+            "kittle":  (0.88, 0.92, 1.00, 0.10, 0.86)}   # a cat, sitting
 
 
 def leg_geom(tier, plan=None):
@@ -6057,7 +6176,7 @@ def bio_legs(tier, phase=0.0, moving=0.0, half=None, plan=None):
     elif half == "near":
         pairs = pairs[1:]
     for dx, sh, off in pairs:
-        for i, rx in enumerate(leg_xs(tier)):
+        for i, rx in enumerate(leg_xs(tier, plan)):
             root, knee, foot, w = _one_leg(rx, tier, phase + off + i * 1.7,
                                            moving, dx=dx, plan=plan)
             out.append((_taper(root.x, root.y, knee.x, knee.y, w, w * 0.78,
@@ -6133,7 +6252,7 @@ def _up_of(d):
 # neck at all and the SWARM's knot sits right down on the shell.
 NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
              "spire": (0.66, -0.16), "stalker": (1.34, 0.30),
-             "gravid": (0.62, 0.12)}
+             "gravid": (0.62, 0.12), "kittle": (0.30, 0.30)}
 
 
 def neck_head(tier, rear=0.0, plan=None):
@@ -6394,7 +6513,11 @@ def bio_weapon(key, side, tier_arm):
 # reads as a costume.
 STRAIN_HIDE = {"hollow": ("tail", "head"), "deepone": ("head",),
                "spire": ("head",), "stalker": ("head",),
-               "gravid": ("head",), "bloom": ("head",)}
+               "gravid": ("head",), "bloom": ("head",),
+               # a cat has no shell and no sail. The armour socket
+               # still WORKS - it is hide under the fur - it just is not
+               # drawn as a rack of spines down the back of a cat.
+               "kittle": ("head", "armour")}
 
 
 def strain_hides(mech, part):
@@ -6543,6 +6666,56 @@ def strain_head(rig, mech, t, tones, kind, rear):
     light = _tone("light", dmg, dead, tones)
     trim = (tones or BIO_TONES).get("trim", RYEZ_ACID)
     hz = rig.zone
+
+    if kind == "kittle":
+        # A CAT. Round skull, two big triangles on top, a short muzzle
+        # and two eyes far too large for it. The white runs up the nose
+        # and stops between the eyes, which is the one marking that
+        # makes a tabby read as THAT tabby rather than any tabby.
+        root, tip, hs = neck_head(ht, rear, "kittle")
+        d = unit(tip - root)
+        nrm = _up_of(d)
+        hc = tip + d * hs * 0.34
+        skull = [_t(hc + nrm * hs * 0.92 - d * hs * 0.55),
+                 _t(hc + nrm * hs * 0.66 + d * hs * 0.70),
+                 _t(hc + nrm * hs * 0.10 + d * hs * 1.02),
+                 _t(hc - nrm * hs * 0.52 + d * hs * 0.86),
+                 _t(hc - nrm * hs * 0.86 - d * hs * 0.30),
+                 _t(hc - nrm * hs * 0.40 - d * hs * 0.80),
+                 _t(hc + nrm * hs * 0.40 - d * hs * 0.78)]
+        rig.poly(skull, main)
+        rig.poly(skull, shade(dark, 1.08), 2)
+        # the tabby cap, over the top of the head only
+        rig.poly([_t(hc + nrm * hs * 0.92 - d * hs * 0.55),
+                  _t(hc + nrm * hs * 0.66 + d * hs * 0.70),
+                  _t(hc + nrm * hs * 0.14 + d * hs * 0.52),
+                  _t(hc + nrm * hs * 0.30 - d * hs * 0.66)], dark)
+        for sgn, back in ((1, 0.46), (-1, 0.02)):   # two ears
+            b = hc + nrm * hs * (0.70 + sgn * 0.06) - d * hs * back
+            ear = [_t(b - d * hs * 0.30), _t(b + d * hs * 0.26),
+                   _t(b + nrm * hs * 1.15 - d * hs * 0.04)]
+            rig.poly(ear, shade(main, 0.96) if sgn < 0 else main)
+            rig.poly(ear, shade(dark, 1.05), 2)
+            inner = [_t(b - d * hs * 0.14), _t(b + d * hs * 0.12),
+                     _t(b + nrm * hs * 0.80)]
+            rig.poly(inner, shade(trim, 1.0))
+        if not dead:                                # the eyes
+            for k, off in ((0, 0.30), (1, -0.16)):
+                e = hc + d * hs * 0.30 + nrm * hs * off
+                rig.circle((e.x, e.y), hs * 0.26, (250, 250, 244))
+                rig.circle((e.x, e.y), hs * 0.20, (176, 196, 96))
+                rig.circle((e.x, e.y), hs * 0.07, (18, 16, 18))
+                rig.light((e.x, e.y), hs * 0.5, (196, 220, 120), 46)
+        nose = hc + d * hs * 0.96 - nrm * hs * 0.20
+        rig.poly([_t(nose + nrm * hs * 0.12), _t(nose - nrm * hs * 0.12),
+                  _t(nose + d * hs * 0.16 - nrm * hs * 0.02)],
+                 shade(trim, 0.92))
+        for k in (-1, 0, 1):                        # whiskers
+            w0 = nose - nrm * hs * 0.06
+            w1 = w0 + d * hs * 1.15 + nrm * hs * (k * 0.30 + 0.10)
+            rig.bar(_t(w0), _t(w1), hs * 0.045, shade(light, 0.94))
+        rig.zone = hz
+        return
 
     if kind == "bloom":
         # its head is not on a neck; it is on the thing it rears into,
@@ -6771,7 +6944,41 @@ def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
     by = (TRUNK_TOP + TRUNK_BELLY) * 0.5
     top = TRUNK_TOP
 
-    if kind == "hollow":
+    if kind == "kittle":
+        # A WHITE CAT WITH A TABBY SADDLE, which is the marking in the
+        # photograph: white from the chin down the chest and along the
+        # belly, brown over the back and the flank, and the stripes run
+        # DOWN off the spine rather than along it.
+        back = [(TRUNK_BACK + 4, by - 6), (TRUNK_FRONT - 18, by - 22),
+                (TRUNK_FRONT - 6, top + 16), (TRUNK_BACK - 2, top + 26)]
+        rig.poly(back, dark)
+        rig.poly(back, shade(dark, 0.78), 1)
+        for i in range(7):                      # stripes down the flank
+            f = 0.06 + i * 0.145
+            x = lerp(TRUNK_BACK + 2, TRUNK_FRONT - 20, f)
+            wob = math.sin(f * 7.0) * 4.0
+            rig.bar((x, top + 22), (x - 7 + wob, by - 4),
+                    3.4 + math.sin(f * 5.0) * 1.2, shade(dark, 0.72))
+        # the white chest, which is the loudest thing on the animal
+        chest = [(TRUNK_FRONT - 26, by + 2), (TRUNK_FRONT + 6, by - 14),
+                 (TRUNK_FRONT + 10, TRUNK_BELLY + 6),
+                 (TRUNK_FRONT - 34, TRUNK_BELLY - 2)]
+        rig.poly(chest, light)
+        rig.poly(chest, shade(main, 0.9), 1)
+        # ...and a striped tail, carried out and low
+        seg = 7
+        prev = Vector2(TRUNK_BACK + 6, by + 10)
+        for i in range(seg):
+            f = (i + 1) / float(seg)
+            wag = math.sin(t * 1.6 - f * 2.2) * 16 * f
+            nxt = Vector2(TRUNK_BACK - 34 - f * 96, by + 26 * f + wag)
+            rig.bar((prev.x, prev.y), (nxt.x, nxt.y),
+                    11.0 * (1.0 - f * 0.55),
+                    dark if i % 2 else shade(light, 0.94),
+                    9.5 * (1.0 - (f + 1.0 / seg) * 0.55))
+            prev = nxt
+
+    elif kind == "hollow":
         # the near membrane, over the shell, and the holes it is made of
         _swarm_wing(rig, t, 10, -6, 1.04, shade(main, 1.0), trim)
         for i, (hx, hy, r) in enumerate(((-30, -222, 14), (8, -238, 17),
@@ -6988,7 +7195,10 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
         blit(bio_legs(lt, pose.walk, pose.moving, "far", plan), "legs")
     if tt:
         blit(bio_trunk(tt), "torso")
-    if mech.fit["armour"] is not None:
+    if mech.fit["armour"] is not None and not strain_hides(mech, "armour"):
+        # the fight had its own copy of this check and the pod view's
+        # copy was the only one that knew about the hidden parts, so a
+        # cat grew a sail the moment it walked out of the tank
         blit(bio_armour(mech.fit["armour"]), "armour")
     if lt:
         blit(bio_legs(lt, pose.walk, pose.moving, "near", plan), "legs")
@@ -7399,7 +7609,7 @@ def hurt_spots_bio(mech, pose=None, rear=0.0, plan=None):
         phase = pose.walk if pose is not None else 0.0
         moving = pose.moving if pose is not None else 0.0
         for dx, off in ((-16.0, 0.0), (14.0, math.pi)):
-            for i, lx in enumerate(leg_xs(lt)):
+            for i, lx in enumerate(leg_xs(lt, plan)):
                 root, knee, foot, w = _one_leg(lx, lt, phase + off + i * 1.7,
                                                moving, dx=dx, plan=plan)
                 legs.append(((root.x + knee.x) * 0.5,
@@ -8054,6 +8264,28 @@ def chassis_overlay(rig, mech, t, lean, hip_y, limbs=None, stance=None):
                       (lean + sweep * 0.30, hy - 16)], shade(dark, 0.7), 1)
         rig.poly([(lean - 18, hy + 2), (lean + 20, hy - 2),
                   (lean + 22, hy + 14), (lean - 18, hy + 16)], dark)
+    elif head == "cat":
+        # a round helm with two ears on it and a visor slit across. The
+        # ears are the whole frame - take them off and this is a hero
+        # build in cream
+        rig.poly([(lean - 20, hy - 18), (lean + 24, hy - 22),
+                  (lean + 26, hy + 14), (lean - 20, hy + 16)], main)
+        rig.poly([(lean - 20, hy - 18), (lean + 24, hy - 22),
+                  (lean + 26, hy + 14), (lean - 20, hy + 16)],
+                 shade(dark, 1.1), 1)
+        for bx, sweep in ((lean - 12, -16), (lean + 12, 14)):
+            ear = [(bx - 7, hy - 16), (bx + 8, hy - 18),
+                   (bx + sweep * 0.5, hy - 48)]
+            rig.poly(ear, main)
+            rig.poly(ear, shade(dark, 1.1), 1)
+            rig.poly([(bx - 2, hy - 18), (bx + 5, hy - 19),
+                      (bx + sweep * 0.36, hy - 40)], trim)
+        rig.poly([(lean - 14, hy - 4), (lean + 22, hy - 7),
+                  (lean + 22, hy + 3), (lean - 14, hy + 5)], trim)
+        rig.light((lean + 10, hy - 2), 26, trim, 80)
+        # and a nose, because it is a cat
+        rig.poly([(lean + 24, hy + 4), (lean + 30, hy + 7),
+                  (lean + 24, hy + 10)], shade(trim, 0.8))
     elif head == "warhead":
         # A crown of four horns over a bigger cowl. The first pass put a
         # small dark box between two crates and the machine read headless
@@ -13029,7 +13261,11 @@ def check_awards(run=None, fight=None, won=None):
         give("heard")
     # a jar is drunk and gone, so it is never OWNED - a cupboard that
     # counted the specimens could not be emptied by anybody
-    if all(bought(k) for k, w in WARES.items() if w.kind != "specimen"):
+    # a jar is drunk and gone, so it is never OWNED, and the two lines
+    # behind the code are not in anybody's stall - a cupboard that
+    # counted either of those could not be emptied
+    if all(bought(k) for k, w in WARES.items()
+           if w.kind not in ("specimen", "cheat")):
         give("cupboard")
 
     if run is not None:
@@ -17568,6 +17804,9 @@ class Title:
         self.save = load_save() if save is None else save
         self.armed = 0.0             # the erase, waiting to be meant
         self.mode = "landfall"       # ...and which campaign BEGIN begins
+        self.typed = ""              # the last few keys, for the code
+        self.said = None             # ...and what it got you
+        self.said_t = 0.0
         self.modes = []
         self.no = None
         self.no_t = 0.0
@@ -17600,6 +17839,7 @@ class Title:
         self.t += dt
         self.armed = max(0.0, self.armed - dt)
         self.no_t = max(0.0, self.no_t - dt)
+        self.said_t = max(0.0, self.said_t - dt)
 
     def slot_rect(self, n):
         return pygame.Rect(74 + (n - 1) * (self.SLOT_W + 10), self.SLOT_Y,
@@ -17674,8 +17914,25 @@ class Title:
                  "%d kaiju" % (best.get("wins", 0), best.get("losses", 0),
                                best.get("best_kills", 0)), 14,
                  (74, H - 52), FAINT)
+        if self.said and self.said_t > 0:
+            lab = "%s - IT IS IN THE GANTRY AND IN THE TANKS" % self.said
+            text(surf, lab, 15, (74, H - 76), GOOD)
         text(surf, "Every graphic and every note in this game is drawn or "
              "synthesised in code.", 12, (74, H - 28), (56, 60, 76))
+
+    def key(self, ch):
+        """One letter, from the front door. Nothing else reads these."""
+        if not ch or not ch.isalpha():
+            return None
+        self.typed = (self.typed + ch)[-CODE_BUFFER:]
+        got = try_code(self.typed)
+        if got:
+            self.typed = ""
+            self.said = got
+            self.said_t = 6.0
+            self.refresh()
+            SFX.play("done", 0.8)
+        return got
 
     def mode_at(self, step):
         """The next mode round the list, OPEN or not - a locked one is
@@ -18485,6 +18742,8 @@ class App:
                 self.pick("continue" if self.title.save.get("run") else "new")
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 self.running = False
+            elif ev.type == pygame.KEYDOWN:
+                self.title.key(ev.unicode)
         elif self.state == "settings":
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 if self.settings.click(ev.pos) == "go":

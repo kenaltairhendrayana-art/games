@@ -221,6 +221,30 @@ def smoke():
                          "awards": [a[0] for a in G.AWARDS]}}
     rec.draw(surf, mouse)
     snap("record_full")
+    # the two behind the code, which nobody sees unless they type it
+    G.grant_ware("ch_kittle")
+    G.grant_ware("st_kittle")
+    surf.fill((26, 52, 56))
+    for ki, (khouse, kkey) in enumerate((("keal", "kittle"),
+                                         ("ryez", "kittlestrain"))):
+        G.set_house(khouse)
+        kr = G.Run(khouse, kkey)
+        for s in kr.mech.sockets():
+            if s in G.HARDPOINTS:
+                opts = G.options_for(s, None, kr.mech.frame)
+                if opts:
+                    kr.mech.install(s, opts[0].key)
+            else:
+                kr.mech.install(s, 3)
+        G.draw_mech_front(surf, kr.mech, 250 + ki * 600, 400, 0.8, {}, 1.0)
+        kp = G.Pose()
+        kp.face, kp.walk, kp.moving = 1, 1.2, 1.0
+        G.draw_mech_side(surf, kr.mech, 250 + ki * 600, 730, 0.8, 1.0, kp,
+                         bio=khouse == "ryez")
+        G.text(surf, "THE KITTLE  -  " + khouse.upper(), 17,
+               (250 + ki * 600, 26), (240, 232, 210), center=True)
+    snap("kittle")
+    G.set_house("keal")
     st = G.Settings("title")
     st.t = 1.0
     st.draw(surf, mouse)
@@ -2496,6 +2520,102 @@ def yard():
           "the dark is worse than a storm in June"
           % len(set(months)))
 
+    # -- THE CODE ---------------------------------------------------------
+    # Typed on the front door, with no box to type it into. What is
+    # checked is that it does not leak into anything that counts the
+    # book: two lines in nobody's stall could otherwise make the
+    # cupboard award impossible and the shop draw a counter that is not
+    # there.
+    wipe_meta()
+    assert set(G.CODES) == {"KITTLE"}, list(G.CODES)
+    kit = G.CODES["KITTLE"]
+    assert len(kit) == 2
+    for k in kit:
+        assert k in G.WARES and G.WARES[k].kind == "cheat", k
+        assert G.WARES[k].cost == 0
+        assert G.WARES[k].house in ("keal", "ryez"), k
+    assert len({G.WARES[k].house for k in kit}) == 2, "both are one house"
+    # and no stall lists them
+    for sec in G.Bazaar.SECTIONS:
+        for skey, _n, _t, _c, _a in sec[7]:
+            for w in [x for x in G.WARE_LIST if x.seller == skey]:
+                assert w.kind != "cheat", "%s is selling the code" % skey
+
+    # typing it
+    t = G.Title()
+    assert t.key("K") is None and t.key("I") is None
+    assert t.key("Z") is None, "it matched half a word"
+    for ch in "KITTL":
+        assert t.key(ch) is None
+    assert t.key("E") == "KITTLE", "the code did not land"
+    for k in kit:
+        assert G.bought(k), k
+    assert t.said == "KITTLE" and t.said_t > 0
+    # ...and it does not land twice on a slot that has it
+    assert t.key("E") is None
+    for ch in "KITTLE":
+        got = t.key(ch)
+    assert got is None, "it granted a second time"
+    # a run of junk never trips it, and the buffer does not grow
+    for ch in "QWERTYUIOPASDFGH":
+        t.key(ch)
+    assert len(t.typed) <= G.CODE_BUFFER, len(t.typed)
+
+    # -- and what it gets you ---------------------------------------------
+    for house, key in (("keal", "kittle"), ("ryez", "kittlestrain")):
+        G.set_house(house)
+        owned = [c.key for c in G.owned_chassis()]
+        assert key in owned, (house, owned)
+        other = "kittlestrain" if house == "keal" else "kittle"
+        assert other not in owned, "%s can build the other house's" % house
+        ch = G.CHASSIS[key]
+        assert ch.name == "THE KITTLE"
+        assert not ch.foe, "the code gives you something that fields you"
+        # it is a real frame, not a joke: it draws, it fights, and it is
+        # quick and thin rather than strong
+        assert ch.of("speed") > 1.2 and ch.of("dr") < 0.8, ch.mult
+        r = G.Run(house, key)
+        for s in r.mech.sockets():
+            if s in G.HARDPOINTS:
+                opts = G.options_for(s, None, r.mech.frame)
+                if opts:
+                    r.mech.install(s, opts[0].key)
+            else:
+                r.mech.install(s, 3)
+        surf4 = pygame.Surface((G.W, G.H))
+        G.draw_mech_front(surf4, r.mech, 590, 700, 0.9, {}, 1.0)
+        pz4 = G.Pose()
+        pz4.face, pz4.walk, pz4.moving = 1, 1.2, 1.0
+        G.draw_mech_side(surf4, r.mech, 590, 700, 0.9, 1.0, pz4,
+                         bio=house == "ryez")
+        # a gun with a reach, and long enough to close - the first pass
+        # gave it whatever the socket offered first, which is a fist,
+        # and five seconds is not long enough to walk to anything
+        for hp_ in ("l_wpn", "r_wpn"):
+            if "auto" in [w.key for w in
+                          G.options_for(hp_, None, r.mech.frame)]:
+                r.mech.install(hp_, "auto")
+        random.seed(6)
+        f = G.Fight(r, r.next_kind())
+        for _ in range(900):
+            f.update(DT, {"fire_l": True, "fire_r": True, "right": True})
+        assert f.dealt > 0, "%s cannot hurt anything" % key
+        back = G.Run.from_json(r.to_json())
+        assert back.mech.chassis == key, "it did not survive a save"
+
+    # a cat has four legs at every rung, which nothing else in the table
+    # does - the tier decides the count for everybody else
+    assert len(G.leg_xs(3, "kittle")) == 2
+    assert len(G.leg_xs(1, "kittle")) == 2
+    assert len(G.leg_xs(3)) == 3 and len(G.leg_xs(1)) == 2
+    assert G.strain_hides(G.Run("ryez", "kittlestrain").mech, "armour"), (
+        "the cat grew a sail")
+    wipe_meta()
+    G.set_house("keal")
+    print("  one code, two frames, one a side; a cat keeps four legs at "
+          "every rung and no counter sells either of them")
+
+
 
     # -- FIVE WAYS TO PLAY IT ---------------------------------------------
     # A mode is a SCHEDULE and a LADDER and nothing else, which is why
@@ -4312,9 +4432,16 @@ def frames():
     # and then the frames KEAL FIELDS, which are in the same table and
     # are for sale to nobody
     steel_frames = [c for c in G.CHASSIS_LIST
-                    if c.ware and G.WARES[c.ware].house == "keal"]
+                    if c.ware and G.WARES[c.ware].house == "keal"
+                    and G.WARES[c.ware].kind != "cheat"]
     foes = [c for c in G.CHASSIS_LIST if c.foe]
-    assert len(G.CHASSIS_LIST) - len(foes) == 13, len(G.CHASSIS_LIST)
+    # ...and the two behind the code, which are in the table and in
+    # nobody's stall
+    cheats = [c for c in G.CHASSIS_LIST
+              if c.ware and G.WARES[c.ware].kind == "cheat"]
+    assert len(cheats) == 2, [c.key for c in cheats]
+    assert len(G.CHASSIS_LIST) - len(foes) - len(cheats) == 13, (
+        len(G.CHASSIS_LIST))
     assert len(steel_frames) == 6, len(steel_frames)
     # one per model KEAL fields, minus the SOVEREIGN, which wears the
     # frame you can buy
