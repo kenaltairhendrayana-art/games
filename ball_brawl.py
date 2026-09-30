@@ -225,8 +225,25 @@ def fit(label, size, width, bold=True):
     return size
 
 
+def hue(t):
+    """A colour going round the wheel, kept bright enough for the street."""
+    a = (t % 1.0) * 6.0
+    i = int(a)
+    f = a - i
+    up, dn = int(70 + 185 * f), int(255 - 185 * f)
+    return ((255, up, 70), (dn, 255, 70), (70, 255, up),
+            (70, dn, 255), (up, 70, 255), (255, 70, dn))[i % 6]
+
+
 def glow(radius, colour, strength=100):
-    """A soft additive disc, cached - used for every light in the game."""
+    """An additive disc, cached - used for every light in the game.
+
+    Not as soft as it looks here: BLEND_ADD ignores alpha, so the ramp
+    below draws a hard disc of `colour` and `strength` barely matters.
+    Every light in the game was picked against that behaviour, so a
+    caller that needs a gentle glow passes a colour mixed toward BG
+    rather than a lower strength.
+    """
     key = (radius, colour, strength)
     s = _glows.get(key)
     if s is None:
@@ -2738,6 +2755,166 @@ class Mech(Melee):
             blit_glow(s, p, o.r * 1.6, VENOM, int(70 * self.flash))
 
 
+class Friendship(Weapon):
+    """It has no weapon. It runs at you, and it brings friends.
+
+    One move: point at whoever it is fighting and go. Every few seconds
+    another one turns up, and when six of them are out - seven counting
+    the one they came from - the seven stop being seven and become the
+    rainbow, which has the same single move and is much worse to be near.
+    """
+    NAME = "FRIENDSHIP"
+    RADIUS = 17.0
+    ART_REF = 24.0
+    PREF = 0.0                # there is nothing to stand off for
+    SPEED_MULT = 1.06
+    DASH_MULT = 0.55
+    MASS = 1.3
+    ARMOUR = 0.16
+    HP_MULT = 1.35            # it has to live long enough to be seven
+    BLURB = ("charges, and brings friends -",
+             "at seven they become one thing")
+    PIPS = (3, 3, 1)
+
+    RAM = (21.0, 29.0)        # what running into it costs
+    RAM_CD = 0.62
+    CHARGE = 1.7              # seconds between one run and the next
+    GAP = 2.4                 # and between friends arriving
+    FRIENDS = 6               # six out there, plus this one, makes seven
+
+    RAIN_RAM = (38.0, 52.0)   # and what it costs once they are one thing
+    RAIN_CD = 0.55
+    RAIN_CHARGE = 1.05
+    RAIN_HEAL = 0.28
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.rainbow = False
+        self.arrived = 0          # counted as they turn up, not as they last
+        self.ram_cd = 0.0
+        self.charge = 1.0
+        self.timer = 2.0
+        self.spin_t = 0.0
+
+    def friends(self, world):
+        return [m for m in world.minions
+                if isinstance(m, Friend) and m.owner is self.owner
+                and m.hp > 0]
+
+    def update(self, dt, world):
+        super().update(dt, world)
+        o = self.owner
+        self.spin_t += dt
+        if self.rainbow:                     # the colour goes round and round
+            o.colour = hue(self.spin_t * 0.85)
+            o.dark = mix(o.colour, (0, 0, 0), 0.62)
+        if o.hp <= 0 or world.state != "fight":
+            return
+        self.ram_cd = max(0.0, self.ram_cd - dt)
+        foe = world.foe(o)
+
+        # the one move
+        self.charge -= dt
+        if self.charge <= 0 and foe is not None and foe.hp > 0:
+            self.charge = self.CHARGE
+            if not o.player:                 # a person charges for themselves
+                o.dash(unit(foe.pos - o.pos, o.aim))
+                world.spark(o.pos, o.colour, 8, speed=190)
+
+        # and what the move costs whoever it lands on
+        if self.ram_cd <= 0:
+            for t in world.foes(o):
+                if (t.pos - o.pos).length() <= t.r + o.r + 5:
+                    self.ram_cd = self.RAM_CD
+                    dmg = random.uniform(*self.RAM)
+                    t.take_damage(dmg, o, world, crit=self.rainbow)
+                    push = unit(t.pos - o.pos)
+                    t.vel += push * (420.0 if self.rainbow else 230.0) / t.weapon.MASS
+                    world.spark(t.pos - push * t.r, o.colour,
+                                18 if self.rainbow else 9, speed=300)
+                    world.shake = max(world.shake, 12.0 if self.rainbow else 5.0)
+                    SFX.play("crit" if self.rainbow else "hit", 0.7)
+                    break
+
+        if self.rainbow:
+            return
+        out = self.friends(world)
+        if self.arrived >= self.FRIENDS:
+            self.fuse(world, out)
+            return
+        self.timer -= dt
+        if self.timer > 0:
+            return
+        self.timer = self.GAP
+        spot = self.arrived
+        self.arrived += 1
+        where = o.pos + unit(Vector2(random.uniform(-1, 1),
+                                     random.uniform(-1, 1))) * (o.r + 30)
+        world.minions.append(Friend(o, where, spot=spot))
+        world.spark(where, hue(spot / 6.0), 14, speed=220)
+        SFX.play("pickup", 0.5)
+
+    def fuse(self, world, out):
+        """Seven stop being seven. Whoever is still standing streams in;
+        the ones that did not make it are counted anyway, because the
+        escalation is a clock and not a headcount."""
+        o = self.owner
+        for m in out:
+            for k in range(3):
+                world.spark(m.pos + (o.pos - m.pos) * (k / 3.0),
+                            hue(m.spot / 6.0), 12, speed=260)
+            m.hp = 0.0                       # they are not killed, they arrive
+        self.rainbow = True
+        o.r = self.RADIUS * 1.9
+        self.RAM = self.RAIN_RAM
+        self.RAM_CD = self.RAIN_CD
+        self.CHARGE = self.RAIN_CHARGE
+        self.SPEED_MULT = 1.12
+        self.DASH_MULT = 0.40
+        self.ARMOUR = 0.24
+        self.MASS = 3.2
+        self.charge = 0.35
+        o.hp = min(o.max_hp, o.hp + o.max_hp * self.RAIN_HEAL)
+        for k in range(7):
+            world.spark(o.pos, hue(k / 7.0), 26, speed=520)
+        world.shake = max(world.shake, 30.0)
+        world.flash_t = max(world.flash_t, 0.3)
+        world.hitstop = max(world.hitstop, 0.08)
+        SFX.play("ko", 0.8)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        p = o.pos + Vector2(off)
+        if self.rainbow:
+            for k in range(3):               # rings going out, always
+                rad = int(o.r * (1.3 + 0.5 * k)
+                          + 26 * ((self.spin_t * 0.9 + k / 3.0) % 1.0))
+                col = hue(self.spin_t * 0.85 + k / 3.0)
+                box = pygame.Rect(0, 0, rad * 2, rad * 2)
+                box.center = (int(p.x), int(p.y))
+                pygame.draw.ellipse(s, col, box, 2)
+            blit_glow(s, p, o.r * 1.9,
+                      mix(hue(self.spin_t * 0.85 + 0.5), BG, 0.52), 96)
+            for k in range(6):               # and a pinwheel on top of it
+                a = self.spin_t * 3.0 + k * TAU / 6
+                d = Vector2(math.cos(a), math.sin(a))
+                pygame.draw.line(s, hue(self.spin_t * 0.85 + k / 6.0),
+                                 p + d * o.r * 0.45, p + d * o.r * 1.05, 4)
+            return
+        # before that: a quiet ring, and a pip for every friend so far
+        out = len(self.friends(world))
+        for k in range(self.FRIENDS):
+            a = self.spin_t * 0.8 + k * TAU / self.FRIENDS
+            q = p + Vector2(math.cos(a), math.sin(a)) * (o.r + 13)
+            col = hue(k / 6.0) if k < out else mix(o.dark, BG, 0.4)
+            pygame.draw.circle(s, col, (int(q.x), int(q.y)),
+                               4 if k < out else 2)
+        if out:
+            blit_glow(s, p, o.r * 1.4,
+                      mix(hue(self.spin_t * 0.5), BG, 0.55),
+                      int(24 + 9 * out))
+
+
 # ---------------------------------------------------------------------------
 # THE ROSTER
 #
@@ -2749,7 +2926,8 @@ class Mech(Melee):
 FAMILIES = ((Sword, Greatsword), (Dagger, Flurry), (Gun, Repeater),
             (Bow, Ballista), (Hammer, Maul), (Fists, Gauntlets),
             (Summoner, Brood), (Spear, None), (Shield, None),
-            (Chain, None), (Mines, None), (Beam, None), (Mech, None))
+            (Chain, None), (Mines, None), (Beam, None), (Mech, None),
+            (Friendship, None))
 WEAPONS = tuple(w for fam in FAMILIES for w in fam if w is not None)
 STARTERS = ("SWORD",)          # what you own before you have beaten anything
 
@@ -3250,6 +3428,38 @@ class Node(Minion):
                          self.owner.pos + Vector2(off), 1)
 
 
+class Friend(Minion):
+    """One of the little ones. It knows the same single move.
+
+    They keep their station in the world rather than expiring, because the
+    whole point of them is that they accumulate: six of them and the one
+    they came from make seven, and seven is the number that matters.
+    """
+    R = 10.0
+    HP = 190.0                # tough enough that six can gather
+    DMG = (8.0, 12.0)
+    HIT_CD = 0.76
+    SPEED = 400.0
+    LIFE = 9.0e9              # they wait to be killed, or to be needed
+    BURST = (12.0, 18.0)
+    BURST_R = 42.0
+
+    def __init__(self, owner, pos, scale=1.0, spot=0):
+        super().__init__(owner, pos, scale)
+        self.spot = spot
+
+    def draw(self, s, off):
+        p = self.pos + Vector2(off)
+        col = mix(hue(self.spot / 6.0), (255, 255, 255), 0.45 * self.flash)
+        blit_glow(s, p, self.r * 2.2, col, 52)
+        pygame.draw.circle(s, col, (int(p.x), int(p.y)), int(self.r))
+        pygame.draw.circle(s, mix(col, (0, 0, 0), 0.45),
+                           (int(p.x), int(p.y)), int(self.r), 2)
+        pygame.draw.circle(s, mix(col, (255, 255, 255), 0.6),
+                           (int(p.x - self.r * 0.3), int(p.y - self.r * 0.3)),
+                           max(1, int(self.r * 0.34)))
+
+
 class Mine(Minion):
     """It lands, it arms, it follows you home, and then it does not."""
     R = 9.0
@@ -3450,6 +3660,12 @@ CAMPAIGN = (
          hp=1.40, dmg=1.0, spd=0.90,
          brief="Eight legs. It does not have to catch you, only touch you.",
          reward=("weapon", "MECH")),
+    dict(name="THE SEVEN", sides=4, weapon=Friendship,
+         colour=(172, 60, 188), dark=(52, 18, 58),
+         hp=1.35, dmg=1.0, spd=1.0,
+         brief="It only knows one move. Give it long enough and it knows"
+               " it seven times over.",
+         reward=("weapon", "FRIENDSHIP")),
     dict(name="THE COLOSSUS", sides=4, weapon=Buster,
          colour=(236, 92, 72), dark=(104, 26, 20),
          hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3, map="CITY",
@@ -4036,9 +4252,9 @@ class Game:
         return [i for i, w in enumerate(WEAPONS) if w.NAME in names]
 
     def ball_grid(self, top):
-        """Twenty picker buttons, ten to a row."""
+        """Twenty-one picker buttons, eleven to a row."""
         out = []
-        bw, bh, gap, per = 96, 46, 4, 10
+        bw, bh, gap, per = 88, 46, 4, 11
         span = per * bw + (per - 1) * gap
         x0 = (W - span) // 2
         for i in range(len(WEAPONS)):
@@ -4055,7 +4271,7 @@ class Game:
                  (pygame.Rect(W - 324, 42, 140, 30), "tourney", None),
                  (pygame.Rect(W - 176, 42, 140, 30), "royale", None),
                  (pygame.Rect(W - 324, 76, 288, 30), "gauntlet", None)]
-        cw, ch, gap = 188, 31, 2
+        cw, ch, gap = 188, 29, 2
         for side in (0, 1):
             for i, col, row in grid_slots():
                 x = (56 + col * (cw + 6) if side == 0
@@ -4064,8 +4280,8 @@ class Game:
                               "pick", (side, i)))
         bx = W // 2 - 152
         items.append((pygame.Rect(bx, 606, 304, 32), "human", None))
-        items.append((pygame.Rect(bx, 642, 148, 32), "orbs", None))
-        items.append((pygame.Rect(bx + 156, 642, 148, 32), "map", None))
+        items.append((pygame.Rect(bx, 642, 128, 32), "orbs", None))
+        items.append((pygame.Rect(bx + 136, 642, 168, 32), "map", None))
         items.append((pygame.Rect(bx, 678, 304, 46), "start", None))
         return items
 
@@ -4085,10 +4301,10 @@ class Game:
             sw = 116
             sx = (W - (party * sw + (party - 1) * 8)) // 2
             for k in range(party):
-                items.append((pygame.Rect(sx + k * (sw + 8), 466, sw, 24),
+                items.append((pygame.Rect(sx + k * (sw + 8), 490, sw, 24),
                               "slot", k))
-        items += self.ball_grid(496)
-        items.append((pygame.Rect(W // 2 - 152, 608, 304, 46), "start", None))
+        items += self.ball_grid(520)
+        items.append((pygame.Rect(W // 2 - 152, 636, 304, 46), "start", None))
         return items
 
     def tourney_layout(self):
@@ -5073,13 +5289,13 @@ class Game:
             w = WEAPONS[self.pick[side]]
             x = 56 if side == 0 else W - 56
             for k, line in enumerate(w.BLURB):
-                text(s, line, 13, (x, 550 + k * 16), DIM, right=side == 1)
+                text(s, line, 13, (x, 554 + k * 16), DIM, right=side == 1)
             px = x if side == 0 else x - 300
             for label, n in zip(("DMG", "RATE", "REACH"), w.PIPS):
-                text(s, label, 11, (px, 588), DIM)
+                text(s, label, 11, (px, 592), DIM)
                 for k in range(5):
                     c = base if k < n else (48, 52, 66)
-                    pygame.draw.rect(s, c, (px + 40 + k * 8, 590, 5, 8))
+                    pygame.draw.rect(s, c, (px + 40 + k * 8, 594, 5, 8))
                 px += 100
 
         if self.score[0] or self.score[1]:
@@ -5456,18 +5672,18 @@ class Game:
 
         # what the highlighted level actually is
         lv = CAMPAIGN[self.level]
-        text(s, lv["brief"], 14, (56, 424), INK if self.level <= self.cleared
+        text(s, lv["brief"], 14, (56, 448), INK if self.level <= self.cleared
              else DIM)
         text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%    REWARD  %s"
              % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
                 round(lv["dmg"] * 100), reward_label(lv)),
-             12, (56, 444), mix(DIM, lv["colour"], 0.45))
+             12, (56, 468), mix(DIM, lv["colour"], 0.45))
         if self.party_size() > 1:
             text(s, "BRING THREE - click a slot, then a ball", 13,
-                 (W - 56, 444), GOLD, right=True)
+                 (W - 56, 468), GOLD, right=True)
         else:
             text(s, "YOUR BALL:  %s" % WEAPONS[self.camp_pick].NAME, 13,
-                 (W - 56, 444), DIM, right=True)
+                 (W - 56, 468), DIM, right=True)
 
     # -- the rush screen ----------------------------------------------------
     def draw_rush(self, s):
@@ -5578,6 +5794,13 @@ class Game:
                 head.center = at(30, a)
                 pygame.draw.rect(s, (150, 156, 172), head)
                 pygame.draw.rect(s, INK, head, 1)
+        elif issubclass(wcls, Friendship):
+            for i in range(6):
+                q = at(26, i * TAU / 6 + 0.3)
+                pygame.draw.circle(s, hue(i / 6.0), q, px(6))
+                pygame.draw.circle(s, mix(colour, (0, 0, 0), 0.45), q, px(6), 1)
+            pygame.draw.circle(s, mix(colour, (255, 255, 255), 0.35),
+                               (cx, cy), px(9))
         elif issubclass(wcls, Mech):
             for i in range(8):
                 a = i * TAU / 8 + 0.2
@@ -5642,9 +5865,12 @@ class Game:
     def draw_button(self, s, rect, label, colour, key, size=20):
         pygame.draw.rect(s, PANEL, rect)
         pygame.draw.rect(s, mix((52, 57, 72), colour, 0.5), rect, 2)
-        text(s, label, size, (rect.left + 12, rect.centery), INK, left=True)
-        text(s, key, max(11, size - 5), (rect.right - 10, rect.centery), DIM,
-             right=True)
+        small = max(11, size - 5)
+        # whatever is left after the key hint is what the label may have
+        room = rect.w - 26 - font(small, True).size(key)[0]
+        text(s, label, fit(label, size, room), (rect.left + 12, rect.centery),
+             INK, left=True)
+        text(s, key, small, (rect.right - 10, rect.centery), DIM, right=True)
 
 
 # ---------------------------------------------------------------------------
