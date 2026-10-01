@@ -3162,8 +3162,14 @@ CHASSIS_LIST = [
                    "light": (252, 251, 247), "trim": (198, 124, 120)},
             # leg is 1.0 on purpose: the cat SOLVES for where its foot
             # goes, and scaling that afterwards floats it off the road.
-            prop={"leg": 1.0, "legw": 1.0, "body": 0.86, "wide": 1.16,
-                  "head": 1.18, "arm": 0.74}),
+            # wide and body are 1.0 because the cat DRAWS its own body
+            # rather than stretching the stock barrel, and stretching
+            # what it draws on top of that only pulls the two apart.
+            # a cat's head is about a fifth of its body long, and this
+            # body is now half again longer than it was, so the head has
+            # to grow with it or the animal reads as headless.
+            prop={"leg": 1.0, "legw": 1.0, "body": 1.0, "wide": 1.0,
+                  "head": 1.55, "arm": 1.0}),
 
     Chassis("gravid", "GRAVID MOTHER", "st_gravid",
             "Carrying, and it has been carrying for months. There is room "
@@ -5183,10 +5189,14 @@ def part_shape(socket, fit, arm_tier=1, strain=None):
         return bio_legs(fit, plan=strain)
     if socket in ("l_arm", "r_arm"):
         side = "l" if socket == "l_arm" else "r"
-        return (bio_arm if bio else shape_arm)(fit, side)
+        if bio:
+            return bio_arm(fit, side, strain)
+        return shape_arm(fit, side)
     if socket in ("l_wpn", "r_wpn"):
         side = "l" if socket == "l_wpn" else "r"
-        return (bio_weapon if bio else shape_weapon)(fit, side, arm_tier)
+        if bio:
+            return bio_weapon(fit, side, arm_tier, strain)
+        return shape_weapon(fit, side, arm_tier)
     if socket in AUX_SOCKETS:
         return shape_aux(fit, "l" if socket == "l_aux" else "r")
     if socket == "reactor":
@@ -6110,6 +6120,10 @@ def _taper(ax, ay, bx, by, wa, wb, bow=0.0):
     return out
 
 
+CAT_FORE_X = 96.0                # the cat's shoulder, and its hip
+CAT_HIND_X = -100.0
+
+
 def leg_xs(tier, plan=None):
     """Where the pairs of legs come out of the belly. Two pairs or three -
     the count is the loudest thing about the silhouette, so it is the
@@ -6118,10 +6132,18 @@ def leg_xs(tier, plan=None):
     A PLAN can override it, and exactly one does: a cat has four legs at
     every tier, because a six-legged cat is not a cat."""
     if plan == "kittle":
-        # at the CORNERS of the body - forelimbs under the chest, hind
-        # limbs under the rump. Bunched toward the middle they read as a
-        # table with four legs in the wrong places.
-        return (74.0, -58.0)
+        # ONE pair here, under the rump, because the cat's FRONT pair
+        # is its arms - see `bio_hand`. Every strain has two forelimbs
+        # it grows weapons on and four or six legs it walks on, and on
+        # anything that rears up that is fine. On a cat it is three
+        # limbs stacked at the same shoulder, which is what it looked
+        # like: a cat walks on the limbs it has claws on.
+        #
+        # Measured off the cat's OWN outline in `strain_overlay`, not
+        # off TRUNK_BACK/TRUNK_FRONT, because the cat is half again
+        # longer than the stock barrel - left at the barrel's corners
+        # the whole rump overhangs with nothing under it.
+        return (CAT_HIND_X,)
     return (66.0, -34.0) if tier == 1 else (72.0, 8.0, -58.0)
 
 
@@ -6319,7 +6341,16 @@ def _up_of(d):
 # neck at all and the SWARM's knot sits right down on the shell.
 NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
              "spire": (0.66, -0.16), "stalker": (1.34, 0.30),
-             "gravid": (0.62, 0.12), "kittle": (0.28, 0.18)}
+             "gravid": (0.62, 0.12),
+             # a cat carries its head FORWARD of the chest on a short
+             # neck, not tucked into the shoulder - at 0.28 the skull
+             # sat inside the body and read as a bump on the front of it
+             # ...and HIGH enough to break the line of the back. Level
+             # with the spine the skull merges into the saddle - the
+             # brown cap runs into the brown of the body and the white
+             # muzzle into the white of the chest - and the animal reads
+             # as headless.
+             "kittle": (0.78, 0.06)}
 
 
 def neck_head(tier, rear=0.0, plan=None):
@@ -6384,13 +6415,33 @@ def head_eye(tier, rear=0.0):
     return (tip + d * hs * 0.72 + nrm * hs * 0.34), hs
 
 
-def bio_hand(tier, side, reach=0.0):
+def bio_hand(tier, side, reach=0.0, plan=None, phase=0.0, moving=0.0):
     """The tip of a forelimb, where an organ grows. `reach` throws it
-    forward, which is what a strike looks like on something with claws."""
+    forward, which is what a strike looks like on something with claws.
+
+    The stock arm comes out of the chest and reaches FORWARD, level, at
+    about the height of the shoulder. On most of these that is a pair of
+    grasping limbs on a thing that rears. On a cat it is a third pair of
+    legs growing out of the ribs, which is what it looked like. A cat's
+    forelimb hangs DOWN, from under the chest, and its weapon is on the
+    end of it, which is where a cat keeps its claws."""
     up, low = five((52.0, 46.0), (62.0, 54.0), (74.0, 64.0))[tier - 1]
     dx = -12.0 if side == "l" else 10.0
-    root = Vector2(TRUNK_FRONT - 18 + dx, TRUNK_BELLY - 34)
     a = math.sin(clamp(reach, 0.0, 1.0) * math.pi)
+    if plan == "kittle":
+        # ...and on a cat the forelimb is not an arm at all, it is the
+        # front LEG, so it is the same solved leg the hind pair uses and
+        # it walks on the same cycle. The organ on the end of it lands
+        # at the paw, which is where a cat keeps its claws.
+        dxc = -16.0 if side == "l" else 14.0
+        off = 0.0 if side == "l" else math.pi
+        root, elb, hand, _w = _cat_leg(CAT_FORE_X, up, low, 0.0,
+                                       phase + off, moving, dxc)
+        if a > 0.001:                          # ...until it swipes
+            elb = elb + (root + Vector2(76.0, -26.0) - elb) * a
+            hand = hand + (root + Vector2(126.0, -52.0) - hand) * a
+        return root, elb, hand
+    root = Vector2(TRUNK_FRONT - 18 + dx, TRUNK_BELLY - 34)
     a1 = 0.30 - a * 0.70
     elb = root + Vector2(math.cos(a1), math.sin(a1)) * up
     fore = a1 + 0.95 - a * 0.85
@@ -6398,36 +6449,46 @@ def bio_hand(tier, side, reach=0.0):
     return root, elb, hand
 
 
-def bio_arm_posed(tier, side, reach=0.0):
+def bio_arm_posed(tier, side, reach=0.0, plan=None, phase=0.0, moving=0.0):
     """The forelimb, optionally thrown forward into a strike."""
-    root, elb, hand = bio_hand(tier, side, reach)
+    root, elb, hand = bio_hand(tier, side, reach, plan, phase, moving)
     w = five(8.0, 11.0, 14.0)[tier - 1]
     sh = "dark" if side == "l" else "main"
     out = [(_taper(root.x, root.y, elb.x, elb.y, w, w * 0.82, w * 0.3), sh),
            (_taper(elb.x, elb.y, hand.x, hand.y, w * 0.8, w * 0.5,
                    w * 0.25), sh),
            (_blob(elb.x, elb.y, w + 2, w + 2, 9), "dark")]
-    if tier >= 2:
+    if tier >= 2 and plan != "kittle":
+        # (the shoulder knuckle sits exactly on a cat's belly line and
+        # pokes out under the chest as a dark nub; on a cat the shoulder
+        # is under the fur)
         out.insert(0, (_blob(root.x, root.y - 4, w * 2.2, w * 1.6, 11, 0.12,
                              2.0), "dark"))
-    if tier >= 3:
+    if tier >= 3 and plan != "kittle":
+        # (not on a cat: the swelling is a grasping limb's muscle, and
+        # on a limb that walks it reads as a growth)
         out.append((_blob((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5,
                           w * 1.5, w * 1.1, 10, 0.1, 5.0), "light"))
     return out
 
 
-def bio_arm(tier, side):
-    root, elb, hand = bio_hand(tier, side)
+def bio_arm(tier, side, plan=None):
+    root, elb, hand = bio_hand(tier, side, 0.0, plan)
     w = five(8.0, 11.0, 14.0)[tier - 1]
     sh = "dark" if side == "l" else "main"
     out = [(_taper(root.x, root.y, elb.x, elb.y, w, w * 0.82, w * 0.3), sh),
            (_taper(elb.x, elb.y, hand.x, hand.y, w * 0.8, w * 0.5,
                    w * 0.25), sh),
            (_blob(elb.x, elb.y, w + 2, w + 2, 9), "dark")]
-    if tier >= 2:
+    if tier >= 2 and plan != "kittle":
+        # (the shoulder knuckle sits exactly on a cat's belly line and
+        # pokes out under the chest as a dark nub; on a cat the shoulder
+        # is under the fur)
         out.insert(0, (_blob(root.x, root.y - 4, w * 2.2, w * 1.6, 11, 0.12,
                              2.0), "dark"))
-    if tier >= 3:
+    if tier >= 3 and plan != "kittle":
+        # (not on a cat: the swelling is a grasping limb's muscle, and
+        # on a limb that walks it reads as a growth)
         out.append((_blob((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5,
                           w * 1.5, w * 1.1, 10, 0.1, 5.0), "light"))
     return out
@@ -6461,13 +6522,13 @@ def bio_armour(tier):
     return out
 
 
-def bio_weapon(key, side, tier_arm):
+def bio_weapon(key, side, tier_arm, plan=None, phase=0.0, moving=0.0):
     """The organs. Claws and rasps grow on the forelimb; anything that is
     thrown or sprayed grows on the BACK, because that is where a sac goes."""
     w = WEAPONS.get(key)
     if w is None:
         return []
-    _, _, hand = bio_hand(tier_arm, side)
+    _, _, hand = bio_hand(tier_arm, side, 0.0, plan, phase, moving)
     hx, hy = hand.x, hand.y
     back_x = 18 + (18 if side == "r" else -34)
     back_y = TRUNK_TOP + 40
@@ -6515,13 +6576,17 @@ def bio_weapon(key, side, tier_arm):
     if w.kind == "melee" and key in ("fist", "pile"):
         big = key == "pile"
         s = 17 if big else 13
-        out = [(_blob(hx + 4, hy + 8, s, s * 0.9, 11, 0.14, 1.0), "dark")]
+        # on a cat these are on a paw that is standing on the road, so
+        # they are short and they point forward. At full length they
+        # rake down through the ground like a garden fork.
+        cat = plan == "kittle"
+        ax, ay = hx + 4, hy + (-5 if cat else 8)
+        out = [(_blob(ax, ay, s, s * 0.9, 11, 0.14, 1.0), "dark")]
         for k in (-1, 0, 1):
-            a = 0.55 + k * 0.42
-            tipv = Vector2(hx + 4, hy + 8) + Vector2(math.cos(a),
-                                                     math.sin(a)) * s * 2.4
-            out.append((_taper(hx + 4, hy + 8, tipv.x, tipv.y, s * 0.30,
-                               1.5), "light"))
+            a = (0.18 if cat else 0.55) + k * (0.26 if cat else 0.42)
+            tipv = Vector2(ax, ay) + Vector2(math.cos(a), math.sin(a))                 * s * (1.05 if cat else 2.4)
+            out.append((_taper(ax, ay, tipv.x, tipv.y, s * 0.30, 1.5),
+                        "light"))
         return out
     if w.kind == "melee":                      # a rasping tongue
         long = 58 if key == "ripper" else 48
@@ -7048,70 +7113,86 @@ def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
     top = TRUNK_TOP
 
     if kind == "kittle":
-        # A WHITE CAT WITH A TABBY SADDLE. The marking is the one in the
-        # photograph: brown over the back and the upper flank, white
-        # from the chin down the chest and along the belly.
+        # A CAT IS LONG AND LOW, and the numbers for that are not a
+        # matter of taste. Measured off a standing cat in profile, with
+        # H the height of the withers off the road: the body is about
+        # 1.05 H from the point of the shoulder to the point of the
+        # buttock, the chest is about 0.45 H deep, and the rest - a bit
+        # over half the animal - is leg.
         #
-        # The saddle is cut from the SAME ellipse the trunk is drawn
-        # from, so it sits on the curve of the back instead of on top of
-        # it. The pass before this one was a flat-topped slab and it
-        # read as a pannier. For the same reason the stripes stop at the
-        # waterline: a stripe that hangs below the belly is not a
-        # marking, it is a fringe.
-        cx = (TRUNK_BACK + TRUNK_FRONT) * 0.5
-        rx = (TRUNK_FRONT - TRUNK_BACK) * 0.50
-        ry = (TRUNK_BELLY - TRUNK_TOP) * 0.50
-        cut = -0.28                             # how far down the flank
-        arc = []
-        n = 15
-        for i in range(n + 1):                  # over the back
-            a = math.pi - i * (math.pi / n)
-            arc.append((cx + rx * 0.98 * math.cos(a),
-                        by + ry * 0.98 * math.sin(a) * -1.0))
-        lo = by - ry * cut
-        arc.append((cx + rx * 0.92, lo - 6))
-        arc.append((cx - rx * 0.92, lo + 4))
-        rig.poly(arc, dark)
-        rig.poly(arc, shade(dark, 0.78), 2)
-        for i in range(6):                      # stripes, on the flank
-            f = 0.10 + i * 0.16
-            x = cx + rx * (f * 2.0 - 1.0) * 0.86
-            a = math.acos(clamp((x - cx) / (rx * 0.98), -1.0, 1.0))
-            ytop = by - ry * 0.98 * math.sin(a) + 6
-            wd = 7.5 + math.sin(f * 8.0) * 2.5
-            drop = (lo - ytop) * (0.55 + 0.35 * math.sin(f * 5.0))
-            rig.poly([(x - wd, ytop), (x + wd, ytop + 2),
-                      (x + wd * 0.40, ytop + drop),
-                      (x - wd * 0.55, ytop + drop * 0.86)],
+        # The stock trunk is 0.66 H long and sits high on its hips,
+        # which is a lizard, and no amount of white fur and stripes on a
+        # lizard makes a cat. An earlier pass fixed that by making the
+        # body DEEPER, which produced a sheep: the depth was never the
+        # problem, the LENGTH was.
+        #
+        # So the cat does not wear the stock trunk, it COVERS it - this
+        # outline is bigger than the barrel everywhere - which is
+        # cheaper and far less dangerous than teaching every strain's
+        # trunk to have a different shape. Everything is in trunk units
+        # and then scaled about the trunk's own centre by the torso's
+        # `grow`, the same way `bio_trunk` scales, so a tier-5 cat is a
+        # bigger cat rather than a cat wearing a barrel it outgrew.
+        tt = mech.fit["torso"] or 1
+        grow = five(0.86, 1.0, 1.12)[tt - 1]
+        by = (TRUNK_TOP + TRUNK_BELLY) * 0.5
+
+        def c(x, y):
+            return (x * grow, by + (y - by) * grow)
+        # the spine, front to back: up over the shoulder to the withers,
+        # a long shallow dip through the loin, up again over the rump
+        back = [c(130, -244), c(112, -262), c(86, -272), c(52, -271),
+                c(14, -268), c(-28, -263), c(-70, -264), c(-108, -270),
+                c(-134, -258)]
+        # ...and the underside, back to front: the thigh, the abdomen
+        # tucked up behind the ribs, and the deep chest
+        # the abdomen tucks UP behind the ribs - the chest is the
+        # deepest part of a cat and the waist is the shallowest, and a
+        # flat underside between them is a loaf
+        belly = [c(-145, -228), c(-140, -196), c(-124, -172), c(-100, -158),
+                 c(-70, -168), c(-34, -154), c(2, -146), c(40, -148),
+                 c(78, -152), c(108, -158), c(126, -176), c(134, -204),
+                 c(134, -228)]
+        rig.poly(back + belly, light)
+        rig.poly(back + belly, shade(main, 0.86), 2)
+
+        # THE SADDLE: brown over the back and the upper flank, white
+        # from the chin down the chest and along the belly. Its lower
+        # edge is hung off the spine and is DEEPEST IN THE MIDDLE,
+        # tapering away at the shoulder and the rump. Cut it straight
+        # across instead and the marking reads as a pannier strapped on.
+        lip = []
+        for i, (sx, sy) in enumerate(back):
+            f = i / float(len(back) - 1)
+            j = min(len(belly) - 1, int((1.0 - f) * (len(belly) - 1)))
+            deep = belly[j][1] - sy
+            lip.append((sx, sy + deep * (0.50 + 0.16 * math.sin(f * math.pi))))
+        sad = back + lip[::-1]
+        rig.poly(sad, dark)
+        rig.poly(sad, shade(dark, 0.78), 2)
+        for i in range(1, len(back) - 1):      # stripes, down off the spine
+            sx, sy = back[i]
+            wd = (7.0 + math.sin(i * 1.7) * 2.4) * grow
+            drop = (lip[i][1] - sy) * (0.62 + 0.26 * math.sin(i * 2.1))
+            rig.poly([(sx - wd, sy + 4 * grow), (sx + wd, sy + 6 * grow),
+                      (sx + wd * 0.40, sy + drop),
+                      (sx - wd * 0.55, sy + drop * 0.86)],
                      shade(dark, 0.76))
-        # the white chest, deep at the front, and the belly tucked up
-        # behind the ribs - which is the line that makes a cat a cat
-        bib = [(TRUNK_FRONT - 24, lo - 10), (TRUNK_FRONT + 10, lo + 2),
-               (TRUNK_FRONT + 14, TRUNK_BELLY + 2),
-               (cx + rx * 0.20, TRUNK_BELLY - 10),
-               (cx - rx * 0.44, TRUNK_BELLY - 22),
-               (cx - rx * 0.52, lo + 10)]
-        rig.poly(bib, light)
-        rig.poly(bib, shade(main, 0.88), 2)
-        # the NECK. Without it the head floats a hand's width off the
-        # chest, because the head lives in its own zone and the zone
-        # starts where the trunk's ellipse has already curved away.
-        rig.poly([(TRUNK_FRONT - 16, lo - 34), (TRUNK_FRONT + 14, lo - 40),
-                  (TRUNK_FRONT + 22, lo - 2), (TRUNK_FRONT - 10, lo + 2)],
-                 light)
-        # ...and the tail, off the TOP of the rump, out and up
+
+        # THE TAIL, off the top of the rump and out behind, thin all the
+        # way - the stock one is a crocodile's wedge and is hidden
         seg = 8
-        prev = Vector2(TRUNK_BACK + 10, by - ry * 0.62)
+        tx, ty = c(-128, -256)
+        prev = Vector2(tx, ty)
         for i in range(seg):
             f = (i + 1) / float(seg)
-            wag = math.sin(t * 1.6 - f * 2.4) * 12 * f
-            rise = 54.0 * (f ** 2.0)
-            nxt = Vector2(TRUNK_BACK - 16 - f * 108,
-                          by - ry * 0.62 + 30 * f - rise + wag)
+            swish = math.sin(t * 1.6 - f * 2.4) * 12 * f
+            nxt = Vector2(tx - (16 + f * 112) * grow,
+                          ty + (26 * f - 54 * (f ** 2.0)) * grow + swish)
             rig.bar((prev.x, prev.y), (nxt.x, nxt.y),
-                    13.0 * (1.0 - f * 0.34),
+                    11.0 * grow * (1.0 - f * 0.34),
                     dark if i % 2 else shade(light, 0.96),
-                    11.5 * (1.0 - (f + 1.0 / seg) * 0.34))
+                    9.7 * grow * (1.0 - (f + 1.0 / seg) * 0.34))
             prev = nxt
 
     elif kind == "hollow":
@@ -7356,10 +7437,12 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
         if at is None:
             continue
         reach = pose.swing[side]
-        blit(bio_arm_posed(at, side, reach), asock)
+        blit(bio_arm_posed(at, side, reach, plan, pose.walk, pose.moving),
+             asock)
         wsock = "l_wpn" if side == "l" else "r_wpn"
         if mech.weapon(side) is not None:
-            blit(bio_weapon(mech.fit[wsock], side, at), wsock)
+            blit(bio_weapon(mech.fit[wsock], side, at, plan, pose.walk,
+                            pose.moving), wsock)
     for side in ("la", "ra"):
         sock = "l_aux" if side == "la" else "r_aux"
         if mech.fit[sock] is None:
@@ -7736,7 +7819,9 @@ def hurt_spots_bio(mech, pose=None, rear=0.0, plan=None):
         if at is None:
             continue
         reach = (pose.swing[side] if pose is not None else 0.0)
-        root, elb, hand = bio_hand(at, side, reach)
+        root, elb, hand = bio_hand(at, side, reach, plan,
+                                   pose.walk if pose is not None else 0.0,
+                                   pose.moving if pose is not None else 0.0)
         out[key] = [((root.x + elb.x) * 0.5, (root.y + elb.y) * 0.5, 15.0),
                     ((elb.x + hand.x) * 0.5, (elb.y + hand.y) * 0.5, 12.0)]
     lt = mech.fit["legs"]

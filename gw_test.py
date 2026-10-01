@@ -2603,11 +2603,24 @@ def yard():
         back = G.Run.from_json(r.to_json())
         assert back.mech.chassis == key, "it did not survive a save"
 
-    # a cat has four legs at every rung, which nothing else in the table
-    # does - the tier decides the count for everybody else
-    assert len(G.leg_xs(3, "kittle")) == 2
-    assert len(G.leg_xs(1, "kittle")) == 2
+    # a cat has four legs at every rung, which nothing else in the
+    # table does - the tier decides the count for everybody else - and
+    # its FRONT pair is its arms. Every other strain walks on its legs
+    # and grows weapons on two forelimbs it holds up; stack those at the
+    # same shoulder on a thing that walks on all fours and you get three
+    # limbs in the same place, which is what it looked like.
+    for tr in (1, 2, 3):
+        assert len(G.leg_xs(tr, "kittle")) == 1, tr   # the hind pair
     assert len(G.leg_xs(3)) == 3 and len(G.leg_xs(1)) == 2
+    for sd in ("l", "r"):
+        rt, _e, pw = G.bio_hand(3, sd, 0.0, "kittle")[0:3]
+        assert abs(rt.x - G.CAT_FORE_X) < 20, (sd, rt.x)
+        assert abs(pw.y - G.BIO_GROUND) < 1.0, (sd, "the paw is in the air")
+    # ...and the paw walks, so the claws on the end of it are not left
+    # standing where the foot used to be
+    walked = [G.bio_hand(3, "r", 0.0, "kittle", ph * G.TAU / 8.0, 1.0)[2].x
+              for ph in range(8)]
+    assert max(walked) - min(walked) > 20, "the front paw does not walk"
     kmech = G.Run("ryez", "kittlestrain").mech
     assert G.strain_hides(kmech, "armour"), "the cat grew a sail"
     assert G.strain_hides(kmech, "tail"), "the cat grew a second tail"
@@ -2618,7 +2631,53 @@ def yard():
               and c.key != "kittlestrain"]
     assert kp["head"] > max(p.get("head", 1.0) for p in others), (
         "something else in the tank has a bigger head than the cat")
-    assert kp["wide"] > 1.0, "a cat is broad in the chest, not a whippet"
+    assert kp["wide"] == 1.0 and kp["body"] == 1.0, (
+        "the cat draws its OWN body in strain_overlay; stretching the "
+        "stock barrel underneath it only pulls the two apart")
+    # ...and that body is longer than the barrel, with the legs out at
+    # ITS corners rather than at the barrel's, or the whole rump
+    # overhangs with nothing under it
+    assert G.CAT_FORE_X >= G.TRUNK_FRONT - 20, G.CAT_FORE_X
+    assert G.CAT_HIND_X <= G.TRUNK_BACK - 20, G.CAT_HIND_X
+    # which has to come out as an animal that is LONG AND LOW. Measured
+    # rather than asserted about: a cat is about half again longer than
+    # it is tall, and two passes at this were a lizard (too short) and
+    # then a sheep (too deep), both of which read fine in the numbers
+    # and neither of which read as a cat on the screen.
+    kr = G.Run("ryez", "kittlestrain")
+    for sock in kr.mech.sockets():
+        if sock in G.HARDPOINTS:
+            opts = G.options_for(sock, None, kr.mech.frame)
+            if opts:
+                kr.mech.install(sock, opts[0].key)
+        else:
+            kr.mech.install(sock, 3)
+    kw, kh = 560, 430
+    kcan = pygame.Surface((kw, kh))
+    kcan.fill((255, 255, 255))
+    kp2 = G.Pose()
+    kp2.face, kp2.walk, kp2.moving = 1, 0.0, 0.0
+    G.draw_mech_side(kcan, kr.mech, 290, 400, 0.8, 1.0, kp2, bio=True)
+    # the INK, not the paper - a threshold mask against white picks out
+    # the background and then every animal is 560x430 and passes
+    raw = pygame.image.tobytes(kcan, "RGB")
+    kx0, ky0, kx1, ky1 = kw, kh, -1, -1
+    for yy in range(kh):
+        base = yy * kw * 3
+        for xx in range(kw):
+            i = base + xx * 3
+            if raw[i] + raw[i + 1] + raw[i + 2] < 740:
+                if xx < kx0:
+                    kx0 = xx
+                if xx > kx1:
+                    kx1 = xx
+                if yy < ky0:
+                    ky0 = yy
+                if yy > ky1:
+                    ky1 = yy
+    assert kx1 > 0, "the cat did not draw"
+    kwid, khgt = kx1 - kx0 + 1, ky1 - ky0 + 1
+    assert kwid > khgt * 1.25, "%dx%d - a cat is long and low" % (kwid, khgt)
     # (1) the foot lands UNDER the hip. Every other strain splays - the
     # fore pair plants forward and the hind pair back - and that is how a
     # spider stands, not a cat. Standing still, a cat's foot is directly
@@ -2638,8 +2697,8 @@ def yard():
     assert splayed > 30.0, "nothing else splays, so the cat proves nothing"
     # (3) a fore limb and a hind limb are DIFFERENT legs: the hind is
     # longer and folded, which is the stifle and the hock
-    fr, fk, ff, _ = G._one_leg(74.0, 3, 0.0, 0.0, 0.0, "kittle")
-    hr, hk, hf, _ = G._one_leg(-58.0, 3, 0.0, 0.0, 0.0, "kittle")
+    fr, fk, ff, _ = G._one_leg(G.CAT_FORE_X, 3, 0.0, 0.0, 0.0, "kittle")
+    hr, hk, hf, _ = G._one_leg(G.CAT_HIND_X, 3, 0.0, 0.0, 0.0, "kittle")
     assert (fk - fr).length() < (hk - hr).length() * 0.8, "one leg twice"
     assert fk.x < fr.x, "the elbow should tuck BACK under the chest"
     assert hk.x > hr.x, "the stifle should come FORWARD of the rump"
@@ -2647,7 +2706,8 @@ def yard():
     # the two knees bow toward each other until the legs cross in an X.
     assert fk.x - hk.x > 40.0, (fk.x, hk.x, "the legs cross")
     # (4) the walk plants and lifts rather than sliding
-    feet = [G._one_leg(74.0, 3, ph * G.TAU / 12.0, 1.0, 0.0, "kittle")[2]
+    feet = [G._one_leg(G.CAT_FORE_X, 3, ph * G.TAU / 12.0, 1.0, 0.0,
+                       "kittle")[2]
             for ph in range(12)]
     assert any(abs(f.y - G.BIO_GROUND) < 1e-6 for f in feet), "never plants"
     assert any(f.y < G.BIO_GROUND - 8 for f in feet), "never lifts"
