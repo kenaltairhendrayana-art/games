@@ -2608,29 +2608,63 @@ def yard():
     assert len(G.leg_xs(3, "kittle")) == 2
     assert len(G.leg_xs(1, "kittle")) == 2
     assert len(G.leg_xs(3)) == 3 and len(G.leg_xs(1)) == 2
-    assert G.strain_hides(G.Run("ryez", "kittlestrain").mech, "armour"), (
-        "the cat grew a sail")
-    # and it is built like a cat rather than like everything else in the
-    # table: short legs under it, a compact body, and a head far too big
-    # for it, which is the whole of what reads as a kitten
+    kmech = G.Run("ryez", "kittlestrain").mech
+    assert G.strain_hides(kmech, "armour"), "the cat grew a sail"
+    assert G.strain_hides(kmech, "tail"), "the cat grew a second tail"
+    # and it is SHAPED like a cat, which is four separate claims.
     kp = G.CHASSIS["kittlestrain"].prop
     others = [c.prop for c in G.CHASSIS_LIST
               if c.prop and (c.style or {}).get("beast")
               and c.key != "kittlestrain"]
     assert kp["head"] > max(p.get("head", 1.0) for p in others), (
         "something else in the tank has a bigger head than the cat")
-    assert kp["leg"] < min(p.get("leg", 1.0) for p in others), (
-        "the cat is not the short-legged one")
-    assert kp["wide"] < 0.9, kp["wide"]
-    # both eyes are on the visible cheek, which is a lie about which way
-    # it is facing and the only reason the face reads as a face
+    assert kp["wide"] > 1.0, "a cat is broad in the chest, not a whippet"
+    # (1) the foot lands UNDER the hip. Every other strain splays - the
+    # fore pair plants forward and the hind pair back - and that is how a
+    # spider stands, not a cat. Standing still, a cat's foot is directly
+    # below the shoulder it hangs from.
+    for tier in (1, 2, 3):
+        for rx in G.leg_xs(tier, "kittle"):
+            root, knee, foot, w = G._one_leg(rx, tier, 0.0, 0.0, 0.0,
+                                             "kittle")
+            assert abs(foot.x - root.x) < 1.0, (tier, rx, foot.x, root.x)
+            # (2) ...and it reaches the road at every rung, which is why
+            # the length is set against the hip's height rather than
+            # against the tier
+            assert abs(foot.y - G.BIO_GROUND) < 1e-6, (tier, rx, foot.y)
+    splayed = max(abs(G._one_leg(rx, 3, 0.0, 0.0, 0.0, p)[2].x - rx)
+                  for p in ("stalker", "gravid", "hollow")
+                  for rx in G.leg_xs(3, p))
+    assert splayed > 30.0, "nothing else splays, so the cat proves nothing"
+    # (3) a fore limb and a hind limb are DIFFERENT legs: the hind is
+    # longer and folded, which is the stifle and the hock
+    fr, fk, ff, _ = G._one_leg(74.0, 3, 0.0, 0.0, 0.0, "kittle")
+    hr, hk, hf, _ = G._one_leg(-58.0, 3, 0.0, 0.0, 0.0, "kittle")
+    assert (fk - fr).length() < (hk - hr).length() * 0.8, "one leg twice"
+    assert fk.x < fr.x, "the elbow should tuck BACK under the chest"
+    assert hk.x > hr.x, "the stifle should come FORWARD of the rump"
+    # ...and they must not meet in the middle. Sharing one length makes
+    # the two knees bow toward each other until the legs cross in an X.
+    assert fk.x - hk.x > 40.0, (fk.x, hk.x, "the legs cross")
+    # (4) the walk plants and lifts rather than sliding
+    feet = [G._one_leg(74.0, 3, ph * G.TAU / 12.0, 1.0, 0.0, "kittle")[2]
+            for ph in range(12)]
+    assert any(abs(f.y - G.BIO_GROUND) < 1e-6 for f in feet), "never plants"
+    assert any(f.y < G.BIO_GROUND - 8 for f in feet), "never lifts"
+    assert max(f.x for f in feet) - min(f.x for f in feet) > 20, "no stride"
+    # the face is in PROFILE, with one eye and a slit in it. Turning it
+    # toward the camera to fit two eyes on it is what made it uncanny:
+    # a front-facing head on a side-on body reads as a thing watching
+    # you rather than as an animal walking past.
     src = io.open(os.path.join(HERE, "great_work.py"),
                   encoding="utf-8").read()
-    assert "BOTH eyes, side by side across the face" in src
+    assert "A CAT, IN PROFILE" in src
+    assert "BOTH eyes, side by side across the face" not in src
     wipe_meta()
     G.set_house("keal")
     print("  one code, two frames, one a side; a cat keeps four legs at "
-          "every rung and no counter sells either of them")
+          "every rung, plants them under itself, and no counter sells "
+          "either of them")
 
 
 

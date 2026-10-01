@@ -3160,8 +3160,10 @@ CHASSIS_LIST = [
             style={"beast": "kittle"},
             tones={"main": (234, 231, 223), "dark": (118, 104, 84),
                    "light": (252, 251, 247), "trim": (198, 124, 120)},
-            prop={"leg": 0.60, "legw": 1.32, "body": 1.06, "wide": 0.74,
-                  "head": 2.05, "arm": 0.52}),
+            # leg is 1.0 on purpose: the cat SOLVES for where its foot
+            # goes, and scaling that afterwards floats it off the road.
+            prop={"leg": 1.0, "legw": 1.0, "body": 0.86, "wide": 1.16,
+                  "head": 1.18, "arm": 0.74}),
 
     Chassis("gravid", "GRAVID MOTHER", "st_gravid",
             "Carrying, and it has been carrying for months. There is room "
@@ -6116,7 +6118,10 @@ def leg_xs(tier, plan=None):
     A PLAN can override it, and exactly one does: a cat has four legs at
     every tier, because a six-legged cat is not a cat."""
     if plan == "kittle":
-        return (64.0, -40.0)
+        # at the CORNERS of the body - forelimbs under the chest, hind
+        # limbs under the rump. Bunched toward the middle they read as a
+        # table with four legs in the wrong places.
+        return (74.0, -58.0)
     return (66.0, -34.0) if tier == 1 else (72.0, 8.0, -58.0)
 
 
@@ -6132,7 +6137,9 @@ LEG_PLAN = {"hollow":  (1.18, 1.22, 0.58, 0.34, 1.20),   # long, thin, splayed
             "stalker": (1.34, 1.30, 0.54, 0.26, 1.42),   # spidery
             "gravid":  (0.80, 0.86, 1.52, 0.36, 0.95),   # short, wide apart
             "bloom":   (0.96, 1.00, 1.14, -0.16, 0.58),  # stiff, rooted
-            "kittle":  (0.56, 0.58, 1.30, -0.10, 0.70)}  # short, under it
+            # the cat ignores splay and bend - it solves for its foot -
+            # so those two are only here to keep the row the same shape.
+            "kittle":  (0.84, 0.80, 0.82, -0.04, 0.80)}  # a cat stands
 
 
 def leg_geom(tier, plan=None):
@@ -6146,10 +6153,68 @@ def leg_geom(tier, plan=None):
     return up, low, w, splay
 
 
+BIO_GROUND = -6.0                # where a strain's feet are
+
+
+def _cat_leg(rx, up, low, w, phase, moving, dx):
+    """A cat's leg, which is not a strut with a hinge in it.
+
+    Two things make it read as an animal rather than as furniture. The
+    foot lands UNDER the hip - the splay the other strains use throws
+    the fore pair forward and the hind pair back, which is how a spider
+    stands and is the single loudest wrong thing about putting a cat on
+    those legs. And the joint bows BACKWARD on the fore limb and
+    FORWARD on the hind: that is the elbow and the stifle, in that
+    order, and it is why a cat's back legs look like a Z and its front
+    legs look like a post.
+
+    So the ankle is solved for instead of accumulated: pick where the
+    foot goes, then find the knee that reaches it."""
+    fore = rx > 0
+    m = clamp(moving, 0.0, 1.0)
+    root = Vector2(rx + dx, LEG_ROOT_Y)
+    # The front pair and the back pair are NOT the same leg, and the
+    # drawing falls apart if you pretend they are. A fore limb is nearly
+    # a post with the elbow tucked high under the chest; a hind limb is
+    # longer and folded, stifle forward and hock back. Give them one
+    # shared length and the two knees bow toward each other until the
+    # legs cross in the middle of the cat.
+    #
+    # Both are set against the hip's height off the road rather than
+    # against the tier, because what a leg has to do is REACH THE
+    # GROUND, and that distance is the same at every rung.
+    reach = abs(LEG_ROOT_Y - BIO_GROUND)
+    if fore:
+        up, low = reach * 0.39, reach * 0.635
+    else:
+        up, low = reach * 0.61, reach * 0.558
+    stride = (up + low) * 0.15 * m
+    f = (phase / TAU) % 1.0
+    if f < STANCE:                      # planted: the road carries it back
+        u = f / STANCE
+        fx, fy = stride * (1.0 - 2.0 * u), 0.0
+    else:                               # swinging: it lifts and reaches
+        u = (f - STANCE) / (1.0 - STANCE)
+        fx = stride * (2.0 * u - 1.0)
+        fy = -low * 0.20 * math.sin(u * math.pi)
+    foot = Vector2(root.x + fx, BIO_GROUND + fy)
+    d = foot - root
+    dist = clamp(d.length(), 1e-3, (up + low) * 0.995)
+    cosa = clamp((up * up + dist * dist - low * low) / (2.0 * up * dist),
+                 -1.0, 1.0)
+    base = math.atan2(d.y, d.x)
+    bow = math.acos(cosa)
+    a1 = base + bow if fore else base - bow
+    knee = root + Vector2(math.cos(a1), math.sin(a1)) * up
+    return root, knee, foot, w
+
+
 def _one_leg(rx, tier, phase=0.0, moving=0.0, dx=0.0, plan=None):
     """Two segments from the belly to the ground. Shared by the pod view
     and the fight, so a leg cannot look like two different legs."""
     up, low, w, splay = leg_geom(tier, plan)
+    if plan == "kittle":
+        return _cat_leg(rx, up, low, w, phase, moving, dx)
     splay *= 0.30 + rx / 84.0          # fore legs plant forward, hind back
     swing = math.sin(phase) * 0.38 * moving
     bend = 0.52 + max(0.0, -math.cos(phase)) * 0.42 * moving
@@ -6184,9 +6249,11 @@ def bio_legs(tier, phase=0.0, moving=0.0, half=None, plan=None):
             out.append((_taper(knee.x, knee.y, foot.x, foot.y, w * 0.74,
                                w * 0.42, w * 0.2), sh))
             out.append((_blob(knee.x, knee.y, w + 2, w + 2, 9), "dark"))
+            toe = 0.42 if plan == "kittle" else 1.0   # a cat has paws
             for k in (-1, 0, 1):               # a foot that grips the road
                 out.append(([(foot.x, foot.y - 3),
-                             (foot.x + (16 + k * 5) * (1 if k >= 0 else -0.7),
+                             (foot.x + (16 + k * 5) * toe
+                              * (1 if k >= 0 else -0.7),
                               foot.y + 3 + abs(k)),
                              (foot.x, foot.y + 5)], "dark"))
     return out
@@ -6252,7 +6319,7 @@ def _up_of(d):
 # neck at all and the SWARM's knot sits right down on the shell.
 NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
              "spire": (0.66, -0.16), "stalker": (1.34, 0.30),
-             "gravid": (0.62, 0.12), "kittle": (0.16, 0.26)}
+             "gravid": (0.62, 0.12), "kittle": (0.28, 0.18)}
 
 
 def neck_head(tier, rear=0.0, plan=None):
@@ -6517,7 +6584,10 @@ STRAIN_HIDE = {"hollow": ("tail", "head"), "deepone": ("head",),
                # a cat has no shell and no sail. The armour socket
                # still WORKS - it is hide under the fur - it just is not
                # drawn as a rack of spines down the back of a cat.
-               "kittle": ("head", "armour")}
+               # ...and the stock tail is a crocodile's: a wedge off
+               # the back that gets WIDER before it tapers. The cat
+               # draws its own, so hide this one or it wears both.
+               "kittle": ("head", "armour", "tail")}
 
 
 def strain_hides(mech, part):
@@ -6668,70 +6738,85 @@ def strain_head(rig, mech, t, tones, kind, rear):
     hz = rig.zone
 
     if kind == "kittle":
-        # A CAT, and the face is turned toward you rather than drawn in
-        # strict profile. A cat in profile has ONE eye, and one eye is
-        # not cute - so both go on the visible cheek, side by side along
-        # the muzzle, at the same height. Everything else in this file
-        # is honest about which way it is facing; this one is not, and
-        # it is the only reason it reads as a face at all.
+        # A CAT, IN PROFILE, which is what everything else in this file
+        # is. The pass before this one turned the face toward the camera
+        # so it could have two eyes, and a front-facing head on a
+        # side-on body is not cute, it is uncanny - it reads as a thing
+        # watching you rather than as an animal walking past.
+        #
+        # So: one eye, a wedge muzzle with the nose at the point of it,
+        # ears on top and raked back, and the white blaze running up the
+        # muzzle to stop between the eyes. The proportions are a cat's -
+        # the skull is about a fifth of the body it is on, not the
+        # kitten head the last pass had.
         root, tip, hs = neck_head(ht, rear, "kittle")
         d = unit(tip - root)
         nrm = _up_of(d)
-        hc = tip + d * hs * 0.20
+        hc = tip + d * hs * 0.10
 
         def at(fwd, up):
             return hc + d * hs * fwd + nrm * hs * up
-        skull = [_t(at(f, u)) for f, u in
-                 ((-0.72, 0.34), (-0.58, 0.72), (-0.16, 0.92),
-                  (0.38, 0.86), (0.82, 0.52), (0.96, 0.04),
-                  (0.80, -0.44), (0.34, -0.74), (-0.22, -0.76),
-                  (-0.66, -0.44), (-0.80, -0.06))]
+        # the cranium: round at the back, tapering to the muzzle
+        skull = [_t(at(-0.70, 0.10)), _t(at(-0.62, 0.52)),
+                 _t(at(-0.26, 0.76)), _t(at(0.16, 0.70)),
+                 _t(at(0.52, 0.46)), _t(at(0.86, 0.22)),
+                 _t(at(1.04, 0.02)), _t(at(0.86, -0.22)),
+                 _t(at(0.44, -0.34)), _t(at(0.02, -0.42)),
+                 _t(at(-0.42, -0.36)), _t(at(-0.70, -0.14))]
         rig.poly(skull, light)
         rig.poly(skull, shade(dark, 1.04), 2)
-        # the tabby cap, over the top of the head and down to the brow
-        rig.poly([_t(at(-0.72, 0.34)), _t(at(-0.58, 0.72)),
-                  _t(at(-0.16, 0.92)), _t(at(0.38, 0.86)),
-                  _t(at(0.60, 0.52)), _t(at(0.10, 0.34)),
-                  _t(at(-0.46, 0.18))], dark)
-        for sgn, back in ((1, 0.34), (-1, -0.18)):   # two ears
-            b = at(back, 0.62 + sgn * 0.04)
-            ear = [_t(b - d * hs * 0.44), _t(b + d * hs * 0.40),
-                   _t(b + nrm * hs * 0.86 - d * hs * 0.02)]
-            rig.poly(ear, dark if sgn > 0 else shade(dark, 0.86))
-            rig.poly(ear, shade(dark, 0.74), 2)
-            rig.poly([_t(b - d * hs * 0.26), _t(b + d * hs * 0.22),
-                      _t(b + nrm * hs * 0.56)], shade(trim, 1.02))
+        # the tabby cap, over the top of the skull and down the cheek -
+        # the white stops between the eyes, which is the one marking
+        # that makes a tabby read as THAT tabby
+        rig.poly([_t(at(-0.70, 0.10)), _t(at(-0.62, 0.52)),
+                  _t(at(-0.26, 0.76)), _t(at(0.16, 0.70)),
+                  _t(at(0.34, 0.48)), _t(at(0.04, 0.30)),
+                  _t(at(-0.30, 0.16)), _t(at(-0.64, 0.04))], dark)
+        rig.poly([_t(at(-0.62, 0.18)), _t(at(-0.30, 0.10)),
+                  _t(at(-0.26, -0.30)), _t(at(-0.58, -0.26))],
+                 shade(dark, 0.88))
+        for sgn, back, lift in ((1, -0.30, 0.0), (-1, -0.54, -0.06)):
+            # ears, on top and raked back the way a cat carries them
+            b = at(back, 0.60 + lift)
+            tipv = b + nrm * hs * 0.80 - d * hs * 0.26
+            ear = [_t(b - d * hs * 0.34), _t(b + d * hs * 0.30), _t(tipv)]
+            rig.poly(ear, dark if sgn > 0 else shade(dark, 0.84))
+            rig.poly(ear, shade(dark, 0.72), 2)
+            inner = [_t(b - d * hs * 0.18), _t(b + d * hs * 0.16),
+                     _t(b + nrm * hs * 0.52 - d * hs * 0.16)]
+            rig.poly(inner, shade(trim, 1.02))
         if not dead:
-            # BOTH eyes, side by side across the face, same height
-            for fwd in (0.50, 0.04):
-                e = at(fwd, 0.06)
-                rig.circle((e.x, e.y), hs * 0.33, (252, 252, 248))
-                rig.circle((e.x, e.y), hs * 0.27, (150, 196, 86))
-                rig.circle((e.x, e.y), hs * 0.095, (16, 14, 16))
-                sp = e + d * hs * 0.10 + nrm * hs * 0.11
-                rig.circle((sp.x, sp.y), hs * 0.085, (255, 255, 253))
-                rig.light((e.x, e.y), hs * 0.55, (180, 220, 110), 36)
+            # ONE eye, because this is a profile
+            e = at(0.26, 0.16)
+            rig.circle((e.x, e.y), hs * 0.21, (250, 250, 244))
+            rig.circle((e.x, e.y), hs * 0.17, (150, 196, 86))
+            # a slit, not a dot - a round pupil on a thing this size is
+            # a doll's eye
+            rig.bar(_t(e + nrm * hs * 0.13), _t(e - nrm * hs * 0.13),
+                    hs * 0.055, (16, 14, 16))
+            sp = e + d * hs * 0.07 + nrm * hs * 0.07
+            rig.circle((sp.x, sp.y), hs * 0.055, (255, 255, 253))
+            rig.light((e.x, e.y), hs * 0.42, (180, 220, 110), 34)
         else:
-            for fwd in (0.50, 0.04):
-                e = at(fwd, 0.06)
-                for k in (-1, 1):
-                    rig.bar(_t(e + d * hs * 0.16 * k + nrm * hs * 0.16),
-                            _t(e - d * hs * 0.16 * k - nrm * hs * 0.16),
-                            hs * 0.07, shade(dark, 0.8))
-        # a nose, a mouth, and the whiskers off the muzzle
-        nose = at(0.30, -0.42)
-        rig.poly([_t(nose - d * hs * 0.13 + nrm * hs * 0.07),
-                  _t(nose + d * hs * 0.13 + nrm * hs * 0.07),
-                  _t(nose - nrm * hs * 0.13)], shade(trim, 0.94))
-        for k in (-1, 1):
-            m0 = nose - nrm * hs * 0.12
-            rig.bar(_t(m0), _t(m0 + d * hs * 0.20 * k - nrm * hs * 0.16),
-                   hs * 0.045, shade(dark, 0.9))
+            e = at(0.26, 0.16)
+            for k in (-1, 1):
+                rig.bar(_t(e + d * hs * 0.13 * k + nrm * hs * 0.13),
+                        _t(e - d * hs * 0.13 * k - nrm * hs * 0.13),
+                        hs * 0.06, shade(dark, 0.8))
+        # the nose, at the point of the muzzle, and the mouth back off it
+        nose = at(1.00, -0.02)
+        rig.poly([_t(nose + nrm * hs * 0.10), _t(nose - nrm * hs * 0.10),
+                  _t(nose + d * hs * 0.14 - nrm * hs * 0.02)],
+                 shade(trim, 0.94))
+        m0 = nose - nrm * hs * 0.09
+        rig.bar(_t(m0), _t(at(0.72, -0.26)), hs * 0.045, shade(dark, 0.9))
+        rig.bar(_t(at(0.72, -0.26)), _t(at(0.52, -0.30)), hs * 0.040,
+                shade(dark, 0.9))
         for k in (-1, 0, 1):
-            w0 = at(0.46, -0.30)
-            rig.bar(_t(w0), _t(w0 + d * hs * 1.25
-                               + nrm * hs * (k * 0.34 + 0.06)),
-                    hs * 0.040, shade(light, 0.92))
+            w0 = at(0.84, 0.00)
+            rig.bar(_t(w0), _t(w0 + d * hs * 0.95
+                               + nrm * hs * (k * 0.26 + 0.10)),
+                    hs * 0.035, shade(light, 0.92))
         rig.zone = hz
         return
 
@@ -6963,57 +7048,70 @@ def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
     top = TRUNK_TOP
 
     if kind == "kittle":
-        # A WHITE CAT WITH A TABBY SADDLE, which is the marking in the
-        # photograph: white from the chin down the chest and along the
-        # belly, brown over the back and the flank.
+        # A WHITE CAT WITH A TABBY SADDLE. The marking is the one in the
+        # photograph: brown over the back and the upper flank, white
+        # from the chin down the chest and along the belly.
         #
-        # The saddle is a rounded MASS with soft stripes hanging off its
-        # lower edge, not a row of bars dropped from the spine - the
-        # first pass was bars and the animal read as a ribcage with fur
-        # painted on it.
-        fx0, fx1 = TRUNK_BACK + 2, TRUNK_FRONT - 10
-        saddle = []
-        for i in range(13):                     # over the back, and round
-            f = i / 12.0
-            x = lerp(fx0, fx1, f)
-            dip = math.sin(f * math.pi) ** 0.7
-            saddle.append((x, top + 16 - dip * 16))
-        for i in range(13):                     # ...and back along the flank
-            f = 1.0 - i / 12.0
-            x = lerp(fx0, fx1, f)
-            lo = by - 4 + math.sin(f * math.pi * 1.6) * 12
-            saddle.append((x, lo))
-        rig.poly(saddle, dark)
-        rig.poly(saddle, shade(dark, 0.78), 2)
-        for i in range(5):                      # stripes, hanging off it
-            f = 0.14 + i * 0.18
-            x = lerp(fx0, fx1, f)
-            lo = by - 2 + math.sin(f * math.pi * 1.6) * 12
-            wd = 9.0 + math.sin(f * 7.0) * 3.0
-            rig.poly([(x - wd, lo - 6), (x + wd, lo - 8),
-                      (x + wd * 0.45, lo + 26 + math.sin(f * 4.0) * 8),
-                      (x - wd * 0.5, lo + 22)], shade(dark, 0.76))
-        # the white chest and belly, which is the loudest marking on it
-        bib = [(TRUNK_FRONT - 40, by - 2), (TRUNK_FRONT + 2, by - 18),
-               (TRUNK_FRONT + 12, by + 14),
-               (TRUNK_FRONT + 4, TRUNK_BELLY + 10),
-               (TRUNK_FRONT - 46, TRUNK_BELLY + 2),
-               (TRUNK_FRONT - 56, by + 18)]
+        # The saddle is cut from the SAME ellipse the trunk is drawn
+        # from, so it sits on the curve of the back instead of on top of
+        # it. The pass before this one was a flat-topped slab and it
+        # read as a pannier. For the same reason the stripes stop at the
+        # waterline: a stripe that hangs below the belly is not a
+        # marking, it is a fringe.
+        cx = (TRUNK_BACK + TRUNK_FRONT) * 0.5
+        rx = (TRUNK_FRONT - TRUNK_BACK) * 0.50
+        ry = (TRUNK_BELLY - TRUNK_TOP) * 0.50
+        cut = -0.28                             # how far down the flank
+        arc = []
+        n = 15
+        for i in range(n + 1):                  # over the back
+            a = math.pi - i * (math.pi / n)
+            arc.append((cx + rx * 0.98 * math.cos(a),
+                        by + ry * 0.98 * math.sin(a) * -1.0))
+        lo = by - ry * cut
+        arc.append((cx + rx * 0.92, lo - 6))
+        arc.append((cx - rx * 0.92, lo + 4))
+        rig.poly(arc, dark)
+        rig.poly(arc, shade(dark, 0.78), 2)
+        for i in range(6):                      # stripes, on the flank
+            f = 0.10 + i * 0.16
+            x = cx + rx * (f * 2.0 - 1.0) * 0.86
+            a = math.acos(clamp((x - cx) / (rx * 0.98), -1.0, 1.0))
+            ytop = by - ry * 0.98 * math.sin(a) + 6
+            wd = 7.5 + math.sin(f * 8.0) * 2.5
+            drop = (lo - ytop) * (0.55 + 0.35 * math.sin(f * 5.0))
+            rig.poly([(x - wd, ytop), (x + wd, ytop + 2),
+                      (x + wd * 0.40, ytop + drop),
+                      (x - wd * 0.55, ytop + drop * 0.86)],
+                     shade(dark, 0.76))
+        # the white chest, deep at the front, and the belly tucked up
+        # behind the ribs - which is the line that makes a cat a cat
+        bib = [(TRUNK_FRONT - 24, lo - 10), (TRUNK_FRONT + 10, lo + 2),
+               (TRUNK_FRONT + 14, TRUNK_BELLY + 2),
+               (cx + rx * 0.20, TRUNK_BELLY - 10),
+               (cx - rx * 0.44, TRUNK_BELLY - 22),
+               (cx - rx * 0.52, lo + 10)]
         rig.poly(bib, light)
         rig.poly(bib, shade(main, 0.88), 2)
-        # ...and a striped tail, out, down, and hooked up at the tip
+        # the NECK. Without it the head floats a hand's width off the
+        # chest, because the head lives in its own zone and the zone
+        # starts where the trunk's ellipse has already curved away.
+        rig.poly([(TRUNK_FRONT - 16, lo - 34), (TRUNK_FRONT + 14, lo - 40),
+                  (TRUNK_FRONT + 22, lo - 2), (TRUNK_FRONT - 10, lo + 2)],
+                 light)
+        # ...and the tail, off the TOP of the rump, out and up
         seg = 8
-        prev = Vector2(TRUNK_BACK + 6, by + 6)
+        prev = Vector2(TRUNK_BACK + 10, by - ry * 0.62)
         for i in range(seg):
             f = (i + 1) / float(seg)
-            wag = math.sin(t * 1.6 - f * 2.4) * 14 * f
-            rise = 46.0 * (f ** 2.4)
-            nxt = Vector2(TRUNK_BACK - 26 - f * 104,
-                          by + 34 * f - rise + wag)
+            wag = math.sin(t * 1.6 - f * 2.4) * 12 * f
+            rise = 54.0 * (f ** 2.0)
+            nxt = Vector2(TRUNK_BACK - 16 - f * 108,
+                          by - ry * 0.62 + 30 * f - rise + wag)
             rig.bar((prev.x, prev.y), (nxt.x, nxt.y),
-                    16.0 * (1.0 - f * 0.38),
+                    13.0 * (1.0 - f * 0.34),
                     dark if i % 2 else shade(light, 0.96),
-                    14.5 * (1.0 - (f + 1.0 / seg) * 0.38))
+                    11.5 * (1.0 - (f + 1.0 / seg) * 0.34))
             prev = nxt
 
     elif kind == "hollow":
