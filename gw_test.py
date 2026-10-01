@@ -2629,8 +2629,21 @@ def yard():
     others = [c.prop for c in G.CHASSIS_LIST
               if c.prop and (c.style or {}).get("beast")
               and c.key != "kittlestrain"]
-    assert kp["head"] > max(p.get("head", 1.0) for p in others), (
-        "something else in the tank has a bigger head than the cat")
+    # the cat has the biggest skull in the tank - and the dial that does
+    # it is HEAD_SCALE, not the chassis `head` proportion. `strain_head`
+    # draws a strain's OWN skull while the rig is still in the BODY
+    # zone, so the head zone's multiplier never reaches it: four passes
+    # raised that proportion from 1.18 to 2.0 and not one of them
+    # changed a pixel. Anything asserted about it is asserted about a
+    # number nothing reads.
+    assert kp["head"] == 1.0, (
+        "a `head` proportion on this frame is a lie; use HEAD_SCALE")
+    plain = G.neck_head(3, 0.0, None)[2]
+    assert G.neck_head(3, 0.0, "kittle")[2] > plain * 1.3, "a small head"
+    for other in G.HEAD_SCALE:
+        if other != "kittle":
+            assert G.HEAD_SCALE[other] < G.HEAD_SCALE["kittle"], other
+    assert others, "nothing to compare the cat against"
     assert kp["wide"] == 1.0 and kp["body"] == 1.0, (
         "the cat draws its OWN body in strain_overlay; stretching the "
         "stock barrel underneath it only pulls the two apart")

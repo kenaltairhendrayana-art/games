@@ -3165,11 +3165,12 @@ CHASSIS_LIST = [
             # wide and body are 1.0 because the cat DRAWS its own body
             # rather than stretching the stock barrel, and stretching
             # what it draws on top of that only pulls the two apart.
-            # a cat's head is about a fifth of its body long, and this
-            # body is now half again longer than it was, so the head has
-            # to grow with it or the animal reads as headless.
+            # every one of these is 1.0 because the cat draws its own
+            # body, its own legs and its own skull, and none of them is
+            # in a zone these multipliers reach. Its size lives in
+            # `strain_overlay`, `_cat_leg` and `HEAD_SCALE`.
             prop={"leg": 1.0, "legw": 1.0, "body": 1.0, "wide": 1.0,
-                  "head": 1.55, "arm": 1.0}),
+                  "head": 1.0, "arm": 1.0}),
 
     Chassis("gravid", "GRAVID MOTHER", "st_gravid",
             "Carrying, and it has been carrying for months. There is room "
@@ -5184,7 +5185,8 @@ def part_shape(socket, fit, arm_tier=1, strain=None):
     whip behind it and a lizard tail as well."""
     bio = CURRENT["house"] == "ryez"
     if bio and socket == "torso":
-        return bio_torso(fit, tail="tail" not in STRAIN_HIDE.get(strain, ()))
+        return bio_torso(fit, tail="tail" not in STRAIN_HIDE.get(strain, ()),
+                         plan=strain)
     if bio and socket == "legs":
         return bio_legs(fit, plan=strain)
     if socket in ("l_arm", "r_arm"):
@@ -5977,7 +5979,7 @@ def draw_mech_front(surf, mech, cx, gy, scale, jobs=None, t=0.0, lit=True):
     if grown:
         # an animal's hinges are not a machine's; see draw_beast_side
         rig.HIP = LEG_ROOT_Y
-        rig.NECK = NECK_ROOT[1]
+        rig.NECK = neck_y(strain)
         strain_overlay(rig, mech, t, tones, "under")
     arm_t = {"l": mech.fit["l_arm"] or 1, "r": mech.fit["r_arm"] or 1}
 
@@ -6083,6 +6085,20 @@ TRUNK_BACK, TRUNK_FRONT = -74.0, 96.0
 TRUNK_TOP, TRUNK_BELLY = -264.0, -150.0
 LEG_ROOT_Y = -162.0
 NECK_ROOT = (90.0, -242.0)
+CAT_DROP = 28.0                  # how far a cat sits below a rearing thing
+NECK_DROP = {"kittle": CAT_DROP}
+
+
+def neck_y(plan=None):
+    """Where the head hangs from.
+
+    The legs run from the hip to the road and that distance is fixed, so
+    the only way to show LESS leg is to put the body lower over it. A
+    cat carries itself low, and when the body comes down the head has to
+    come down with it or it floats off the front of the chest - which
+    also means the head ZONE has to pivot about the new neck, or scaling
+    the head up swings it away from the body instead of growing it."""
+    return NECK_ROOT[1] + NECK_DROP.get(plan, 0.0)
 HEART_AT = (-8.0, -206.0)
 
 
@@ -6281,9 +6297,9 @@ def bio_legs(tier, phase=0.0, moving=0.0, half=None, plan=None):
     return out
 
 
-def bio_torso(tier, wag=0.0, tail=True):
+def bio_torso(tier, wag=0.0, tail=True, plan=None):
     """Trunk and tail together, for the pod view."""
-    return (bio_tail(tier, wag) if tail else []) + bio_trunk(tier)
+    return (bio_tail(tier, wag) if tail else []) + bio_trunk(tier, plan)
 
 
 def bio_tail(tier, wag=0.0):
@@ -6306,12 +6322,19 @@ def bio_tail(tier, wag=0.0):
     return out
 
 
-def bio_trunk(tier):
+def bio_trunk(tier, plan=None):
     cx = (TRUNK_BACK + TRUNK_FRONT) * 0.5
     cy = (TRUNK_TOP + TRUNK_BELLY) * 0.5
     rx = (TRUNK_FRONT - TRUNK_BACK) * 0.5
     ry = (TRUNK_BELLY - TRUNK_TOP) * 0.5
     grow = five(0.86, 1.0, 1.12)[tier - 1]
+    if plan == "kittle":
+        # the cat draws its own body over this one, so all this has to
+        # do is sit entirely INSIDE it and carry the torso's colour for
+        # the rack. Left at full size it rides up out of the cat's back
+        # the moment the cat sits lower than it does.
+        return [(_blob(cx, cy + CAT_DROP, rx * 0.72 * grow,
+                       ry * 0.60 * grow, 16, 0.10, 1.4), "main")]
     body = _blob(cx, cy, rx * grow, ry * grow, 18, 0.10, 1.4)
     if tier == 1:                              # ribs, and you can see through
         return [(body, "hollow")]
@@ -6350,7 +6373,20 @@ NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
              # brown cap runs into the brown of the body and the white
              # muzzle into the white of the chest - and the animal reads
              # as headless.
-             "kittle": (0.78, 0.06)}
+             # forward, CLEAR of the shoulder. The skull is drawn over
+             # the body, but its tabby cap is the same brown as the
+             # saddle, so any part of it sitting over the back is simply
+             # invisible - at 0.639 two thirds of the head was inside
+             # the animal and what was left read as a bump.
+             "kittle": (0.845, 0.272)}
+
+
+# How big the skull is, over what the tier gives it. This is NOT the
+# chassis `head` proportion, and it cannot be: a strain's own skull is
+# drawn by `strain_head` while the rig is still in the BODY zone, so the
+# head zone's multiplier never touches it. Four passes went into raising
+# that number on the cat and none of them changed a pixel.
+HEAD_SCALE = {"kittle": 1.6}
 
 
 def neck_head(tier, rear=0.0, plan=None):
@@ -6361,9 +6397,10 @@ def neck_head(tier, rear=0.0, plan=None):
     p = NECK_PLAN.get(plan)
     if p:
         reach, rise = reach * p[0], rise + p[1]
-    root = Vector2(*NECK_ROOT)
+    root = Vector2(NECK_ROOT[0], neck_y(plan))
     tip = root + Vector2(math.cos(rise), math.sin(rise)) * reach
-    return root, tip, five(27.0, 33.0, 39.0)[tier - 1]
+    return (root, tip,
+            five(27.0, 33.0, 39.0)[tier - 1] * HEAD_SCALE.get(plan, 1.0))
 
 
 def bio_head(tier, rear=0.0):
@@ -6408,8 +6445,8 @@ def bio_head(tier, rear=0.0):
     return out
 
 
-def head_eye(tier, rear=0.0):
-    root, tip, hs = neck_head(tier, rear)
+def head_eye(tier, rear=0.0, plan=None):
+    root, tip, hs = neck_head(tier, rear, plan)
     d = unit(tip - root)
     nrm = _up_of(d)
     return (tip + d * hs * 0.72 + nrm * hs * 0.34), hs
@@ -6829,7 +6866,11 @@ def strain_head(rig, mech, t, tones, kind, rear):
                  _t(at(0.44, -0.34)), _t(at(0.02, -0.42)),
                  _t(at(-0.42, -0.36)), _t(at(-0.70, -0.14))]
         rig.poly(skull, light)
-        rig.poly(skull, shade(dark, 1.04), 2)
+        # a clear edge, because the cap on this skull is the same brown
+        # as the saddle and a soft one leaves them one shape. It does
+        # not have to be heavy now that the saddle stops at the
+        # shoulder and the head sits against a white neck.
+        rig.poly(skull, shade(dark, 0.68), 2)
         # the tabby cap, over the top of the skull and down the cheek -
         # the white stops between the eyes, which is the one marking
         # that makes a tabby read as THAT tabby
@@ -7137,8 +7178,14 @@ def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
         grow = five(0.86, 1.0, 1.12)[tt - 1]
         by = (TRUNK_TOP + TRUNK_BELLY) * 0.5
 
+        # ...and the whole outline sits CAT_DROP lower than the stock
+        # barrel, which is the only way to show less leg: the hip and
+        # the road are both fixed, so the leg between them is fixed too,
+        # and what changes is how much of it the body covers.
+        bcy = by + CAT_DROP
+
         def c(x, y):
-            return (x * grow, by + (y - by) * grow)
+            return (x * grow, bcy + (y + CAT_DROP - bcy) * grow)
         # the spine, front to back: up over the shoulder to the withers,
         # a long shallow dip through the loin, up again over the rump
         back = [c(130, -244), c(112, -262), c(86, -272), c(52, -271),
@@ -7155,23 +7202,35 @@ def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
                  c(134, -228)]
         rig.poly(back + belly, light)
         rig.poly(back + belly, shade(main, 0.86), 2)
+        # the NECK, bridging the chest to the jaw. The head hangs in its
+        # own zone and is scaled there, so once it is far enough forward
+        # to be seen it is too far forward to touch the chest.
+        rig.poly([c(112, -252), c(150, -278), c(176, -250), c(130, -220)],
+                 light)
 
         # THE SADDLE: brown over the back and the upper flank, white
         # from the chin down the chest and along the belly. Its lower
         # edge is hung off the spine and is DEEPEST IN THE MIDDLE,
         # tapering away at the shoulder and the rump. Cut it straight
         # across instead and the marking reads as a pannier strapped on.
+        # ...and it STOPS SHORT OF THE SHOULDER. A white neck and a
+        # white blaze are the markings in the photograph, and they are
+        # also the only reason the head reads at all: the cap on the
+        # skull is the same brown as this, so a saddle that runs up to
+        # the ears swallows the head whole however far forward the head
+        # is carried and however big it is drawn.
+        spine = back[2:]
         lip = []
-        for i, (sx, sy) in enumerate(back):
-            f = i / float(len(back) - 1)
+        for i, (sx, sy) in enumerate(spine):
+            f = i / float(len(spine) - 1)
             j = min(len(belly) - 1, int((1.0 - f) * (len(belly) - 1)))
             deep = belly[j][1] - sy
-            lip.append((sx, sy + deep * (0.50 + 0.16 * math.sin(f * math.pi))))
-        sad = back + lip[::-1]
+            lip.append((sx, sy + deep * (0.62 + 0.11 * math.sin(f * math.pi))))
+        sad = spine + lip[::-1]
         rig.poly(sad, dark)
         rig.poly(sad, shade(dark, 0.78), 2)
-        for i in range(1, len(back) - 1):      # stripes, down off the spine
-            sx, sy = back[i]
+        for i in range(1, len(spine) - 1):     # stripes, down off the spine
+            sx, sy = spine[i]
             wd = (7.0 + math.sin(i * 1.7) * 2.4) * grow
             drop = (lip[i][1] - sy) * (0.62 + 0.26 * math.sin(i * 2.1))
             rig.poly([(sx - wd, sy + 4 * grow), (sx + wd, sy + 6 * grow),
@@ -7371,7 +7430,7 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
     # the waist. It also means `leg`, `legw`, `head` and `arm` did
     # nothing at all here, because nothing ever set a zone.
     rig.hip = LEG_ROOT_Y
-    rig.neck = NECK_ROOT[1]
+    rig.neck = neck_y((mech.frame.style or {}).get("beast"))
 
     def col(socket, base):
         if mech.fit[socket] is None:
@@ -7411,7 +7470,7 @@ def draw_beast_side(surf, mech, sx, gy, scale, t, pose, tones=None):
     if lt:
         blit(bio_legs(lt, pose.walk, pose.moving, "far", plan), "legs")
     if tt:
-        blit(bio_trunk(tt), "torso")
+        blit(bio_trunk(tt, plan), "torso")
     if mech.fit["armour"] is not None and not strain_hides(mech, "armour"):
         # the fight had its own copy of this check and the pod view's
         # copy was the only one that knew about the hidden parts, so a
@@ -11112,7 +11171,8 @@ class Fight:
         f = clamp(1.0 - self.brood_t / max(0.1, period), 0.0, 1.0)
         main, dark, trim = self.brood_tones()
         rig = Side(surf, mx, gy, FSCALE, self.pose.face, self.mech.frame.prop)
-        rig.hip, rig.neck = LEG_ROOT_Y, NECK_ROOT[1]
+        rig.hip = LEG_ROOT_Y
+        rig.neck = neck_y((self.mech.frame.style or {}).get("beast"))
         throb = 1.0 + (0.11 * f) * math.sin(self.t * (3.0 + 9.0 * f))
         r = (9.0 + 23.0 * f) * throb
         cx = -34.0
