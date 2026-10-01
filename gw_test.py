@@ -2610,6 +2610,23 @@ def yard():
     assert len(G.leg_xs(3)) == 3 and len(G.leg_xs(1)) == 2
     assert G.strain_hides(G.Run("ryez", "kittlestrain").mech, "armour"), (
         "the cat grew a sail")
+    # and it is built like a cat rather than like everything else in the
+    # table: short legs under it, a compact body, and a head far too big
+    # for it, which is the whole of what reads as a kitten
+    kp = G.CHASSIS["kittlestrain"].prop
+    others = [c.prop for c in G.CHASSIS_LIST
+              if c.prop and (c.style or {}).get("beast")
+              and c.key != "kittlestrain"]
+    assert kp["head"] > max(p.get("head", 1.0) for p in others), (
+        "something else in the tank has a bigger head than the cat")
+    assert kp["leg"] < min(p.get("leg", 1.0) for p in others), (
+        "the cat is not the short-legged one")
+    assert kp["wide"] < 0.9, kp["wide"]
+    # both eyes are on the visible cheek, which is a lie about which way
+    # it is facing and the only reason the face reads as a face
+    src = io.open(os.path.join(HERE, "great_work.py"),
+                  encoding="utf-8").read()
+    assert "BOTH eyes, side by side across the face" in src
     wipe_meta()
     G.set_house("keal")
     print("  one code, two frames, one a side; a cat keeps four legs at "

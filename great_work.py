@@ -3160,8 +3160,8 @@ CHASSIS_LIST = [
             style={"beast": "kittle"},
             tones={"main": (234, 231, 223), "dark": (118, 104, 84),
                    "light": (252, 251, 247), "trim": (198, 124, 120)},
-            prop={"leg": 0.98, "legw": 1.04, "body": 0.96, "wide": 1.04,
-                  "head": 1.52, "arm": 0.98}),
+            prop={"leg": 0.60, "legw": 1.32, "body": 1.06, "wide": 0.74,
+                  "head": 2.05, "arm": 0.52}),
 
     Chassis("gravid", "GRAVID MOTHER", "st_gravid",
             "Carrying, and it has been carrying for months. There is room "
@@ -6132,7 +6132,7 @@ LEG_PLAN = {"hollow":  (1.18, 1.22, 0.58, 0.34, 1.20),   # long, thin, splayed
             "stalker": (1.34, 1.30, 0.54, 0.26, 1.42),   # spidery
             "gravid":  (0.80, 0.86, 1.52, 0.36, 0.95),   # short, wide apart
             "bloom":   (0.96, 1.00, 1.14, -0.16, 0.58),  # stiff, rooted
-            "kittle":  (0.88, 0.92, 1.00, 0.10, 0.86)}   # a cat, sitting
+            "kittle":  (0.56, 0.58, 1.30, -0.10, 0.70)}  # short, under it
 
 
 def leg_geom(tier, plan=None):
@@ -6252,7 +6252,7 @@ def _up_of(d):
 # neck at all and the SWARM's knot sits right down on the shell.
 NECK_PLAN = {"hollow": (0.60, -0.24), "deepone": (1.30, 0.40),
              "spire": (0.66, -0.16), "stalker": (1.34, 0.30),
-             "gravid": (0.62, 0.12), "kittle": (0.30, 0.30)}
+             "gravid": (0.62, 0.12), "kittle": (0.16, 0.26)}
 
 
 def neck_head(tier, rear=0.0, plan=None):
@@ -6668,52 +6668,70 @@ def strain_head(rig, mech, t, tones, kind, rear):
     hz = rig.zone
 
     if kind == "kittle":
-        # A CAT. Round skull, two big triangles on top, a short muzzle
-        # and two eyes far too large for it. The white runs up the nose
-        # and stops between the eyes, which is the one marking that
-        # makes a tabby read as THAT tabby rather than any tabby.
+        # A CAT, and the face is turned toward you rather than drawn in
+        # strict profile. A cat in profile has ONE eye, and one eye is
+        # not cute - so both go on the visible cheek, side by side along
+        # the muzzle, at the same height. Everything else in this file
+        # is honest about which way it is facing; this one is not, and
+        # it is the only reason it reads as a face at all.
         root, tip, hs = neck_head(ht, rear, "kittle")
         d = unit(tip - root)
         nrm = _up_of(d)
-        hc = tip + d * hs * 0.34
-        skull = [_t(hc + nrm * hs * 0.92 - d * hs * 0.55),
-                 _t(hc + nrm * hs * 0.66 + d * hs * 0.70),
-                 _t(hc + nrm * hs * 0.10 + d * hs * 1.02),
-                 _t(hc - nrm * hs * 0.52 + d * hs * 0.86),
-                 _t(hc - nrm * hs * 0.86 - d * hs * 0.30),
-                 _t(hc - nrm * hs * 0.40 - d * hs * 0.80),
-                 _t(hc + nrm * hs * 0.40 - d * hs * 0.78)]
-        rig.poly(skull, main)
-        rig.poly(skull, shade(dark, 1.08), 2)
-        # the tabby cap, over the top of the head only
-        rig.poly([_t(hc + nrm * hs * 0.92 - d * hs * 0.55),
-                  _t(hc + nrm * hs * 0.66 + d * hs * 0.70),
-                  _t(hc + nrm * hs * 0.14 + d * hs * 0.52),
-                  _t(hc + nrm * hs * 0.30 - d * hs * 0.66)], dark)
-        for sgn, back in ((1, 0.46), (-1, 0.02)):   # two ears
-            b = hc + nrm * hs * (0.70 + sgn * 0.06) - d * hs * back
-            ear = [_t(b - d * hs * 0.30), _t(b + d * hs * 0.26),
-                   _t(b + nrm * hs * 1.15 - d * hs * 0.04)]
-            rig.poly(ear, shade(main, 0.96) if sgn < 0 else main)
-            rig.poly(ear, shade(dark, 1.05), 2)
-            inner = [_t(b - d * hs * 0.14), _t(b + d * hs * 0.12),
-                     _t(b + nrm * hs * 0.80)]
-            rig.poly(inner, shade(trim, 1.0))
-        if not dead:                                # the eyes
-            for k, off in ((0, 0.30), (1, -0.16)):
-                e = hc + d * hs * 0.30 + nrm * hs * off
-                rig.circle((e.x, e.y), hs * 0.26, (250, 250, 244))
-                rig.circle((e.x, e.y), hs * 0.20, (176, 196, 96))
-                rig.circle((e.x, e.y), hs * 0.07, (18, 16, 18))
-                rig.light((e.x, e.y), hs * 0.5, (196, 220, 120), 46)
-        nose = hc + d * hs * 0.96 - nrm * hs * 0.20
-        rig.poly([_t(nose + nrm * hs * 0.12), _t(nose - nrm * hs * 0.12),
-                  _t(nose + d * hs * 0.16 - nrm * hs * 0.02)],
-                 shade(trim, 0.92))
-        for k in (-1, 0, 1):                        # whiskers
-            w0 = nose - nrm * hs * 0.06
-            w1 = w0 + d * hs * 1.15 + nrm * hs * (k * 0.30 + 0.10)
-            rig.bar(_t(w0), _t(w1), hs * 0.045, shade(light, 0.94))
+        hc = tip + d * hs * 0.20
+
+        def at(fwd, up):
+            return hc + d * hs * fwd + nrm * hs * up
+        skull = [_t(at(f, u)) for f, u in
+                 ((-0.72, 0.34), (-0.58, 0.72), (-0.16, 0.92),
+                  (0.38, 0.86), (0.82, 0.52), (0.96, 0.04),
+                  (0.80, -0.44), (0.34, -0.74), (-0.22, -0.76),
+                  (-0.66, -0.44), (-0.80, -0.06))]
+        rig.poly(skull, light)
+        rig.poly(skull, shade(dark, 1.04), 2)
+        # the tabby cap, over the top of the head and down to the brow
+        rig.poly([_t(at(-0.72, 0.34)), _t(at(-0.58, 0.72)),
+                  _t(at(-0.16, 0.92)), _t(at(0.38, 0.86)),
+                  _t(at(0.60, 0.52)), _t(at(0.10, 0.34)),
+                  _t(at(-0.46, 0.18))], dark)
+        for sgn, back in ((1, 0.34), (-1, -0.18)):   # two ears
+            b = at(back, 0.62 + sgn * 0.04)
+            ear = [_t(b - d * hs * 0.44), _t(b + d * hs * 0.40),
+                   _t(b + nrm * hs * 0.86 - d * hs * 0.02)]
+            rig.poly(ear, dark if sgn > 0 else shade(dark, 0.86))
+            rig.poly(ear, shade(dark, 0.74), 2)
+            rig.poly([_t(b - d * hs * 0.26), _t(b + d * hs * 0.22),
+                      _t(b + nrm * hs * 0.56)], shade(trim, 1.02))
+        if not dead:
+            # BOTH eyes, side by side across the face, same height
+            for fwd in (0.50, 0.04):
+                e = at(fwd, 0.06)
+                rig.circle((e.x, e.y), hs * 0.33, (252, 252, 248))
+                rig.circle((e.x, e.y), hs * 0.27, (150, 196, 86))
+                rig.circle((e.x, e.y), hs * 0.095, (16, 14, 16))
+                sp = e + d * hs * 0.10 + nrm * hs * 0.11
+                rig.circle((sp.x, sp.y), hs * 0.085, (255, 255, 253))
+                rig.light((e.x, e.y), hs * 0.55, (180, 220, 110), 36)
+        else:
+            for fwd in (0.50, 0.04):
+                e = at(fwd, 0.06)
+                for k in (-1, 1):
+                    rig.bar(_t(e + d * hs * 0.16 * k + nrm * hs * 0.16),
+                            _t(e - d * hs * 0.16 * k - nrm * hs * 0.16),
+                            hs * 0.07, shade(dark, 0.8))
+        # a nose, a mouth, and the whiskers off the muzzle
+        nose = at(0.30, -0.42)
+        rig.poly([_t(nose - d * hs * 0.13 + nrm * hs * 0.07),
+                  _t(nose + d * hs * 0.13 + nrm * hs * 0.07),
+                  _t(nose - nrm * hs * 0.13)], shade(trim, 0.94))
+        for k in (-1, 1):
+            m0 = nose - nrm * hs * 0.12
+            rig.bar(_t(m0), _t(m0 + d * hs * 0.20 * k - nrm * hs * 0.16),
+                   hs * 0.045, shade(dark, 0.9))
+        for k in (-1, 0, 1):
+            w0 = at(0.46, -0.30)
+            rig.bar(_t(w0), _t(w0 + d * hs * 1.25
+                               + nrm * hs * (k * 0.34 + 0.06)),
+                    hs * 0.040, shade(light, 0.92))
         rig.zone = hz
         return
 
@@ -6947,35 +6965,55 @@ def strain_overlay(rig, mech, t, tones, layer="over", rear=0.0):
     if kind == "kittle":
         # A WHITE CAT WITH A TABBY SADDLE, which is the marking in the
         # photograph: white from the chin down the chest and along the
-        # belly, brown over the back and the flank, and the stripes run
-        # DOWN off the spine rather than along it.
-        back = [(TRUNK_BACK + 4, by - 6), (TRUNK_FRONT - 18, by - 22),
-                (TRUNK_FRONT - 6, top + 16), (TRUNK_BACK - 2, top + 26)]
-        rig.poly(back, dark)
-        rig.poly(back, shade(dark, 0.78), 1)
-        for i in range(7):                      # stripes down the flank
-            f = 0.06 + i * 0.145
-            x = lerp(TRUNK_BACK + 2, TRUNK_FRONT - 20, f)
-            wob = math.sin(f * 7.0) * 4.0
-            rig.bar((x, top + 22), (x - 7 + wob, by - 4),
-                    3.4 + math.sin(f * 5.0) * 1.2, shade(dark, 0.72))
-        # the white chest, which is the loudest thing on the animal
-        chest = [(TRUNK_FRONT - 26, by + 2), (TRUNK_FRONT + 6, by - 14),
-                 (TRUNK_FRONT + 10, TRUNK_BELLY + 6),
-                 (TRUNK_FRONT - 34, TRUNK_BELLY - 2)]
-        rig.poly(chest, light)
-        rig.poly(chest, shade(main, 0.9), 1)
-        # ...and a striped tail, carried out and low
-        seg = 7
-        prev = Vector2(TRUNK_BACK + 6, by + 10)
+        # belly, brown over the back and the flank.
+        #
+        # The saddle is a rounded MASS with soft stripes hanging off its
+        # lower edge, not a row of bars dropped from the spine - the
+        # first pass was bars and the animal read as a ribcage with fur
+        # painted on it.
+        fx0, fx1 = TRUNK_BACK + 2, TRUNK_FRONT - 10
+        saddle = []
+        for i in range(13):                     # over the back, and round
+            f = i / 12.0
+            x = lerp(fx0, fx1, f)
+            dip = math.sin(f * math.pi) ** 0.7
+            saddle.append((x, top + 16 - dip * 16))
+        for i in range(13):                     # ...and back along the flank
+            f = 1.0 - i / 12.0
+            x = lerp(fx0, fx1, f)
+            lo = by - 4 + math.sin(f * math.pi * 1.6) * 12
+            saddle.append((x, lo))
+        rig.poly(saddle, dark)
+        rig.poly(saddle, shade(dark, 0.78), 2)
+        for i in range(5):                      # stripes, hanging off it
+            f = 0.14 + i * 0.18
+            x = lerp(fx0, fx1, f)
+            lo = by - 2 + math.sin(f * math.pi * 1.6) * 12
+            wd = 9.0 + math.sin(f * 7.0) * 3.0
+            rig.poly([(x - wd, lo - 6), (x + wd, lo - 8),
+                      (x + wd * 0.45, lo + 26 + math.sin(f * 4.0) * 8),
+                      (x - wd * 0.5, lo + 22)], shade(dark, 0.76))
+        # the white chest and belly, which is the loudest marking on it
+        bib = [(TRUNK_FRONT - 40, by - 2), (TRUNK_FRONT + 2, by - 18),
+               (TRUNK_FRONT + 12, by + 14),
+               (TRUNK_FRONT + 4, TRUNK_BELLY + 10),
+               (TRUNK_FRONT - 46, TRUNK_BELLY + 2),
+               (TRUNK_FRONT - 56, by + 18)]
+        rig.poly(bib, light)
+        rig.poly(bib, shade(main, 0.88), 2)
+        # ...and a striped tail, out, down, and hooked up at the tip
+        seg = 8
+        prev = Vector2(TRUNK_BACK + 6, by + 6)
         for i in range(seg):
             f = (i + 1) / float(seg)
-            wag = math.sin(t * 1.6 - f * 2.2) * 16 * f
-            nxt = Vector2(TRUNK_BACK - 34 - f * 96, by + 26 * f + wag)
+            wag = math.sin(t * 1.6 - f * 2.4) * 14 * f
+            rise = 46.0 * (f ** 2.4)
+            nxt = Vector2(TRUNK_BACK - 26 - f * 104,
+                          by + 34 * f - rise + wag)
             rig.bar((prev.x, prev.y), (nxt.x, nxt.y),
-                    11.0 * (1.0 - f * 0.55),
-                    dark if i % 2 else shade(light, 0.94),
-                    9.5 * (1.0 - (f + 1.0 / seg) * 0.55))
+                    16.0 * (1.0 - f * 0.38),
+                    dark if i % 2 else shade(light, 0.96),
+                    14.5 * (1.0 - (f + 1.0 / seg) * 0.38))
             prev = nxt
 
     elif kind == "hollow":
