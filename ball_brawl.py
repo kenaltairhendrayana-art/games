@@ -87,6 +87,7 @@ ARENA = VIEW.copy()
 BG      = (13, 14, 20)
 PANEL   = (21, 23, 33)
 WALL    = (92, 100, 126)
+BOARD   = (74, 192, 118)      # the box it all happens in
 INK     = (228, 233, 245)
 DIM     = (126, 135, 158)
 RED     = (238, 64, 72)
@@ -4428,18 +4429,20 @@ class Game:
                  (pygame.Rect(W - 324, 42, 140, 30), "tourney", None),
                  (pygame.Rect(W - 176, 42, 140, 30), "royale", None),
                  (pygame.Rect(W - 324, 76, 288, 30), "gauntlet", None)]
-        cw, ch, gap = 188, 29, 2
+        # everything below the strip lives inside the board, the same
+        # box the fight happens in
+        cw, ch, gap = 188, 25, 2
         for side in (0, 1):
             for i, col, row in grid_slots():
                 x = (56 + col * (cw + 6) if side == 0
                      else W - 56 - cw - (1 - col) * (cw + 6))
-                items.append((pygame.Rect(x, 112 + row * (ch + gap), cw, ch),
+                items.append((pygame.Rect(x, 166 + row * (ch + gap), cw, ch),
                               "pick", (side, i)))
         bx = W // 2 - 152
-        items.append((pygame.Rect(bx, 606, 304, 32), "human", None))
-        items.append((pygame.Rect(bx, 642, 128, 32), "orbs", None))
-        items.append((pygame.Rect(bx + 136, 642, 168, 32), "map", None))
-        items.append((pygame.Rect(bx, 678, 304, 46), "start", None))
+        items.append((pygame.Rect(bx, 600, 304, 28), "human", None))
+        items.append((pygame.Rect(bx, 632, 128, 28), "orbs", None))
+        items.append((pygame.Rect(bx + 136, 632, 168, 28), "map", None))
+        items.append((pygame.Rect(bx, 666, 304, 44), "start", None))
         return items
 
     def camp_layout(self):
@@ -5130,6 +5133,24 @@ class Game:
             f.fill((255, 255, 255, clamp(v, 0, 255)))
             s.blit(f, (0, 0))
 
+    def board_frame(self, s, box):
+        """The green box. The fight happens inside it and so does the
+        menu, which is the point: starting a fight is not a change of
+        scene, it is the same board with something in it."""
+        pygame.draw.rect(s, BOARD, box, 3)
+        L = 34
+        for cx, cy, dx, dy in ((box.left, box.top, 1, 1),
+                               (box.right - 1, box.top, -1, 1),
+                               (box.left, box.bottom - 1, 1, -1),
+                               (box.right - 1, box.bottom - 1, -1, -1)):
+            pygame.draw.line(s, INK, (cx, cy), (cx + dx * L, cy), 3)
+            pygame.draw.line(s, INK, (cx, cy), (cx, cy + dy * L), 3)
+
+    def draw_strip(self, s):
+        """The panel above the box, which the HUD also lives in."""
+        pygame.draw.rect(s, PANEL, (0, 0, W, HUD_H - 6))
+        pygame.draw.line(s, (44, 48, 62), (0, HUD_H - 6), (W, HUD_H - 6), 2)
+
     def draw_arena(self, s, off):
         inner = ARENA.move(off)
         clip = s.get_clip()
@@ -5151,14 +5172,7 @@ class Game:
         for f in self.floaters:
             f.draw(s, off)
 
-        pygame.draw.rect(s, WALL, inner, 3)
-        L = 34
-        for cx, cy, dx, dy in ((inner.left, inner.top, 1, 1),
-                               (inner.right - 1, inner.top, -1, 1),
-                               (inner.left, inner.bottom - 1, 1, -1),
-                               (inner.right - 1, inner.bottom - 1, -1, -1)):
-            pygame.draw.line(s, INK, (cx, cy), (cx + dx * L, cy), 3)
-            pygame.draw.line(s, INK, (cx, cy), (cx, cy + dy * L), 3)
+        self.board_frame(s, inner)
         s.set_clip(clip)
         self.draw_minimap(s)
 
@@ -5395,15 +5409,18 @@ class Game:
 
     # -- the menu ----------------------------------------------------------
     def draw_menu(self, s):
-        text(s, "BALL BRAWL", 38, (W // 2, 20), INK, center=True)
+        self.draw_strip(s)
+        pygame.draw.rect(s, (16, 17, 24), VIEW)
+        self.board_frame(s, VIEW)
+        text(s, "BALL BRAWL", 38, (W // 2, 18), INK, center=True)
         text(s, "two balls, one arena, pick your weapons", 14,
-             (W // 2, 62), DIM, center=True)
-        text(s, "RED", 20, (56, 88), RED)
-        text(s, "keys 1-7 pick the first seven", 11, (104, 94), DIM)
+             (W // 2, 60), DIM, center=True)
+        text(s, "RED", 20, (56, 140), RED)
+        text(s, "keys 1-7 pick the first seven", 11, (104, 146), DIM)
         # the hint goes to the left of the label: to the right of it is
         # where the mode buttons now reach
-        r = text(s, "BLUE", 20, (W - 56 - 188 - 6 - 188, 88), BLUE)
-        text(s, "keys Q-U", 11, (r.left - 12, 94), DIM, right=True)
+        r = text(s, "BLUE", 20, (W - 56 - 188 - 6 - 188, 140), BLUE)
+        text(s, "keys Q-U", 11, (r.left - 12, 146), DIM, right=True)
 
         for rect, kind, val in self.menu_layout():
             if kind == "pick":
@@ -5446,25 +5463,25 @@ class Game:
             w = WEAPONS[self.pick[side]]
             x = 56 if side == 0 else W - 56
             for k, line in enumerate(w.BLURB):
-                text(s, line, 13, (x, 554 + k * 16), DIM, right=side == 1)
+                text(s, line, 13, (x, 550 + k * 16), DIM, right=side == 1)
             px = x if side == 0 else x - 300
             for label, n in zip(("DMG", "RATE", "REACH"), w.PIPS):
-                text(s, label, 11, (px, 592), DIM)
+                text(s, label, 11, (px, 584), DIM)
                 for k in range(5):
                     c = base if k < n else (48, 52, 66)
-                    pygame.draw.rect(s, c, (px + 40 + k * 8, 594, 5, 8))
+                    pygame.draw.rect(s, c, (px + 40 + k * 8, 586, 5, 8))
                 px += 100
 
         if self.score[0] or self.score[1]:
             text(s, "SESSION   RED %d  -  %d BLUE"
-                 % (self.score[0], self.score[1]), 13, (56, 744), DIM,
+                 % (self.score[0], self.score[1]), 13, (56, 722), DIM,
                  left=True)
         if self.human:
             text(s, "WASD move      mouse aim      SPACE dash", 13,
-                 (W // 2, 744), DIM, center=True)
+                 (W // 2, 722), DIM, center=True)
         if self.cleared:
             text(s, "%d / %d CAMPAIGN LEVELS CLEARED"
-                 % (self.cleared, len(CAMPAIGN)), 13, (W - 56, 744), GREEN,
+                 % (self.cleared, len(CAMPAIGN)), 13, (W - 56, 722), GREEN,
                  right=True)
 
     def draw_card(self, s, rect, wcls, side, selected):
