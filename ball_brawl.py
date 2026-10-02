@@ -81,7 +81,15 @@ FPS = 60
 # ARENA is the ground itself, which a level may make several times larger -
 # then the view follows the fight around it. Everything physical is in
 # arena coordinates; drawing adds the camera offset, same as screen shake.
-VIEW = pygame.Rect(20, HUD_H, W - 40, H - HUD_H - 20)
+# The fight happens in VIEW, which leaves a column down each side for
+# who is in it. MENU_BOX is the whole width, because the menu has no
+# fighters to stand outside itself.
+WING = 180
+VIEW = pygame.Rect(WING + 20, HUD_H, W - 2 * (WING + 20), H - HUD_H - 20)
+MENU_BOX = pygame.Rect(20, HUD_H, W - 40, H - HUD_H - 20)
+# The maps are drawn at the size they were designed for and tiled, so a
+# smaller hole shows less of one rather than a squashed one.
+TILE_W, TILE_H = MENU_BOX.w, MENU_BOX.h
 ARENA = VIEW.copy()
 
 BG      = (13, 14, 20)
@@ -790,8 +798,8 @@ def arena_floor(w, h, which=0):
     if (w, h, which) in _floors:
         return _floors[(w, h, which)]
     panel = MAPS[which][1]
-    cols = max(1, int(round(w / VIEW.w)))
-    rows = max(1, int(round(h / VIEW.h)))
+    cols = max(1, int(round(w / TILE_W)))
+    rows = max(1, int(round(h / TILE_H)))
     xs = [w * c // cols for c in range(cols + 1)]
     ys = [h * r // rows for r in range(rows + 1)]
     s = pygame.Surface((w, h))
@@ -5119,6 +5127,7 @@ class Game:
                 off[1] += random.uniform(-self.shake, self.shake) * 0.5
             off = tuple(off)
             self.draw_arena(s, off)
+            self.draw_wings(s)
             if self.mode == "royale":
                 self.draw_hud_royale(s)
             else:
@@ -5189,6 +5198,68 @@ class Game:
             ready = me.dash_cd <= 0
             text(s, "DASH " + ("READY" if ready else "%.1f" % me.dash_cd), 17,
                  (VIEW.left + 20, VIEW.top + 18), GOLD if ready else DIM)
+
+    def draw_wings(self, s):
+        """The two sides, drawn outside the box they are fighting in.
+
+        Team nought goes down the left and everybody else down the
+        right, which is two columns in a versus fight and a party
+        against a boss, and a left column of one in a royale.
+        """
+        ours = [f for f in self.fighters if f.team == 0]
+        theirs = [f for f in self.fighters if f.team != 0]
+        self.wing(s, ours, 20)
+        self.wing(s, theirs, VIEW.right + 20)
+
+    def wing(self, s, side, x):
+        """One column of portraits, trimmed to what fits."""
+        if not side:
+            return
+        show = side[:4]
+        cell = 104
+        top = VIEW.top + (VIEW.h - len(show) * cell) // 2
+        for k, f in enumerate(show):
+            self.portrait(s, pygame.Rect(x, top + k * cell, WING, cell - 10),
+                          f)
+        if len(side) > len(show):
+            text(s, "+%d more" % (len(side) - len(show)), 13,
+                 (x + WING // 2, top + len(show) * cell + 4), DIM,
+                 center=True)
+
+    def portrait(self, s, box, f):
+        up = f.hp > 0
+        col = f.colour if up else (54, 58, 72)
+        pygame.draw.rect(s, PANEL if up else (15, 16, 23), box)
+        pygame.draw.rect(s, mix(col, BG, 0.45), box, 2)
+        cx, cy = box.centerx, box.top + 38
+        pts = (shape_points(cx, cy, 22, f.shape, f.spin_a)
+               if f.shape else None)
+        if up:
+            blit_glow(s, (cx, cy), 30, mix(col, BG, 0.55), 70)
+        body = mix(f.dark, col, 0.85)
+        if pts:
+            pygame.draw.polygon(s, body, pts)
+            pygame.draw.polygon(s, mix(f.dark, (0, 0, 0), 0.35), pts, 2)
+        else:
+            pygame.draw.circle(s, body, (cx, cy), 20)
+            pygame.draw.circle(s, mix(body, (255, 255, 255), 0.35),
+                               (cx - 6, cy - 7), 8)
+            pygame.draw.circle(s, mix(f.dark, (0, 0, 0), 0.35),
+                               (cx, cy), 20, 2)
+        self.draw_icon(s, (box.left + 24, box.top + 70), type(f.weapon),
+                       col if up else DIM, 0.38)
+        room = box.w - 54 - (0 if up else 34)
+        text(s, f.name, fit(f.name, 14, room), (box.left + 44, box.top + 70),
+             col, left=True)
+        if not up:
+            text(s, "OUT", 11, (box.right - 10, box.top + 70), (72, 78, 96),
+                 right=True)
+        bar = pygame.Rect(box.left + 10, box.bottom - 14, box.w - 20, 8)
+        pygame.draw.rect(s, (11, 12, 18), bar)
+        if up:
+            wide = int(bar.w * clamp(f.hp / f.max_hp, 0.0, 1.0))
+            pygame.draw.rect(s, col, (bar.x, bar.y, wide, bar.h))
+        pygame.draw.rect(s, mix(col, BG, 0.5), bar, 1)
 
     def draw_minimap(self, s):
         """Only worth drawing when the ground is bigger than the window."""
@@ -5349,7 +5420,8 @@ class Game:
         s.blit(band, (VIEW.left, y - 64))
         pygame.draw.line(s, rule, (VIEW.left, y - 64), (VIEW.right, y - 64), 2)
         pygame.draw.line(s, rule, (VIEW.left, y + 132), (VIEW.right, y + 132), 2)
-        text(s, title, size, (W // 2, y), rule, center=True)
+        text(s, title, fit(title, size, VIEW.w - 40), (W // 2, y), rule,
+             center=True)
         if self.banner_t <= 0.5:
             return
         if self.mode == "rush":
@@ -5410,8 +5482,8 @@ class Game:
     # -- the menu ----------------------------------------------------------
     def draw_menu(self, s):
         self.draw_strip(s)
-        pygame.draw.rect(s, (16, 17, 24), VIEW)
-        self.board_frame(s, VIEW)
+        pygame.draw.rect(s, (16, 17, 24), MENU_BOX)
+        self.board_frame(s, MENU_BOX)
         text(s, "BALL BRAWL", 38, (W // 2, 18), INK, center=True)
         text(s, "two balls, one arena, pick your weapons", 14,
              (W // 2, 60), DIM, center=True)
@@ -6033,15 +6105,22 @@ class Game:
                 pygame.draw.line(s, (160, 168, 186),
                                  (cx + px(10), cy - px(8)),
                                  (cx + px(30), cy - px(8)), px(4))
-        else:
+        elif issubclass(wcls, Bow):
             arc = pygame.Rect(0, 0, px(34), px(44))
             arc.center = (cx + px(21), cy)
             pygame.draw.arc(s, (150, 106, 60), arc, -1.2, 1.2, px(4))
-            for i in range(getattr(wcls, "ARROWS", 1)):
+            for i in range(wcls.ARROWS):
                 off = ((i - (wcls.ARROWS - 1) / 2) * 9 * scale
                        if wcls.ARROWS > 1 else 0)
                 pygame.draw.line(s, INK, (cx - px(4), cy + off),
                                  (cx + px(30), cy + off), px(3))
+        else:
+            # whatever a boss is carrying: no badge of its own, and the
+            # portraits draw every fighter's weapon, so this has to hold
+            for i in range(3):
+                a = i * TAU / 3 + 0.5
+                pygame.draw.line(s, mix(colour, (255, 255, 255), 0.35),
+                                 at(12, a), at(30, a), px(4))
 
     def draw_button(self, s, rect, label, colour, key, size=20):
         pygame.draw.rect(s, PANEL, rect)
