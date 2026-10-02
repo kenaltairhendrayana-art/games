@@ -235,6 +235,23 @@ def hue(t):
             (70, dn, 255), (up, 70, 255), (255, 70, dn))[i % 6]
 
 
+def bolts(s, p, r, t, n=5, power=1.0):
+    """Rainbow electricity: short forked arcs that never sit still."""
+    rng = random.Random(int(t * 24.0) * 7919 + int(r))
+    for k in range(n):
+        a = rng.uniform(0, TAU)
+        d = Vector2(math.cos(a), math.sin(a))
+        side = Vector2(-d.y, d.x)
+        pts = [p + d * r * 0.72]
+        for step in range(3):
+            f = (step + 1) / 3.0
+            pts.append(p + d * (r * (0.72 + 0.62 * f * power))
+                       + side * rng.uniform(-9, 9) * power)
+        col = hue(t * 0.9 + k / float(n))
+        pygame.draw.lines(s, mix(col, BG, 0.25), False, pts, 3)
+        pygame.draw.lines(s, mix(col, (255, 255, 255), 0.5), False, pts, 1)
+
+
 def glow(radius, colour, strength=100):
     """An additive disc, cached - used for every light in the game.
 
@@ -2351,6 +2368,140 @@ class Core(Melee):
 
 
 
+class Garden(Weapon):
+    """A red square, and the seven it hides behind.
+
+    It has no attack of its own worth the name. What it has is seven
+    others, each a different shape and a different colour carrying a
+    different weapon, and it sends them out one at a time: every attack it
+    makes is somebody else's fight. Nothing you do touches the square
+    while one of them is still standing, or while one is still to come.
+    """
+    NAME = "GARDEN"
+    RADIUS = 54.0
+    ART_REF = 27.0
+    PREF = 360.0              # it keeps its distance and lets them work
+    SPEED_MULT = 0.62
+    DASH_MULT = 2.6
+    MASS = 6.5
+    ARMOUR = 0.96             # set every frame; this is the guarded value
+    HP_MULT = 1.0
+    BLURB = ("a red square that sends out",
+             "seven, and hides behind them")
+    PIPS = (2, 1, 4)
+
+    SHIELD = 0.96             # while any of the seven is up or still to come
+    BARE = 0.12               # and once none of them are
+    GAP = 1.5                 # a beat between one of them falling and the next
+    GUARD_HP = 0.34           # how much health each of the seven carries
+    GUARD_DMG = 1.60          # ... and how hard it hits while it has it
+    LOB = 2.6                 # it is not completely idle while it waits
+    LOB_DMG = (26.0, 36.0)
+
+    # shape, colour, and what it fights with: seven of them, no two alike
+    SEVEN = ((3, 0, "DAGGER"), (4, 1, "HAMMER"), (5, 2, "BOW"),
+             (6, 3, "FLURRY"), (7, 4, "GUN"), (8, 5, "CHAIN"),
+             (9, 6, "BEAM"))
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.sent = 0
+        self.gap = 1.2
+        self.lob = 2.0
+        self.crackle = random.uniform(0, TAU)
+        self.guarded = True
+
+    def standing(self, world):
+        return [f for f in world.fighters
+                if f.team == self.owner.team and f is not self.owner
+                and f.hp > 0]
+
+    def update(self, dt, world):
+        o = self.owner
+        self.crackle += dt
+        if o.hp <= 0 or world.state != "fight":
+            return
+        live = self.standing(world)
+        self.guarded = bool(live) or self.sent < len(self.SEVEN)
+        self.ARMOUR = self.SHIELD if self.guarded else self.BARE
+        self.PREF = 360.0 if self.guarded else 0.0
+
+        if not self.guarded:                 # nothing left to hide behind
+            return
+        if live:
+            self.gap = self.GAP
+            self.pot_shot(dt, world)
+            return
+        self.gap -= dt
+        if self.gap > 0:
+            return
+        self.gap = self.GAP
+        self.send(world)
+
+    def pot_shot(self, dt, world):
+        """It lobs the odd thing, so standing next to it is never free."""
+        o = self.owner
+        self.lob -= dt
+        if self.lob > 0:
+            return
+        self.lob = self.LOB
+        foe = world.foe(o)
+        if foe is None:
+            return
+        aim = unit(o.lead(foe), o.aim)
+        world.projectiles.append(Projectile(
+            o, o.pos + aim * (o.r + 6), aim * 420.0,
+            random.uniform(*self.LOB_DMG), "shell", crit_chance=0.05,
+            pierce=0, knock=180.0, size=8.0, life=3.0))
+        self.shots += 1
+        world.spark(o.pos + aim * o.r, (255, 190, 170), 7, speed=200)
+        SFX.play("shoot", 0.5)
+
+    def send(self, world):
+        """The next of the seven. This is what its attacks are."""
+        o = self.owner
+        sides, ci, name = self.SEVEN[self.sent]
+        self.sent += 1
+        wcls = next(w for w in WEAPONS if w.NAME == name)
+        col, dark = ROYALE_COLOURS[ci]
+        a = random.uniform(0, TAU)
+        where = Vector2(clamp(o.pos.x + math.cos(a) * 150, ARENA.left + 60,
+                              ARENA.right - 60),
+                        clamp(o.pos.y + math.sin(a) * 150, ARENA.top + 60,
+                              ARENA.bottom - 60))
+        world.incoming.append(Fighter(
+            name, col, dark, where, wcls, shape=sides,
+            max_hp=MAX_HP * self.GUARD_HP, dmg_mult=self.GUARD_DMG,
+            team=o.team))
+        for k in range(3):
+            world.spark(where, col, 18, speed=280 + k * 90)
+        world.shake = max(world.shake, 14.0)
+        world.flash_t = max(world.flash_t, 0.14)
+        SFX.play("ko", 0.45)
+
+    def draw(self, s, off, world):
+        o = self.owner
+        p = o.pos + Vector2(off)
+        if self.guarded:                     # the shell nothing gets through
+            for k in range(2):
+                rad = int(o.r * (1.14 + 0.12 * k))
+                box = pygame.Rect(0, 0, rad * 2, rad * 2)
+                box.center = (int(p.x), int(p.y))
+                pygame.draw.ellipse(s, mix(hue(self.crackle * 0.6 + k * 0.5),
+                                           BG, 0.35), box, 3)
+        bolts(s, p, o.r, self.crackle, 5, 1.0 if self.guarded else 0.55)
+        left = len(self.SEVEN) - self.sent + len(self.standing(world))
+        for k in range(len(self.SEVEN)):     # how many are still to come
+            q = (p.x + (k - 3) * 26, p.y - o.r - 24)
+            col = (ROYALE_COLOURS[k][0] if k < left else (48, 52, 66))
+            pygame.draw.polygon(s, col,
+                                shape_points(q[0], q[1], 9, 3 + k,
+                                             self.crackle * 0.5))
+            pygame.draw.polygon(s, mix(col, (0, 0, 0), 0.5),
+                                shape_points(q[0], q[1], 9, 3 + k,
+                                             self.crackle * 0.5), 1)
+
+
 # ---------------------------------------------------------------------------
 # THE LATER ARRIVALS
 #
@@ -3660,12 +3811,6 @@ CAMPAIGN = (
          hp=1.40, dmg=1.0, spd=0.90,
          brief="Eight legs. It does not have to catch you, only touch you.",
          reward=("weapon", "MECH")),
-    dict(name="THE SEVEN", sides=4, weapon=Friendship,
-         colour=(172, 60, 188), dark=(52, 18, 58),
-         hp=1.35, dmg=1.0, spd=1.0,
-         brief="It only knows one move. Give it long enough and it knows"
-               " it seven times over.",
-         reward=("weapon", "FRIENDSHIP")),
     dict(name="THE COLOSSUS", sides=4, weapon=Buster,
          colour=(236, 92, 72), dark=(104, 26, 20),
          hp=7.0, dmg=1.30, spd=0.70, arena=2.6, party=3, map="CITY",
@@ -3686,6 +3831,13 @@ CAMPAIGN = (
          hp=7.0, dmg=1.25, spd=0.74, arena=3.0, party=3,
          brief="Shelled artillery, until you crack it. Then it is neither.",
          reward=("trophy", "THE LAST LIGHT")),
+    dict(name="THE GARDEN", sides=4, weapon=Garden,
+         colour=(190, 24, 40), dark=(66, 8, 16),
+         hp=5.6, dmg=1.30, spd=0.85, arena=2.0, party=3, storm=True,
+         map="GREEN",
+         brief="It never fights you itself. Seven others do that, one at"
+               " a time, and nothing touches it until they are done.",
+         reward=("weapon", "FRIENDSHIP")),
 )
 
 
@@ -3861,6 +4013,7 @@ class Game:
         self.gaunt_hp = 0.0
         self.gaunt_won = False
         self.fighters = []
+        self.incoming = []           # fighters that arrive part way through
         self.projectiles = []
         self.minions = []
         self.shocks = []
@@ -4005,6 +4158,7 @@ class Game:
                         if self.mode == "campaign" and lv is not None
                         else random.randrange(len(MAPS))
                         if self.map_pick < 0 else self.map_pick)
+        self.incoming.clear()
         self.projectiles.clear()
         self.minions.clear()
         self.shocks.clear()
@@ -4194,6 +4348,9 @@ class Game:
         self.order ^= 1
         for f in (self.fighters[::-1] if self.order else self.fighters):
             f.update(dt, self)
+        if self.incoming:            # spliced here, never mid-loop
+            self.fighters += self.incoming
+            self.incoming.clear()
         self.collide()
 
         for p in self.projectiles:
@@ -5672,8 +5829,9 @@ class Game:
 
         # what the highlighted level actually is
         lv = CAMPAIGN[self.level]
-        text(s, lv["brief"], 14, (56, 448), INK if self.level <= self.cleared
-             else DIM)
+        # the party hint shares this line, so the brief gets what is left
+        text(s, lv["brief"], fit(lv["brief"], 14, 620), (56, 448),
+             INK if self.level <= self.cleared else DIM)
         text(s, "%s    HP %d%%    SPD %d%%    DMG %d%%    REWARD  %s"
              % (lv["weapon"].NAME, round(lv["hp"] * 100), round(lv["spd"] * 100),
                 round(lv["dmg"] * 100), reward_label(lv)),
@@ -5727,10 +5885,16 @@ class Game:
         pygame.draw.rect(s, mix(PANEL, base, 0.20 if sel else 0.04), rect)
         pygame.draw.rect(s, base if sel else (48, 53, 68), rect, 2 if sel else 1)
 
-        spin = pygame.time.get_ticks() * 0.0006 + i
+        t = pygame.time.get_ticks() * 0.001
+        spin = t * 0.6 + i
+        cx, cy = rect.left + 20, rect.centery
+        if lv.get("storm"):        # the last one does not sit still
+            cx += int(math.sin(t * 31.0) * 2)
+            cy += int(math.cos(t * 27.0) * 2)
         pygame.draw.polygon(s, mix(base, (0, 0, 0), 0.4),
-                            shape_points(rect.left + 20, rect.centery, 8,
-                                         lv["sides"], spin))
+                            shape_points(cx, cy, 8, lv["sides"], spin))
+        if lv.get("storm"):
+            bolts(s, Vector2(cx, cy), 9, t, 3, 0.45 if locked else 0.85)
         text(s, "%2d. %s" % (i + 1, lv["name"]), 15, (rect.left + 38,
              rect.centery), DIM if locked else INK, left=True)
         text(s, lv["weapon"].NAME, 11, (rect.left + 216, rect.centery),
