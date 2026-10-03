@@ -4,6 +4,7 @@ measured.
     python cat_test.py economy [n]   play n runs to a full binder, print it
     python cat_test.py value         what each pack is worth per dollar
     python cat_test.py dupes         prove the levelling ladder adds up
+    python cat_test.py behaviour    run the cat room and watch what it does
     python cat_test.py grades       prove every level changes the picture
     python cat_test.py sameness      every breed against every other breed
     python cat_test.py smoke         draw every screen offscreen, save PNGs
@@ -239,6 +240,80 @@ def sameness():
 
 
 # ---------------------------------------------------------------------------
+def behaviour(minutes=20):
+    """Run the cat room for an hour of cat-time and watch what happens.
+
+    Three things can go wrong here and none of them raise: a cat can get
+    stuck in a state and never move again, an activity can turn out to
+    be unreachable because no spot offers it, and every temperament can
+    quietly collapse onto the same behaviour, which would make the whole
+    feature decorative. So: count what each cat actually does, and check
+    it against the temperament it was given.
+    """
+    pygame.display.set_mode((cc.W, cc.H))
+    st = cc.State()
+    rng = random.Random(3)
+    for b in cc.BREEDS:                   # one of everything, levelled up
+        st.cards[b.key] = cc.Card(level=rng.randint(3, 10))
+    room = cc.CatRoom()
+    room.update(0.1, st, cc.ROOM_CAP)
+    seen = {r.breed.key: {} for r in room.res}
+    spots_used = set()
+    moved = {r.breed.key: 0.0 for r in room.res}
+    last_x = {r.breed.key: r.x for r in room.res}
+    steps = int(minutes * 60 / 0.1)
+    for _ in range(steps):
+        room.update(0.1, st, cc.ROOM_CAP)
+        for r in room.res:
+            d = seen.setdefault(r.breed.key, {})
+            if r.state == "rest":
+                d[r.act] = d.get(r.act, 0) + 1
+                spots_used.add(r.spot)
+            moved[r.breed.key] += abs(r.x - last_x[r.breed.key])
+            last_x[r.breed.key] = r.x
+    ok = True
+
+    print(f"  {minutes} minutes, {len(room.res)} cats in the room")
+    for r in sorted(room.res, key=lambda r: r.breed.name):
+        d = seen[r.breed.key]
+        total = sum(d.values()) or 1
+        top = sorted(d.items(), key=lambda kv: -kv[1])[:3]
+        bits = ", ".join(f"{k} {v * 100 // total}%" for k, v in top)
+        print(f"    {r.breed.name:<20}{r.breed.temper:<9}{bits}")
+        if not d:
+            print(f"  {r.breed.name} did nothing at all")
+            ok = False
+        if moved[r.breed.key] < 50:
+            print(f"  {r.breed.name} never crossed the room")
+            ok = False
+        # the thing its temperament is built around has to be the thing
+        # it actually does most of
+        want = max(r.breed.temperament["acts"].items(),
+                   key=lambda kv: kv[1])[0]
+        if top and top[0][0] != want and d.get(want, 0) < total * 0.12:
+            print(f"  {r.breed.name} is a {r.breed.temper} but hardly ever "
+                  f"{want}s ({d.get(want, 0) * 100 // total}%)")
+            ok = False
+
+    every = set()
+    for d in seen.values():
+        every |= set(d)
+    missing = set(cc.ACT_WORD) - every
+    if missing:
+        print(f"  never happened at all: {sorted(missing)}")
+        ok = False
+    print(f"  {len(spots_used)} of {len(cc.ROOM_SPOTS)} spots were used, "
+          f"{len(every)} of {len(cc.ACT_WORD)} activities happened")
+
+    # and no two cats may end up standing in the same place
+    seats = [r.spot for r in room.res if r.state == "rest"]
+    if len(seats) != len(set(seats)):
+        print("  two cats are sitting on the same spot")
+        ok = False
+    print("  behaviour:", "ok" if ok else "FAILED")
+    return ok
+
+
 def _differs(a, b, box=(88, 124)):
     """How much two surfaces differ, 0 to 1, with the size normalised.
 
@@ -379,7 +454,10 @@ def smoke():
     g.state = cc.State()                 # never touch the real save
     shots = []
 
-    def shot(name):
+    def shot(name, warm=0.0):
+        if warm:
+            for _ in range(int(warm * 20)):
+                g.update(0.05)
         g.draw()
         pygame.image.save(screen, f"cat_{name}.png")
         shots.append(name)
@@ -405,7 +483,13 @@ def smoke():
     g.area = "hall"
     shot("hall")
     g.area = "cats"
-    shot("catroom")
+    shot("catroom", warm=12)
+    g.cam = g.cam_to = cc.AREA_WIDE["cats"] - cc.W
+    shot("catroom_far", warm=6)
+    g.cam = g.cam_to = 0.0
+    g.focus = g.room.res[0].breed.key if g.room.res else None
+    g.focus_t = 5.0
+    shot("catroom_focus")
     g.area = "study"
 
     g.go("shop")
@@ -686,6 +770,9 @@ def layout():
         if setup:
             setup()
         g.pan = 0.0
+        for _ in range(40):              # let the cat room fill up first
+            g.update(0.05)
+        g.pan = 0.0
         g.draw()
         drawn = [b for b in g.buttons if b.style != "hit"]
         hits = [b for b in g.buttons if b.style == "hit"]
@@ -701,11 +788,18 @@ def layout():
                     print(f"  {scene}: two drawn buttons overlap: "
                           f"{a.key} and {b.key}")
                     ok = False
-        off = [b for b in g.buttons
-               if not pygame.Rect(0, 0, cc.W, cc.H).contains(b.rect)]
-        for b in off:
-            print(f"  {scene}: {b.key} is off the screen at {tuple(b.rect)}")
-            ok = False
+        # a cat may hang half off the edge of the window; a button that
+        # is entirely outside it is a click target nobody can reach
+        screen = pygame.Rect(0, 0, cc.W, cc.H)
+        for b in g.buttons:
+            if not screen.colliderect(b.rect):
+                print(f"  {scene}: {b.key} is off the screen at "
+                      f"{tuple(b.rect)}")
+                ok = False
+            elif b.style != "hit" and not screen.contains(b.rect):
+                print(f"  {scene}: {b.key} hangs off the edge at "
+                      f"{tuple(b.rect)}")
+                ok = False
         print(f"  {scene:<6} {g.area if scene == 'room' else '':<6} "
               f"{len(drawn):>2} buttons, {len(hits):>2} hit areas")
     print("  layout:", "ok" if ok else "FAILED")
@@ -742,6 +836,9 @@ def main():
         print()
     if cmd in ("save", "all"):
         ok &= save_round_trip()
+        print()
+    if cmd in ("behaviour", "all"):
+        ok &= behaviour(20)
         print()
     if cmd in ("grades", "all"):
         ok &= grades()

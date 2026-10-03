@@ -25,10 +25,15 @@ THE FLAT
 
   THE HALL        the front door, the mat, and whatever the post has left
   THE DESK        the lamp, the laptop you order from, and the binder
-  THE CAT ROOM    the tree, the shelves, the basket, and the cats on them
+  THE CAT ROOM    twice as wide as the window, and where they live
 
-  Your cats take the best spots first, in the order you have taken them
-  furthest, and they go on earning wherever you happen to be standing.
+  The ten cats you have taken furthest live in the cat room and run
+  their own day in it: they cross the floor, climb the tree, eat, drink,
+  play, scratch, wash, prowl and sleep. Which of those they do is their
+  BREED - a Bengal hunts the ball, a Persian finds the warmest square
+  foot, a Maine Coon is never far from the bowls. Click one to find out
+  who it is. The rest sleep on the furniture in the other two rooms, and
+  all of them earn wherever you are standing.
 
 CONTROLS
   Everything is clickable. The keys are shortcuts, not a second interface.
@@ -442,16 +447,83 @@ class Button:
 #   eye     "round" or "almond", and the colour, or ("odd", a, b)
 #   pat     the markings: see `_marks_*` below
 # ---------------------------------------------------------------------------
-class Breed:
-    __slots__ = ("key", "name", "rarity", "origin", "note", "look")
+# What a cat is LIKE, which is a different question from what it looks
+# like. Nine temperaments; every breed has one, and it decides what that
+# cat spends its day doing in the cat room, how fast it crosses the
+# floor, how long it stays put, and which bit of furniture it makes for
+# when it has the choice.
+#
+#   acts    how often it picks each thing to do, relative to the others
+#   likes   the furniture it heads for first
+#   speed   how fast it crosses a room
+#   stay    how long it sticks at one thing, in seconds
+TEMPERS = {
+    "sleeper": dict(
+        label="sleeps through most of it",
+        acts={"sleep": 7, "loaf": 3, "groom": 2, "watch": 1,
+              "scratch": 1, "drink": 1, "eat": 1},
+        likes=("bed", "warm", "perch"), speed=0.62, stay=(22, 50)),
+    "hunter": dict(
+        label="hunts everything that moves",
+        acts={"play": 7, "prowl": 4, "watch": 2, "eat": 1, "sleep": 1,
+              "scratch": 3, "drink": 1},
+        likes=("toy", "floor", "perch"), speed=1.35, stay=(7, 16)),
+    "climber": dict(
+        label="will be found somewhere high",
+        acts={"watch": 6, "loaf": 3, "prowl": 2, "sleep": 2, "play": 1,
+              "scratch": 2, "eat": 1, "drink": 1},
+        likes=("perch",), speed=1.15, stay=(12, 28)),
+    "glutton": dict(
+        label="is never far from the bowls",
+        acts={"eat": 5, "drink": 2, "sleep": 4, "loaf": 3, "prowl": 1,
+              "scratch": 1, "groom": 1},
+        likes=("food", "water", "bed"), speed=0.85, stay=(10, 24)),
+    "groomer": dict(
+        label="washes, and washes again",
+        acts={"groom": 6, "loaf": 3, "watch": 2, "sleep": 2,
+              "scratch": 1, "drink": 1, "eat": 1},
+        likes=("perch", "bed"), speed=0.9, stay=(12, 26)),
+    "shadow": dict(
+        label="keeps to the edges of the room",
+        acts={"prowl": 5, "watch": 3, "sleep": 3, "groom": 2,
+              "scratch": 2, "eat": 1, "drink": 1},
+        likes=("box", "floor", "perch"), speed=1.05, stay=(9, 20)),
+    "lap": dict(
+        label="wants to be where you are",
+        acts={"loaf": 5, "sit": 3, "groom": 2, "sleep": 2, "play": 2,
+              "scratch": 1, "eat": 1, "drink": 1},
+        likes=("chair", "bed", "floor"), speed=1.0, stay=(14, 30)),
+    "busy": dict(
+        label="has a list and is working through it",
+        acts={"scratch": 5, "play": 4, "prowl": 3, "eat": 2, "watch": 2,
+              "drink": 1, "groom": 1},
+        likes=("post", "toy", "floor"), speed=1.25, stay=(6, 14)),
+    "warmth": dict(
+        label="finds the warmest thing in the room",
+        acts={"sleep": 5, "loaf": 4, "groom": 2, "watch": 1,
+              "scratch": 1, "eat": 1, "drink": 1},
+        likes=("warm", "bed", "chair"), speed=0.8, stay=(20, 44)),
+}
 
-    def __init__(self, key, name, rarity, origin, note, look):
+
+class Breed:
+    __slots__ = ("key", "name", "rarity", "origin", "note", "look", "temper",
+                 "habit")
+
+    def __init__(self, key, name, rarity, origin, note, look, temper="lap",
+                 habit=""):
         self.key = key
         self.name = name
         self.rarity = rarity
         self.origin = origin
         self.note = note
         self.look = look
+        self.temper = temper
+        self.habit = habit
+
+    @property
+    def temperament(self):
+        return TEMPERS[self.temper]
 
     @property
     def base_rate(self):
@@ -483,32 +555,44 @@ BREEDS = (
           "Has three names in this house and answers to none of them.",
           L(coat=(136, 110, 84), mark=(84, 62, 44), belly=(206, 186, 156),
             pat="tabby", eye=(190, 166, 80), body=0.98, facew=1.02,
-            ear=1.08, legs=1.06, faceh=1.02)),
+            ear=1.08, legs=1.06, faceh=1.02),
+          "busy",
+          "Checks every room in order, then starts again."),
     Breed("dlh", "Domestic Longhair", R_COMMON, "everywhere",
           "A cloud that has learned where the warm spot is.",
           L(fluff=1.0, tail="plume", coat=(150, 118, 86), mark=(92, 64, 46),
             belly=(216, 196, 164), pat="tortie", body=1.04, facew=1.14,
-            cheek=1.26, eye=(176, 150, 70), legs=0.78, faceh=0.92)),
+            cheek=1.26, eye=(176, 150, 70), legs=0.78, faceh=0.92),
+          "sleeper",
+          "Sheds on the one chair nobody is allowed to sit in."),
     Breed("ash", "American Shorthair", R_COMMON, "the United States",
           "Built like a farm gate. Sleeps like one too.",
           L(coat=(150, 148, 142), mark=(84, 84, 82), belly=(206, 204, 198),
             pat="blotched", body=1.16, facew=1.14, cheek=1.2, legs=0.95,
-            eye=(196, 174, 86), ear=0.92, fluff=0.2)),
+            eye=(196, 174, 86), ear=0.92, fluff=0.2),
+          "glutton",
+          "Hears a bowl from two rooms away."),
     Breed("esh", "European Shorthair", R_COMMON, "the north of Europe",
           "Came in off a cold street and never mentioned it again.",
           L(coat=(126, 126, 124), mark=(70, 70, 72), belly=(190, 190, 188),
             pat="tabby", body=1.0, facew=1.0, faceh=1.0, cheek=1.02,
-            eye=(156, 178, 110), ear=1.14, legs=1.0, fluff=0.52)),
+            eye=(156, 178, 110), ear=1.14, legs=1.0, fluff=0.52),
+          "shadow",
+          "Sits just outside the lamplight, watching the lamp."),
     Breed("jbt", "Japanese Bobtail", R_COMMON, "Japan",
           "The tail is a pom-pom and the walk is all shoulders.",
           L(tail="pom", coat=(238, 226, 206), mark=(206, 128, 62),
             belly=(246, 238, 222), pat="bicolour", body=0.92, facew=0.94,
-            legs=1.12, ear=1.1, eye=(196, 176, 92), fluff=0.22)),
+            legs=1.12, ear=1.1, eye=(196, 176, 92), fluff=0.22),
+          "hunter",
+          "Carries the ball about and leaves it in the bowl."),
     Breed("mnx", "Manx", R_COMMON, "the Isle of Man",
           "No tail at all, and absolutely no opinion about it.",
           L(tail="none", coat=(196, 138, 76), mark=(142, 88, 44),
             belly=(230, 206, 176), pat="tabby", body=1.2, facew=1.12,
-            cheek=1.16, legs=0.86, fluff=0.34, eye=(190, 160, 72))),
+            cheek=1.16, legs=0.86, fluff=0.34, eye=(190, 160, 72)),
+          "lap",
+          "Gets in the box. Always the box."),
 
     # -- UNCOMMON ----------------------------------------------------------
     Breed("bsh", "British Shorthair", R_UNCOMMON, "Britain",
@@ -516,37 +600,49 @@ BREEDS = (
           L(coat=(124, 134, 148), mark=(96, 106, 120), belly=(146, 156, 170),
             pat="solid", body=1.26, facew=1.24, faceh=0.96, cheek=1.3,
             ear=0.84, legs=0.84, fluff=0.3, eye=(214, 150, 60),
-            eyeshape="round")),
+            eyeshape="round"),
+          "sleeper",
+          "Settles into a loaf and holds it like a job."),
     Breed("rbl", "Russian Blue", R_UNCOMMON, "Arkhangelsk",
           "Silver at the tips, so it looks lit even when it is not.",
           L(coat=(126, 142, 156), mark=(154, 170, 184), belly=(150, 166, 180),
             pat="smoke", body=0.86, facew=0.92, cheek=0.84, ear=1.24,
-            legs=1.16, fluff=0.54, eye=(126, 188, 136), eyeshape="round")),
+            legs=1.16, fluff=0.54, eye=(126, 188, 136), eyeshape="round"),
+          "shadow",
+          "Behind the curtain, eyes only, for an hour."),
     Breed("sia", "Siamese", R_UNCOMMON, "Thailand",
           "Will tell you about the door at some length.",
           L(coat=(224, 206, 178), mark=(72, 54, 50), belly=(236, 222, 198),
             pat="point", body=0.86, facew=0.84, faceh=1.1, cheek=0.76,
             ear=1.3, legs=1.14, fluff=0.14, eye=(104, 164, 212),
-            eyeshape="almond")),
+            eyeshape="almond"),
+          "lap",
+          "Follows you room to room, narrating the journey."),
     Breed("mcn", "Maine Coon", R_UNCOMMON, "Maine",
           "Takes up two cushions and considers that modest.",
           L(size=1.22, body=1.3, facew=1.1, cheek=1.12, ear=1.22, tuft=1.0,
             fluff=1.0, tail="plume", legs=1.0, coat=(142, 108, 76),
             mark=(86, 58, 40), belly=(214, 192, 158), pat="blotched",
-            eye=(188, 158, 72))),
+            eye=(188, 158, 72)),
+          "glutton",
+          "Eats, then sits by the bowl in case of seconds."),
     Breed("rag", "Ragdoll", R_UNCOMMON, "California",
           "Picked up, goes completely liquid. Every time.",
           L(size=1.16, body=1.22, facew=1.06, cheek=0.98, ear=0.96,
             fluff=0.62, tail="plume", legs=1.06, coat=(232, 220, 200),
             mark=(104, 96, 110),
             belly=(242, 234, 218), pat="point", eye=(118, 160, 214),
-            eyeshape="round")),
+            eyeshape="round"),
+          "lap",
+          "Goes completely liquid wherever it is picked up."),
     Breed("sfd", "Scottish Fold", R_UNCOMMON, "Perthshire",
           "Ears folded flat, like it is listening to the floor.",
           L(fold=1.0, ear=0.7, body=1.12, facew=1.2, faceh=0.94, cheek=1.24,
             legs=0.88, fluff=0.42, coat=(144, 134, 124), mark=(92, 84, 78),
             belly=(198, 190, 180), pat="tabby", eye=(206, 160, 76),
-            eyeshape="round")),
+            eyeshape="round"),
+          "sleeper",
+          "Sleeps on its back with its feet in the air."),
 
     # -- RARE --------------------------------------------------------------
     Breed("nfc", "Norwegian Forest", R_RARE, "Norway",
@@ -554,31 +650,41 @@ BREEDS = (
           L(size=1.2, body=1.24, facew=1.0, faceh=1.08, ear=1.14, tuft=1.0,
             fluff=1.0, tail="plume", legs=1.04, coat=(58, 52, 52),
             mark=(238, 232, 220), belly=(240, 234, 222), pat="bicolour",
-            eye=(150, 184, 110))),
+            eye=(150, 184, 110)),
+          "climber",
+          "Takes the high shelf and surveys the floor."),
     Breed("ben", "Bengal", R_RARE, "a laboratory in Yuba City",
           "Spotted like something far less comfortable.",
           L(size=1.06, body=1.1, facew=0.98, cheek=0.94, ear=0.9, legs=1.08,
             fluff=0.12, coat=(206, 160, 86), mark=(62, 48, 38),
             belly=(232, 208, 164), pat="spotted", eye=(142, 188, 128),
-            eyeshape="almond")),
+            eyeshape="almond"),
+          "hunter",
+          "Has opinions about the ball, and acts on them."),
     Breed("aby", "Abyssinian", R_RARE, "the Nile, allegedly",
           "Ticked coat, so it changes colour as it turns.",
           L(size=0.98, body=1.0, facew=0.92, faceh=1.0, cheek=0.94,
             ear=1.2, legs=1.14, fluff=0.1, coat=(176, 114, 66),
             mark=(96, 56, 34), belly=(206, 152, 104), pat="ticked",
-            eye=(206, 164, 70), eyeshape="almond")),
+            eye=(206, 164, 70), eyeshape="almond"),
+          "climber",
+          "Is on top of the thing you just put down."),
     Breed("per", "Persian", R_RARE, "Isfahan",
           "The face of a cat who has just been told something.",
           L(size=1.1, body=1.26, facew=1.3, faceh=0.92, cheek=1.34, ear=0.66,
             flat=1.0, fluff=1.0, tail="plume", legs=0.78,
             coat=(232, 212, 176), mark=(206, 180, 140), belly=(242, 228, 202),
-            pat="smoke", eye=(216, 142, 64), eyeshape="round")),
+            pat="smoke", eye=(216, 142, 64), eyeshape="round"),
+          "sleeper",
+          "Picked the warmest square foot and stayed in it."),
     Breed("sph", "Sphynx", R_RARE, "Toronto",
           "Warm to the touch, which is the entire argument for it.",
           L(size=1.0, body=0.84, facew=0.94, faceh=1.06, cheek=0.72,
             ear=1.52, legs=1.1, fluff=0.0, skin=1.0, coat=(206, 160, 148),
             mark=(176, 128, 118), belly=(220, 180, 168), pat="solid",
-            eye=(198, 190, 110), eyeshape="almond", nose=(190, 134, 130))),
+            eye=(198, 190, 110), eyeshape="almond", nose=(190, 134, 130)),
+          "warmth",
+          "On the radiator, under a blanket, against a lamp."),
 
     # -- PEDIGREE ----------------------------------------------------------
     Breed("sav", "Savannah", R_PEDIGREE, "a serval and a nerve",
@@ -586,25 +692,33 @@ BREEDS = (
           L(size=1.18, body=0.98, facew=0.86, faceh=1.06, cheek=0.78,
             ear=1.5, legs=1.42, fluff=0.1, coat=(214, 172, 96),
             mark=(44, 38, 34), belly=(234, 212, 168), pat="spotted",
-            eye=(188, 180, 96), eyeshape="almond")),
+            eye=(188, 180, 96), eyeshape="almond"),
+          "climber",
+          "Can reach the top of the bookcase, flat-footed."),
     Breed("tan", "Turkish Angora", R_PEDIGREE, "Ankara",
           "Silk, mostly. Sheds it generously onto dark clothing.",
           L(size=1.04, body=0.9, facew=0.9, faceh=1.06, cheek=0.82, ear=1.2,
             fluff=0.9, tail="plume", legs=1.12, coat=(244, 236, 220),
             mark=(226, 214, 196), belly=(250, 244, 232), pat="solid",
-            eye=(116, 170, 216), eyeshape="almond")),
+            eye=(116, 170, 216), eyeshape="almond"),
+          "groomer",
+          "Washes one paw for ten minutes, then the other."),
     Breed("bir", "Birman", R_PEDIGREE, "a temple, by legend",
           "White gloves on all four feet, and it knows.",
           L(size=1.1, body=1.16, facew=1.0, faceh=1.06, cheek=0.96,
             ear=1.02, fluff=0.48, tail="plume", legs=1.08,
             coat=(234, 220, 196), mark=(96, 72, 70), belly=(244, 234, 216),
-            pat="gloves", eye=(112, 156, 212), eyeshape="round")),
+            pat="gloves", eye=(112, 156, 212), eyeshape="round"),
+          "groomer",
+          "Keeps the white gloves white. It takes work."),
     Breed("dvx", "Devon Rex", R_PEDIGREE, "a tin mine in Devon",
           "A pixie in a second-hand jumper, two sizes too big.",
           L(size=0.88, body=0.82, facew=1.06, faceh=0.86, cheek=1.1, ear=1.56,
             legs=1.0, fluff=0.3, curl=1.0, coat=(150, 128, 120),
             mark=(104, 86, 80), belly=(196, 178, 168), pat="smoke",
-            eye=(176, 188, 120), eyeshape="round")),
+            eye=(176, 188, 120), eyeshape="round"),
+          "busy",
+          "Into the toy basket, out of it, into it again."),
 
     # -- LEGEND ------------------------------------------------------------
     Breed("kma", "Khao Manee", R_LEGEND, "Siam, kept by kings",
@@ -612,19 +726,25 @@ BREEDS = (
           L(size=1.02, body=0.88, facew=0.96, faceh=1.04, cheek=0.88,
             ear=1.08, legs=1.2, fluff=0.22, coat=(248, 242, 232),
             mark=(232, 226, 216), belly=(252, 248, 240), pat="solid",
-            eye=("odd", (112, 168, 220), (222, 176, 72)), eyeshape="almond")),
+            eye=("odd", (112, 168, 220), (222, 176, 72)), eyeshape="almond"),
+          "groomer",
+          "Sits in the window like something on display."),
     Breed("lyk", "Lykoi", R_LEGEND, "a feral litter in Tennessee",
           "Half-coated, so it comes with its own moonlight.",
           L(size=1.0, body=1.06, facew=1.06, faceh=0.96, cheek=1.04,
             ear=1.16, legs=0.94, fluff=0.56, skin=0.55, coat=(62, 58, 58),
             mark=(206, 200, 192), belly=(96, 92, 92), pat="roan",
-            eye=(214, 170, 76), eyeshape="almond")),
+            eye=(214, 170, 76), eyeshape="almond"),
+          "shadow",
+          "Works the edges of the room at a trot."),
     Breed("sok", "Sokoke", R_LEGEND, "the Arabuko forest",
           "The rarest coat in the book, and it was never bred for.",
           L(size=1.0, body=0.80, facew=0.88, faceh=1.02, cheek=0.78,
             ear=1.0, legs=1.36, fluff=0.04, coat=(178, 140, 100),
             mark=(74, 54, 40), belly=(206, 176, 136), pat="blotched",
-            eye=(178, 182, 108), eyeshape="almond")),
+            eye=(178, 182, 108), eyeshape="almond"),
+          "hunter",
+          "Patrols. Stops. Patrols the other way."),
 )
 
 BY_KEY = {b.key: b for b in BREEDS}
@@ -860,6 +980,256 @@ def _shapes_head(P, w, h):
                             hb.bottom - mh * (1.25 - 0.45 * P["flat"]),
                             mw, mh)))
     return out
+
+
+def _stand_metrics(P, w, h):
+    """Every part of the side view measured in one place.
+
+    Four routines need these numbers - the body, the markings, the tail
+    and the head - and when they each worked them out for themselves the
+    tail came out as a crescent floating behind the cat.
+    """
+    leg = h * 0.27 * (0.86 + 0.24 * P["legs"])
+    bh = h * 0.37 * (0.9 + 0.2 * P["body"]) * (1 + 0.08 * P["fluff"])
+    back = h - leg
+    top = back - bh
+    body = pygame.Rect(w * 0.20, top, w * 0.58, bh)
+    return leg, bh, top, back, body
+
+
+def _tail_path_stand(P, w, h):
+    """Up off the hip and over, which is how a cat on its feet carries it."""
+    if P["tail"] in ("none", "pom"):
+        return []
+    leg, bh, top, back, body = _stand_metrics(P, w, h)
+    thick = h * (0.028 + 0.024 * P["fluff"]) * \
+        (1.5 if P["tail"] == "plume" else 1.0)
+    p0 = (body.x + w * 0.03, top + bh * 0.42)
+    p1 = (body.x - w * 0.16, top + bh * 0.10)
+    p2 = (body.x - w * 0.06, top - h * 0.24)
+    out = []
+    for i in range(20):
+        f = i / 19
+        g = 1 - f
+        x = g * g * p0[0] + 2 * g * f * p1[0] + f * f * p2[0]
+        y = g * g * p0[1] + 2 * g * f * p1[1] + f * f * p2[1]
+        out.append((x, y, thick * (0.62 + 0.38 * (1 - f))))
+    return out
+
+
+def _shapes_stand(P, w, h):
+    """On its feet, side on, facing right.
+
+    The third pose, and the one the cat room needed: a sitting cat slid
+    across a floor is a cardboard cut-out being dragged, and everything
+    worth doing in that room - eating, playing, scratching, prowling -
+    happens on four legs.
+    """
+    fluff = P["fluff"]
+    leg, bh, top, back, body = _stand_metrics(P, w, h)
+    out = []
+    for tx, ty, tr in _tail_path_stand(P, w, h):
+        out.append(("circle", (tx, ty), tr))
+    if P["tail"] == "pom":
+        out.append(("circle", (body.x - w * 0.01, top + bh * 0.30),
+                    h * 0.07 * (1 + fluff)))
+
+    lw = w * 0.055
+    for lx in (0.30, 0.64):              # the far pair, behind the body
+        out.append(("ellipse", (w * lx, back - bh * 0.22, lw, leg * 1.04)))
+        out.append(("ellipse", (w * lx - lw * 0.2, h - leg * 0.17,
+                                lw * 1.4, leg * 0.19)))
+    out.append(("ellipse", body))
+    out.append(("ellipse", (w * 0.52, top - bh * 0.07, w * 0.30, bh * 1.10)))
+    out.append(("ellipse", (w * 0.26, top + bh * 0.04, w * 0.26, bh * 1.02)))
+    lw2 = w * 0.062
+    for lx in (0.24, 0.58):              # the near pair
+        out.append(("ellipse", (w * lx, back - bh * 0.26, lw2, leg * 1.08)))
+        out.append(("ellipse", (w * lx - lw2 * 0.22, h - leg * 0.19,
+                                lw2 * 1.46, leg * 0.21)))
+    if fluff > 0.3:                      # a ruff, round the shoulders
+        rw = w * (0.15 + 0.08 * fluff)
+        out.append(("ellipse", (w * 0.70 - rw * 0.5, top - bh * 0.14,
+                                rw, bh * 0.94)))
+    return out
+
+
+def _head_box_stand(P, w, h):
+    leg, bh, top, back, body = _stand_metrics(P, w, h)
+    hw = w * 0.30 * P["facew"]
+    hh = h * 0.34 * P["faceh"]
+    return pygame.Rect(round(w * 0.80 - hw * 0.5), round(top - hh * 0.52),
+                       round(hw), round(hh))
+
+
+def _shapes_head_stand(P, w, h):
+    out = []
+    hb = _head_box_stand(P, w, h)
+    ear = P["ear"]
+    eh = hb.h * 0.60 * ear
+    ew = hb.w * 0.44 * (0.8 + 0.3 * ear)
+    # the neck, so the head is not balanced on a corner
+    out.append(("ellipse", (hb.centerx - hb.w * 0.62, hb.centery,
+                            hb.w * 0.9, hb.h * 0.9)))
+    for bx, lean in ((hb.centerx - hb.w * 0.30, -0.55),
+                     (hb.centerx + hb.w * 0.14, 0.3)):
+        by = hb.y + hb.h * 0.26
+        if P["fold"] > 0.4:
+            out.append(("ellipse", (bx - ew * 0.5, by - eh * 0.30,
+                                    ew, eh * 0.84)))
+        else:
+            out.append(("poly", [
+                (bx - ew * 0.46, by + eh * 0.20),
+                (bx + lean * ew * 0.55, by - eh),
+                (bx + ew * 0.52, by + eh * 0.06)]))
+    out.append(("ellipse", hb))
+    ch = hb.w * 0.46 * P["cheek"]
+    out.append(("ellipse", (hb.x + hb.w * 0.02, hb.y + hb.h * 0.42,
+                            ch, hb.h * 0.56)))
+    mw = hb.w * (0.50 - 0.14 * P["flat"])
+    mh = hb.h * (0.40 - 0.12 * P["flat"])
+    out.append(("ellipse", (hb.right - mw * 0.72, hb.bottom - mh * 1.06,
+                            mw, mh)))
+    return out
+
+
+def _stand_marks(surf, P, w, h, hb, rng):
+    """One routine for every pattern, laid out along a flank.
+
+    The sitting markings are built around a bell-shaped front view and
+    would put a cat's spine where its shoulder is when it turns sideways,
+    so the side view gets its own - simplified, because it is seen at a
+    third the size and usually moving.
+    """
+    pat = P["pat"]
+    c = P["mark"]
+    leg, bh, top, back, body = _stand_metrics(P, w, h)
+
+    if pat in ("solid", "smoke", "ticked", "roan"):
+        s2 = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.ellipse(s2, (*P["belly"], 120),
+                            (body.x + body.w * 0.12, body.centery,
+                             body.w * 0.76, body.h * 0.60))
+        if pat == "smoke":
+            pygame.draw.ellipse(s2, (*c, 70), (body.x, top - 2,
+                                               body.w, body.h * 0.62))
+        if pat in ("ticked", "roan"):
+            for _ in range(130):
+                x = rng.uniform(body.x - w * 0.04, body.right + w * 0.08)
+                y = rng.uniform(top - h * 0.04, h * 0.95)
+                g = pygame.Surface((2, max(2, round(h * 0.02))),
+                                   pygame.SRCALPHA)
+                g.fill((*c, rng.randint(60, 150)))
+                s2.blit(g, (round(x), round(y)))
+        surf.blit(s2, (0, 0))
+    elif pat in ("tabby", "blotched"):
+        lw = max(2, round(h * 0.024))
+        for i in range(7):
+            f = i / 6
+            x = body.x + body.w * (0.10 + 0.76 * f)
+            pygame.draw.line(surf, c, (round(x), round(top + bh * 0.08)),
+                             (round(x - w * 0.014), round(back - bh * 0.06)),
+                             lw)
+        for i, (tx, ty, tr) in enumerate(_tail_path_stand(P, w, h)):
+            if (i // 3) % 2 == 0:
+                pygame.draw.circle(surf, c, (round(tx), round(ty)), round(tr))
+        for k in range(3):
+            pygame.draw.line(surf, c,
+                             (round(hb.x + hb.w * (0.18 + 0.15 * k)),
+                              round(hb.y + hb.h * 0.08)),
+                             (round(hb.x + hb.w * (0.24 + 0.15 * k)),
+                              round(hb.y + hb.h * 0.32)), 2)
+    elif pat == "spotted":
+        for row in range(4):
+            fy = row / 3
+            y = top + bh * (0.20 + 0.58 * fy)
+            for i in range(7 - row % 2):
+                fx = (i + 0.4 + (row % 2) * 0.3) / 7
+                x = body.x + body.w * (0.08 + 0.84 * fx)
+                r = w * (0.018 - 0.005 * fy) * rng.uniform(0.8, 1.3)
+                pygame.draw.ellipse(surf, c, (x - r, y - r * 0.8,
+                                              r * 2, r * 1.6))
+    elif pat in ("point", "gloves"):
+        s2 = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.ellipse(s2, (*c, 225), (hb.x - hb.w * 0.08, hb.y,
+                                            hb.w * 1.16, hb.h * 1.2))
+        for lx in (0.24, 0.30, 0.58, 0.64):
+            pygame.draw.ellipse(s2, (*c, 215), (w * lx - 2, h - leg * 0.78,
+                                                w * 0.07, leg * 0.8))
+        for tx, ty, tr in _tail_path_stand(P, w, h):
+            pygame.draw.circle(s2, (*c, 205), (round(tx), round(ty)),
+                               round(tr))
+        surf.blit(s2, (0, 0))
+        if pat == "gloves":
+            for lx in (0.24, 0.30, 0.58, 0.64):
+                pygame.draw.ellipse(surf, P["belly"],
+                                    (w * lx - w * 0.014, h - leg * 0.2,
+                                     w * 0.086, leg * 0.22))
+    elif pat == "bicolour":
+        s2 = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.ellipse(s2, (*c, 255), (body.x + body.w * 0.08,
+                                            body.centery - bh * 0.04,
+                                            body.w * 0.82, bh * 0.60))
+        for lx in (0.24, 0.30, 0.58, 0.64):
+            pygame.draw.ellipse(s2, (*c, 255), (w * lx - w * 0.014,
+                                                h - leg * 0.40,
+                                                w * 0.086, leg * 0.42))
+        pygame.draw.ellipse(s2, (*c, 255), (hb.x + hb.w * 0.40,
+                                            hb.y + hb.h * 0.44,
+                                            hb.w * 0.64, hb.h * 0.62))
+        surf.blit(s2, (0, 0))
+    else:                                  # tortie
+        ginger = (206, 134, 66)
+        for i in range(12):
+            col = c if i % 2 else ginger
+            x = rng.uniform(body.x, body.right)
+            y = rng.uniform(top, back)
+            rw = w * rng.uniform(0.04, 0.09)
+            rh = h * rng.uniform(0.05, 0.11)
+            s2 = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.ellipse(s2, (*col, 220), (x - rw, y - rh,
+                                                  rw * 2, rh * 2))
+            surf.blit(s2, (0, 0))
+
+
+def _face_side(surf, P, w, h, hb, shut, shine=0.0):
+    """One eye, one ear lining, and a nose on the front of the muzzle."""
+    ew = hb.w * 0.21
+    eh = hb.h * (0.17 if P["eyeshape"] == "round" else 0.13)
+    ex = hb.centerx + hb.w * 0.16
+    ey = hb.centery - hb.h * 0.06
+    eye = P["eye"]
+    col = eye[2] if eye[0] == "odd" else eye
+    _eye(surf, P, ex, ey, ew, eh, col, shut, shine)
+    if P["fold"] < 0.4:
+        inner = mix(P["nose"], P["coat"], 0.35)
+        ear = P["ear"]
+        eh2 = hb.h * 0.56 * ear
+        ew2 = hb.w * 0.46 * (0.8 + 0.3 * ear)
+        bx = hb.centerx + hb.w * 0.16
+        by = hb.y + hb.h * 0.24
+        pygame.draw.polygon(surf, inner, [
+            (round(bx - ew2 * 0.24), round(by + eh2 * 0.06)),
+            (round(bx + ew2 * 0.16), round(by - eh2 * 0.66)),
+            (round(bx + ew2 * 0.30), round(by + eh2 * 0.02))])
+    mw = hb.w * (0.52 - 0.14 * P["flat"])
+    nx = hb.right - mw * 0.12
+    ny = hb.bottom - hb.h * (0.32 - 0.10 * P["flat"])
+    nr = hb.w * 0.09
+    pygame.draw.polygon(surf, P["nose"], [
+        (round(nx - nr), round(ny - nr * 0.4)),
+        (round(nx + nr * 0.5), round(ny - nr * 0.2)),
+        (round(nx - nr * 0.2), round(ny + nr * 0.8))])
+    pygame.draw.arc(surf, shade(P["mark"], 0.75),
+                    (nx - nr * 2.2, ny, nr * 2.4, nr * 1.8), 3.3, 5.6, 2)
+    wh = pygame.Surface((w, h), pygame.SRCALPHA)
+    for k in range(3):
+        y0 = ny + nr * (0.1 + k * 0.5)
+        pygame.draw.line(wh, (*CREAM, int(90 + 70 * shine)),
+                         (round(nx - nr), round(y0)),
+                         (round(nx + hb.w * (0.45 + 0.08 * k)),
+                          round(y0 - hb.h * (0.12 - k * 0.08))), 1)
+    surf.blit(wh, (0, 0))
 
 
 def _shapes_curl(P, w, h):
@@ -1292,6 +1662,22 @@ def _collar(surf, P, w, h, hb, pose, level, acc):
     # gave the uncommon breeds a green strap, which reads as a fish.
     col = mix(RUG, acc, 0.30)
     lip = mix(col, CREAM, 0.42)         # the light along the top of it
+    if pose == "stand":
+        br = pygame.Rect(hb.x + hb.w * 0.04, hb.bottom - hb.h * 0.22,
+                         hb.w * 0.82, hb.h * 0.56)
+        tk = max(4, round(h * 0.05))
+        pygame.draw.arc(surf, shade(col, 0.45), br.inflate(2, 2), 3.9, 5.7,
+                        tk + 2)
+        pygame.draw.arc(surf, col, br, 3.92, 5.68, tk)
+        if level >= TAG_AT:
+            r = max(3, round(h * 0.040))
+            tx, ty = br.centerx + br.w * 0.1, br.bottom - r * 0.4
+            face = (mix(LAMP, EMBER, 0.35) if level >= BELL_AT
+                    else mix(TEA, LAMP, 0.4))
+            pygame.draw.circle(surf, face, (round(tx), round(ty)), r)
+            pygame.draw.circle(surf, shade(EMBER, 0.6), (round(tx),
+                                                         round(ty)), r, 1)
+        return
     if pose == "curl":
         bw = hb.w * 1.02
         br = pygame.Rect(hb.centerx - bw * 0.42, hb.bottom - hb.h * 0.26,
@@ -1360,6 +1746,9 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
     if pose == "curl":
         h = int(h * 0.66)
         w = int(h * 1.42)
+    elif pose == "stand":
+        h = int(h * 0.80)
+        w = int(h * 1.46)
     else:
         w = int(h * CAT_RATIO)
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -1381,6 +1770,9 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
                     (bx - hb.w * 0.20, by + ear * 0.20),
                     (bx + hb.w * 0.08 + lean * hb.w, by - ear),
                     (bx + hb.w * 0.26, by + ear * 0.10)]))
+    elif pose == "stand":
+        prims = _shapes_stand(P, w, h) + _shapes_head_stand(P, w, h)
+        hb = _head_box_stand(P, w, h)
     else:
         prims = _shapes_sit(P, w, h) + _shapes_head(P, w, h)
         hb = _head_box(P, w, h)
@@ -1409,7 +1801,10 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
             pygame.draw.circle(sil, (255, 255, 255), (round(px), round(py)), rr)
 
     marks = pygame.Surface((w, h), pygame.SRCALPHA)
-    _MARKS[P["pat"]](marks, P, w, h, hb, random.Random(breed.key), pose)
+    if pose == "stand":
+        _stand_marks(marks, P, w, h, hb, random.Random(breed.key))
+    else:
+        _MARKS[P["pat"]](marks, P, w, h, hb, random.Random(breed.key), pose)
     marks.blit(sil, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
     surf.blit(marks, (0, 0))
 
@@ -1424,6 +1819,13 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
     # Where one part of the cat lies in front of another, nothing in the
     # silhouette says so - it is all one colour. These are the creases a
     # person reads as legs, a chest and a chin.
+    if pose == "stand":
+        cr = pygame.Surface((w, h), pygame.SRCALPHA)
+        leg, bh, top, back, body = _stand_metrics(P, w, h)
+        for lx in (0.30, 0.64):          # the far legs, in shadow
+            pygame.draw.ellipse(cr, (*shade(P["coat"], 0.5), 110),
+                                (w * lx, back - bh * 0.2, w * 0.055, leg))
+        surf.blit(cr, (0, 0))
     if pose == "sit":
         cr = pygame.Surface((w, h), pygame.SRCALPHA)
         dark = (*shade(P["coat"], 0.52), 92)
@@ -1470,7 +1872,10 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
         bb.blit(sil, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
         surf.blit(bb, (0, 0))
 
-    _face(surf, P, w, h, hb, shut or pose == "curl", pose, shine)
+    if pose == "stand":
+        _face_side(surf, P, w, h, hb, shut, shine)
+    else:
+        _face(surf, P, w, h, hb, shut or pose == "curl", pose, shine)
     _collar(surf, P, w, h, hb, pose, level, rarity_colour(breed.rarity))
     _cats[key] = surf
     return surf
@@ -2572,6 +2977,9 @@ def draw_parcel(surf, rect, seed=0, open_frac=0.0, num=0):
 # ---------------------------------------------------------------------------
 AREAS = ("hall", "study", "cats")
 AREA_NAME = {"hall": "THE HALL", "study": "THE DESK", "cats": "THE CAT ROOM"}
+# How wide each room is. Only the cat room is wider than the window onto
+# it, and walking inside it slides the camera rather than the room.
+AREA_WIDE = {"hall": W, "study": W, "cats": 2000}
 
 # -- the desk ---------------------------------------------------------------
 WALL_H = 400          # the desk surface starts here
@@ -2587,44 +2995,609 @@ HALL_FLOOR = 524
 DOOR_R = pygame.Rect(424, 104, 318, 462)
 MAT_R = pygame.Rect(410, 568, 346, 104)
 
-# -- the cat room -----------------------------------------------------------
-CATS_FLOOR = 556
+# ---------------------------------------------------------------------------
+# THE CAT ROOM
+#
+# Twice as wide as the screen, so you walk along it, and the only room in
+# the flat where the cats are not ornaments: they cross the floor, climb
+# the tree, eat, drink, play, scratch, wash and sleep, and which of those
+# they do is decided by the breed's temperament rather than by a dice
+# roll shared between all of them.
+#
+# A spot is a piece of furniture a cat can occupy. Its KIND says what can
+# be done there, and nothing else in here needs to know what the drawing
+# looks like - which is what lets the furniture move without the
+# behaviour noticing.
+# ---------------------------------------------------------------------------
+CATS_W = 2000              # the room is wider than the window onto it
+CATS_FLOOR = 556           # where the wall stops and the boards start
+CAT_WALK_Y = 728           # the line cats walk along
 TREE_X = 790
+TREE2_X = 1880
 
-# Where a cat may be, best spot first: the top of the cat tree is a better
+SPOT_ACTS = {
+    "perch": ("watch", "loaf", "sleep", "groom"),
+    "bed": ("sleep", "loaf", "groom"),
+    "chair": ("sleep", "loaf", "groom", "sit"),
+    "box": ("sleep", "loaf", "watch"),
+    "warm": ("sleep", "loaf", "groom"),
+    "food": ("eat",),
+    "water": ("drink",),
+    "toy": ("play",),
+    "post": ("scratch",),
+    "floor": ("prowl", "groom", "sit", "play"),
+}
+
+# kind, x, baseline y, which way it faces, how big a cat sits there, name
+ROOM_SPOTS = (
+    ("perch", 252, 362, 1, 120, "the windowsill"),
+    ("perch", 492, 356, -1, 104, "the low shelf"),
+    ("perch", 636, 254, 1, 104, "the high shelf"),
+    ("perch", TREE_X - 56, 372, -1, 118, "the cat tree"),
+    ("perch", TREE_X + 30, 238, 1, 108, "the top of the cat tree"),
+    ("post", TREE_X - 62, 552, 1, 132, "the sisal post"),
+    ("bed", 392, 424, 1, 126, "the blanket chest"),
+    ("bed", 272, 712, 1, 142, "the basket"),
+    ("food", 566, 716, -1, 126, "the food bowl"),
+    ("water", 648, 716, -1, 126, "the water bowl"),
+    ("toy", 452, 730, 1, 130, "the ball"),
+    ("floor", 940, 732, 1, 138, "the rug"),
+    ("perch", 1292, 320, 1, 118, "the second window"),
+    ("warm", 1296, 436, -1, 112, "the radiator shelf"),
+    ("perch", 1486, 392, 1, 116, "the back of the chair"),
+    ("chair", 1572, 548, -1, 140, "the armchair"),
+    ("box", 1744, 550, 1, 128, "the box fort"),
+    ("toy", 1648, 730, -1, 130, "the feather"),
+    ("floor", 1802, 732, 1, 134, "the floorboards"),
+    ("post", TREE2_X - 58, 548, 1, 130, "the scratching post"),
+    ("perch", 1872, 232, -1, 106, "the bookshelf"),
+)
+
+ACT_POSE = {"sleep": "curl", "loaf": "sit", "sit": "sit", "watch": "sit",
+            "groom": "sit", "eat": "stand", "drink": "stand",
+            "play": "stand", "scratch": "stand", "prowl": "stand"}
+ACT_WORD = {"sleep": "asleep", "loaf": "loafing", "sit": "sitting",
+            "watch": "watching", "groom": "washing", "eat": "eating",
+            "drink": "drinking", "play": "playing", "scratch": "scratching",
+            "prowl": "prowling"}
+
+
+class Resident:
+    """One cat living in the cat room, and what it is up to."""
+    __slots__ = ("breed", "level", "spot", "act", "timer", "x", "y",
+                 "state", "phase", "face", "home", "seed")
+
+    def __init__(self, breed, level, spot, seed):
+        self.breed = breed
+        self.level = level
+        self.spot = spot
+        self.act = "loaf"
+        self.timer = 2.0 + seed % 7
+        self.state = "rest"
+        self.phase = 0.0
+        self.face = ROOM_SPOTS[spot][3]
+        self.home = spot
+        self.seed = seed
+        self.x = ROOM_SPOTS[spot][1]
+        self.y = ROOM_SPOTS[spot][2]
+
+    @property
+    def size(self):
+        return ROOM_SPOTS[self.spot][4]
+
+    @property
+    def pose(self):
+        return "stand" if self.state != "rest" else ACT_POSE[self.act]
+
+    @property
+    def doing(self):
+        if self.state != "rest":
+            return "on its way to " + ROOM_SPOTS[self.spot][5]
+        return ACT_WORD[self.act] + " on " + ROOM_SPOTS[self.spot][5] \
+            if ACT_POSE[self.act] != "stand" else \
+            ACT_WORD[self.act] + " at " + ROOM_SPOTS[self.spot][5]
+
+
+def _elevated(spot):
+    return ROOM_SPOTS[spot][2] < CAT_WALK_Y - 24
+
+
+class CatRoom:
+    """The simulation. It runs whether or not you are in the room, which
+    is why there is always something going on when you walk in."""
+
+    def __init__(self):
+        self.res = []
+        self.keys = ()
+        self.rng = random.Random(11)
+        self.toy_t = 0.0
+
+    def sync(self, state, cap):
+        """Rebuild the residents when the set of cats in here changes."""
+        want = tuple(b.key for b in room_cats(state)[:cap])
+        if want == self.keys:
+            for r in self.res:                 # levels can still move
+                card = state.cards.get(r.breed.key)
+                if card:
+                    r.level = card.level
+            return
+        taken = set()
+        res = []
+        for i, k in enumerate(want):
+            b = BY_KEY[k]
+            spot = self._pick_spot(b, None, taken)
+            taken.add(spot)
+            r = Resident(b, state.cards[k].level, spot, i * 37 + 5)
+            r.act = self.rng.choice(SPOT_ACTS[ROOM_SPOTS[spot][0]])
+            res.append(r)
+        self.res = res
+        self.keys = want
+
+    # -- choosing what to do next ------------------------------------------
+    def _pick_spot(self, breed, act, taken):
+        """A spot this cat would like, free, and able to host the act."""
+        T = breed.temperament
+        pool = []
+        for i, (kind, x, y, face, size, name) in enumerate(ROOM_SPOTS):
+            if i in taken:
+                continue
+            if act is not None and act not in SPOT_ACTS[kind]:
+                continue
+            weight = 3.0 if kind in T["likes"] else 1.0
+            pool.append((i, weight))
+        if not pool:
+            return self.rng.randrange(len(ROOM_SPOTS))
+        total = sum(wt for _, wt in pool)
+        pick = self.rng.uniform(0, total)
+        acc = 0.0
+        for i, wt in pool:
+            acc += wt
+            if pick <= acc:
+                return i
+        return pool[-1][0]
+
+    def _choose(self, r):
+        T = r.breed.temperament
+        taken = {o.spot for o in self.res if o is not r}
+        acts = [(a, w) for a, w in T["acts"].items()
+                if any(a in SPOT_ACTS[ROOM_SPOTS[i][0]]
+                       for i in range(len(ROOM_SPOTS)) if i not in taken)]
+        if not acts:
+            acts = [("loaf", 1)]
+        total = sum(w for _, w in acts)
+        pick = self.rng.uniform(0, total)
+        acc = 0.0
+        act = acts[-1][0]
+        for a, w in acts:
+            acc += w
+            if pick <= acc:
+                act = a
+                break
+        spot = self._pick_spot(r.breed, act, taken)
+        lo, hi = T["stay"]
+        r.timer = self.rng.uniform(lo, hi)
+        r.act = act
+        if spot == r.spot:
+            r.state = "rest"
+            r.face = ROOM_SPOTS[spot][3]
+            return
+        r.spot = spot
+        r.phase = 0.0
+        r.state = "down" if r.y < CAT_WALK_Y - 24 else "walk"
+
+    # -- time ---------------------------------------------------------------
+    def update(self, dt, state, cap):
+        self.sync(state, cap)
+        self.toy_t += dt
+        for r in self.res:
+            T = r.breed.temperament
+            if r.state == "rest":
+                r.timer -= dt
+                if r.act == "prowl":           # prowling is not standing still
+                    r.x += r.face * 26 * dt * T["speed"]
+                    home_x = ROOM_SPOTS[r.spot][1]
+                    if abs(r.x - home_x) > 110:
+                        r.face = 1 if r.x < home_x else -1
+                    r.y = CAT_WALK_Y
+                if r.timer <= 0:
+                    self._choose(r)
+            elif r.state == "down":
+                r.phase += dt * 2.6
+                top = ROOM_SPOTS[r.home][2] if r.home < len(ROOM_SPOTS) else r.y
+                f = min(1.0, r.phase)
+                r.y = top + (CAT_WALK_Y - top) * f
+                r.x += (ROOM_SPOTS[r.spot][1] - r.x) * 0.04 * f
+                if f >= 1.0:
+                    r.state = "walk"
+                    r.phase = 0.0
+            elif r.state == "walk":
+                tx = ROOM_SPOTS[r.spot][1]
+                r.face = 1 if tx > r.x else -1
+                r.x += r.face * 118 * T["speed"] * dt
+                r.y = CAT_WALK_Y
+                if abs(tx - r.x) < 8:
+                    r.x = tx
+                    if _elevated(r.spot):
+                        r.state = "up"
+                        r.phase = 0.0
+                    else:
+                        r.state = "rest"
+                        r.home = r.spot
+                        r.y = ROOM_SPOTS[r.spot][2]
+                        r.face = ROOM_SPOTS[r.spot][3]
+            else:                               # "up", a hop onto something
+                r.phase += dt * 2.2
+                f = min(1.0, r.phase)
+                top = ROOM_SPOTS[r.spot][2]
+                r.y = CAT_WALK_Y + (top - CAT_WALK_Y) * (f ** 0.7)
+                if f >= 1.0:
+                    r.state = "rest"
+                    r.home = r.spot
+                    r.y = top
+                    r.face = ROOM_SPOTS[r.spot][3]
+
+    def tally(self):
+        """What the room is doing, for the line under the room name."""
+        out = {}
+        for r in self.res:
+            word = ACT_WORD[r.act] if r.state == "rest" else "on the move"
+            out[word] = out.get(word, 0) + 1
+        return out
+
+    # -- drawing ------------------------------------------------------------
+    def rect_of(self, r):
+        img = cat_surface(r.breed, r.pose, r.size, level=r.level)
+        return img.get_rect(midbottom=(round(r.x), round(r.y)))
+
+    def draw(self, surf, t):
+        for r in self.res:
+            self._draw_one(surf, r, t)
+
+    def _draw_one(self, surf, r, t):
+        ph = t * 1.4 + r.seed
+        shut = r.act in ("sleep",) or (math.sin(t * 0.7 + r.seed) > 0.985)
+        img = cat_surface(r.breed, r.pose, r.size, shut, r.level)
+        iw, ih = img.get_size()
+        dy = 0.0
+        sx = 1.0
+        sy = 1.0 + 0.012 * math.sin(ph)
+        if r.state in ("walk", "down", "up") or r.act == "prowl":
+            dy = -abs(math.sin(t * 7.0 + r.seed)) * ih * 0.035
+            sy = 1.0 + 0.02 * math.sin(t * 14.0 + r.seed)
+        elif r.act in ("eat", "drink"):
+            dy = abs(math.sin(t * (3.4 if r.act == "eat" else 2.2) + r.seed)) \
+                * ih * 0.07
+        elif r.act == "play":
+            dy = -abs(math.sin(t * 5.0 + r.seed)) * ih * 0.06
+            sx = 1.0 + 0.03 * math.sin(t * 5.0 + r.seed)
+        elif r.act == "scratch":
+            sy = 1.0 + 0.055 * abs(math.sin(t * 4.4 + r.seed))
+            dy = -ih * 0.02 * abs(math.sin(t * 4.4 + r.seed))
+        if abs(sy - 1.0) > 0.001 or abs(sx - 1.0) > 0.001:
+            img = pygame.transform.smoothscale(
+                img, (max(2, int(iw * sx)), max(2, int(ih * sy))))
+        if r.face < 0:
+            img = pygame.transform.flip(img, True, False)
+        if r.act == "groom" and r.state == "rest":
+            img = pygame.transform.rotate(img, math.sin(t * 1.6 + r.seed) * 7)
+        rect = img.get_rect(midbottom=(round(r.x), round(r.y + dy)))
+
+        sh = pygame.Surface((max(4, iw), 12), pygame.SRCALPHA)
+        pygame.draw.ellipse(sh, (0, 0, 0, 85), (0, 0, max(4, iw), 12))
+        surf.blit(sh, (round(r.x - iw / 2), round(r.y - 7)))
+        surf.blit(img, rect)
+        self._extras(surf, r, rect, t)
+
+    def _extras(self, surf, r, rect, t):
+        """The small drawn evidence that an activity is happening."""
+        if r.state != "rest":
+            return
+        if r.act == "sleep":
+            k = (t * 0.5 + r.seed) % 4.0
+            if k < 2.2:
+                a = int(170 * (1 - k / 2.2))
+                y = rect.top - 6 - k * 16
+                text(surf, "z", 13 + int(k * 3),
+                     (rect.centerx + r.face * 18 + k * 6, y),
+                     (*CREAM[:3],), center=True, kind="serif", alpha=a)
+        elif r.act == "scratch":
+            for i in range(3):
+                y = rect.y + rect.h * (0.3 + 0.12 * i)
+                x = rect.centerx + r.face * rect.w * 0.42
+                pygame.draw.line(surf, mix(PAPER, WOOD, 0.4),
+                                 (x, y + math.sin(t * 9 + i) * 3),
+                                 (x + r.face * 14, y + 8), 2)
+        elif r.act == "play":
+            sw = math.sin(t * 5.0 + r.seed)
+            if sw > 0:
+                x = rect.centerx + r.face * rect.w * 0.38
+                y = rect.centery + rect.h * 0.12
+                pygame.draw.arc(surf, mix(CREAM, r.breed.look["coat"], 0.4),
+                                (x - 12, y - 12, 24, 24),
+                                0.2 if r.face > 0 else 2.4,
+                                1.6 if r.face > 0 else 3.8, 3)
+        elif r.act in ("eat", "drink"):
+            x = rect.centerx + r.face * rect.w * 0.34
+            for i in range(2):
+                rr = 4 + ((t * 2 + i) % 2) * 5
+                col = (118, 150, 208) if r.act == "drink" else (176, 132, 96)
+                pygame.draw.circle(surf, col, (round(x), round(r.y - 6)),
+                                   round(rr), 1)
+
+
+def _cat_window(surf, r, t, seed=4):
+    pygame.draw.rect(surf, (18, 22, 34), r)
+    rng = random.Random(seed)
+    for i in range(24):
+        s = pygame.Surface((2, 2), pygame.SRCALPHA)
+        s.fill((*CREAM, int(70 + 70 * abs(math.sin(t * 0.3 + i)))))
+        surf.blit(s, (r.x + rng.randrange(6, r.w - 6),
+                      r.y + rng.randrange(6, r.h - 6)))
+    pygame.draw.rect(surf, WOOD, r, width=8)
+    pygame.draw.line(surf, WOOD, (r.centerx, r.y), (r.centerx, r.bottom), 5)
+    sill = pygame.Rect(r.x - 22, r.bottom - 2, r.w + 44, 18)
+    pygame.draw.rect(surf, WOOD_HI, sill, border_radius=3)
+    for sx, cx in ((-1, r.x - 10), (1, r.right + 10)):
+        pygame.draw.polygon(surf, mix(RUG, WOOD, 0.4), [
+            (cx, r.y - 14), (cx + sx * 46, r.y - 14),
+            (cx + sx * 34, r.bottom - 6), (cx, r.bottom - 6)])
+    return sill
+
+
+def _catroom_front(surf, t):
+    """The parts of the room that are in FRONT of the cats.
+
+    Drawn after them, which is the whole difference between a cat in a
+    box and a cat standing against a picture of a box. The same goes for
+    the basket and the near arm of the chair.
+    """
+    bask = pygame.Rect(176, 648, 196, 84)
+    pygame.draw.arc(surf, mix(WOOD_HI, PAPER, 0.3),
+                    (bask.x, bask.y + 2, bask.w, bask.h - 2), 3.34, 6.08, 15)
+    for i in range(12):
+        x = bask.x + 14 + i * 15
+        f = (x - bask.centerx) / (bask.w / 2)
+        y = bask.centery + math.sqrt(max(0.0, 1 - f * f)) * (bask.h / 2) - 7
+        pygame.draw.line(surf, shade(WOOD, 0.85), (x, y - 6), (x + 5, y + 6), 2)
+
+    box = pygame.Rect(1668, 440, 160, 116)
+    front = pygame.Rect(box.x, box.y + 54, box.w, box.h - 54)
+    pygame.draw.rect(surf, (150, 116, 80), front, border_radius=3)
+    pygame.draw.rect(surf, shade((150, 116, 80), 0.74), front, width=2,
+                     border_radius=3)
+    pygame.draw.line(surf, shade((150, 116, 80), 0.86),
+                     (front.x + 16, front.centery),
+                     (front.right - 16, front.centery), 2)
+
+    ch = pygame.Rect(1430, 404, 300, 200)
+    pygame.draw.rect(surf, mix(RUG, WOOD, 0.22), (ch.x, ch.y + 64, 46, 110),
+                     border_radius=14)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.06),
+                     (ch.x + 46, ch.bottom - 54, ch.w - 92, 34),
+                     border_radius=8)
+
+
+def _catroom(surf, state, t):
+    """The whole room, drawn at its full width; the camera takes a window
+    onto it. Everything is laid out against ROOM_SPOTS, so a cat asleep
+    on the armchair is asleep on the armchair that is drawn here."""
+    surf.fill(INK)
+    for y in range(0, CATS_FLOOR, 4):
+        f = y / CATS_FLOOR
+        pygame.draw.rect(surf, mix((28, 21, 20), (46, 34, 30), f ** 0.7),
+                         (0, y, CATS_W, 4))
+    for x in range(0, CATS_W, 52):
+        s = pygame.Surface((2, CATS_FLOOR), pygame.SRCALPHA)
+        s.fill((*WOOD_HI, 16))
+        surf.blit(s, (x, 0))
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.78), (0, CATS_FLOOR, CATS_W,
+                                                  H - CATS_FLOOR))
+    for i in range(8):
+        y = CATS_FLOOR + 12 + i * 30
+        if y < H:
+            hairline(surf, 0, y, CATS_W, WOOD_HI, 30)
+    pygame.draw.rect(surf, shade(WOOD_HI, 0.55), (0, CATS_FLOOR - 10,
+                                                  CATS_W, 10))
+    _rug(surf, pygame.Rect(120, 626, 420, 150), mix(RUG, WOOD, 0.3))
+    _rug(surf, pygame.Rect(760, 640, 500, 170), mix(RUG, EMBER, 0.12))
+    _rug(surf, pygame.Rect(1560, 636, 420, 150), mix(RUG, WOOD, 0.22))
+
+    # a string of warm bulbs the whole length of the room
+    lastx = lasty = None
+    for i in range(23):
+        f = i / 22
+        x = 40 + f * (CATS_W - 80)
+        y = 54 + math.sin(f * math.pi * 2.4) * 30
+        if lastx is not None:
+            pygame.draw.line(surf, shade(WOOD, 1.1), (lastx, lasty), (x, y), 2)
+        lastx, lasty = x, y
+        tw = 0.72 + 0.28 * math.sin(t * 1.6 + i * 1.1)
+        glow(surf, (x, y + 8), 26, LAMP, 0.34 * tw)
+        pygame.draw.circle(surf, mix(LAMP, CREAM, 0.3), (int(x), int(y + 8)), 4)
+
+    _cat_window(surf, pygame.Rect(140, 150, 240, 190), t)
+
+    for sx, sy, sw in ((414, 358, 176), (556, 256, 168)):
+        r = pygame.Rect(sx, sy, sw, 12)
+        pygame.draw.rect(surf, WOOD_HI, r, border_radius=2)
+        pygame.draw.rect(surf, shade(WOOD, 0.75), (r.x, r.bottom - 4, r.w, 4))
+        for bx in (r.x + 14, r.right - 20):
+            pygame.draw.line(surf, shade(WOOD, 0.8), (bx, r.bottom),
+                             (bx, r.bottom + 14), 3)
+
+    # the cat tree
+    base = pygame.Rect(TREE_X - 96, CATS_FLOOR - 24, 206, 26)
+    pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.25), base, border_radius=4)
+    post = pygame.Rect(TREE_X - 18, 250, 40, CATS_FLOOR - 250)
+    pygame.draw.rect(surf, mix(PAPER, WOOD, 0.5), post)
+    for i in range(int(post.h // 9)):
+        y = post.y + 5 + i * 9
+        pygame.draw.line(surf, mix(PAPER, WOOD, 0.66), (post.x, y),
+                         (post.right, y - 3), 3)
+    plat1 = pygame.Rect(TREE_X - 128, 372, 150, 20)
+    plat2 = pygame.Rect(TREE_X - 36, 238, 150, 20)
+    for p in (plat1, plat2):
+        pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.3), p, border_radius=5)
+        pygame.draw.rect(surf, shade(WOOD, 0.8), (p.x, p.bottom - 5, p.w, 5),
+                         border_radius=3)
+    pygame.draw.rect(surf, mix(PAPER, WOOD, 0.5),
+                     (plat1.centerx - 16, plat1.bottom, 32,
+                      CATS_FLOOR - 24 - plat1.bottom))
+    sway = math.sin(t * 1.1) * 26
+    pygame.draw.line(surf, shade(TEA, 0.7), (plat2.x + 20, plat2.bottom),
+                     (plat2.x + 20 + sway, plat2.bottom + 86), 2)
+    pygame.draw.circle(surf, mix(EMBER, PAPER, 0.3),
+                       (int(plat2.x + 20 + sway), int(plat2.bottom + 92)), 11)
+
+    # the blanket chest
+    chest = pygame.Rect(316, 424, 250, 132)
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.3), chest, border_radius=4)
+    pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.12),
+                     (chest.x - 8, chest.y - 14, chest.w + 16, 18),
+                     border_radius=4)
+    for i in range(2):
+        pygame.draw.rect(surf, shade(WOOD, 0.74),
+                         (chest.x + 18 + i * 120, chest.y + 24, 96, 82),
+                         border_radius=3)
+        pygame.draw.circle(surf, mix(TEA, CREAM, 0.2),
+                           (chest.x + 66 + i * 120, chest.y + 66), 5)
+    for i, col in enumerate(((132, 108, 126), (154, 122, 92))):
+        pygame.draw.rect(surf, mix(col, LAMP, 0.1),
+                         (chest.right - 118, chest.y - 30 + i * 16, 104, 18),
+                         border_radius=4)
+
+    # the basket, the bowls, and the ball
+    bask = pygame.Rect(176, 648, 196, 84)
+    pygame.draw.ellipse(surf, mix(WOOD_HI, PAPER, 0.3), bask)
+    pygame.draw.ellipse(surf, mix(WOOD, PAPER, 0.18),
+                        bask.inflate(-24, -30).move(0, -6))
+    for i in range(12):
+        x = bask.x + 10 + i * 15
+        pygame.draw.line(surf, shade(WOOD, 0.9), (x, bask.y + 24),
+                         (x + 6, bask.bottom - 10), 2)
+    mat = pygame.Rect(512, 700, 200, 34)
+    pygame.draw.rect(surf, mix(WOOD_LO, EMBER, 0.12), mat, border_radius=6)
+    for bx, col in ((540, (166, 126, 96)), (622, (138, 150, 164))):
+        pygame.draw.ellipse(surf, mix(col, LAMP, 0.1), (bx, 702, 58, 24))
+        pygame.draw.ellipse(surf, shade(col, 0.6), (bx + 7, 706, 44, 14))
+    jig = math.sin(t * 2.3) * 3
+    pygame.draw.circle(surf, mix(GOOD, PAPER, 0.3), (int(452 + jig), 726), 11)
+    pygame.draw.circle(surf, shade(mix(GOOD, PAPER, 0.3), 0.7),
+                       (int(452 + jig), 726), 11, 2)
+
+    # ---- the far half ----------------------------------------------------
+    sill2 = _cat_window(surf, pygame.Rect(1212, 140, 170, 180), t, seed=9)
+    rad = pygame.Rect(1222, 436, 150, 84)
+    pygame.draw.rect(surf, mix(PAPER, WOOD, 0.55), rad, border_radius=4)
+    for i in range(7):
+        pygame.draw.rect(surf, mix(PAPER, WOOD, 0.42),
+                         (rad.x + 7 + i * 20, rad.y + 5, 12, rad.h - 10),
+                         border_radius=3)
+    pygame.draw.rect(surf, shade(WOOD, 0.9), rad, width=2, border_radius=4)
+    glow(surf, (rad.centerx, rad.centery), 120, mix(LAMP, EMBER, 0.6), 0.10)
+    pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.2),
+                     (rad.x - 10, rad.y - 14, rad.w + 20, 14),
+                     border_radius=3)
+
+    # the armchair, which is the best seat in the flat
+    ch = pygame.Rect(1430, 404, 300, 200)
+    pygame.draw.rect(surf, mix(RUG, WOOD, 0.25), (ch.x + 10, ch.y + 60,
+                                                  ch.w - 20, ch.h - 40),
+                     border_radius=12)
+    pygame.draw.rect(surf, mix(RUG, EMBER, 0.14),
+                     (ch.x + 26, ch.y, ch.w - 52, 120), border_radius=16)
+    for sx in (ch.x, ch.right - 46):      # the arms
+        pygame.draw.rect(surf, mix(RUG, WOOD, 0.18), (sx, ch.y + 64, 46, 110),
+                         border_radius=14)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.10),
+                     (ch.x + 50, ch.y + 96, ch.w - 100, 54), border_radius=10)
+    for lx in (ch.x + 16, ch.right - 28):
+        pygame.draw.rect(surf, shade(WOOD, 0.8), (lx, ch.bottom - 16, 12, 22))
+    thr = pygame.Rect(ch.x + 150, ch.y + 40, 120, 90)
+    pygame.draw.rect(surf, mix((132, 108, 126), LAMP, 0.1), thr,
+                     border_radius=6)
+
+    # a box fort, and a feather on the floor in front of it
+    box = pygame.Rect(1668, 440, 160, 116)
+    pygame.draw.rect(surf, (150, 116, 80), box, border_radius=3)
+    pygame.draw.rect(surf, shade((150, 116, 80), 0.74), box, width=2,
+                     border_radius=3)
+    hole = pygame.Rect(box.x + 42, box.y + 30, 76, 86)
+    pygame.draw.ellipse(surf, shade(INK, 1.5), hole)
+    pygame.draw.polygon(surf, (168, 132, 94), [
+        (box.x, box.y + 6), (box.right, box.y + 6),
+        (box.right - 16, box.y - 16), (box.x + 16, box.y - 16)])
+    fx = 1648 + math.sin(t * 1.7) * 5
+    pygame.draw.line(surf, mix(TEA, CREAM, 0.2), (fx, 736), (fx + 30, 700), 2)
+    for i in range(5):
+        pygame.draw.line(surf, mix(EMBER, CREAM, 0.3),
+                         (fx + 30, 700), (fx + 38 + i * 3, 684 + i * 6), 2)
+
+    # the second scratching post, and a shelf over it
+    pbase = pygame.Rect(TREE2_X - 60, CATS_FLOOR - 18, 126, 20)
+    pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.2), pbase, border_radius=3)
+    ppost = pygame.Rect(TREE2_X - 18, 300, 36, CATS_FLOOR - 300)
+    pygame.draw.rect(surf, mix(PAPER, WOOD, 0.5), ppost)
+    for i in range(int(ppost.h // 9)):
+        y = ppost.y + 5 + i * 9
+        pygame.draw.line(surf, mix(PAPER, WOOD, 0.66), (ppost.x, y),
+                         (ppost.right, y - 3), 3)
+    pygame.draw.circle(surf, mix(RUG, EMBER, 0.2), (TREE2_X, 294), 14)
+    shelf = pygame.Rect(1790, 232, 180, 14)
+    pygame.draw.rect(surf, WOOD_HI, shelf, border_radius=2)
+    pygame.draw.rect(surf, shade(WOOD, 0.75), (shelf.x, shelf.bottom - 4,
+                                               shelf.w, 4))
+    rng = random.Random(6)
+    bx = shelf.x + 10
+    while bx < shelf.x + 86:
+        hgt = rng.randrange(34, 54)
+        wid = rng.randrange(8, 14)
+        pygame.draw.rect(surf, mix(rng.choice((RUG, WOOD_HI, (86, 74, 96))),
+                                   LAMP, 0.10),
+                         (bx, shelf.y - hgt, wid, hgt), border_radius=2)
+        bx += wid + 2
+
+    edge = pygame.Surface((160, H), pygame.SRCALPHA)
+    for x in range(160):
+        a = int(24 * (1 - x / 159) ** 2)
+        pygame.draw.line(edge, (*LAMP, a), (x, 0), (x, H))
+    surf.blit(edge, (0, 0))
+
+
+# Where a cat may be in the two rooms that are NOT the cat room, best
+# spot first: the top of the cat tree is a better
 # address than the floor by the bowls, and the cats you have taken
 # furthest get first refusal.
 SPOTS = (
     ("study", 1022, 452, "sit", 150),     # the desk, beside the binder
-    ("cats", TREE_X + 30, 238, "sit", 104),       # top of the cat tree
-    ("cats", 254, 364, "curl", 128),      # the windowsill, in the curtains
-    ("study", 642, 174, "sit", 96),       # the shelf, at the clear end
-    ("cats", TREE_X - 56, 372, "curl", 124),      # the lower platform
     ("hall", 946, 410, "sit", 116),       # the console table by the door
+    ("study", 642, 174, "sit", 96),       # the shelf, at the clear end
     ("study", 958, 274, "curl", 124),     # the study windowsill
-    ("cats", 486, 356, "sit", 94),        # the lower wall shelf
-    ("cats", 272, 712, "curl", 152),      # the basket
-    ("study", 676, 726, "curl", 172),     # the middle of the rug
     ("hall", 290, 640, "curl", 132),      # down inside the box
-    ("cats", 606, 716, "sit", 126),       # waiting at the bowls
+    ("study", 676, 726, "curl", 172),     # the middle of the rug
     ("study", 414, 606, "sit", 124),      # the near edge of the rug
-    ("cats", 940, 730, "curl", 158),      # flat out on the rug
-    ("cats", 632, 254, "curl", 112),      # the high shelf, where it is warm
-    ("cats", 392, 426, "curl", 134),      # on the blanket chest
 )
+ROOM_CAP = 10                 # how many cats live in the cat room itself
 
 
 def room_cats(state):
     """The cats the flat shows, in the order they get the good spots."""
     got = [(c.level, BY_KEY[k].rarity, k) for k, c in state.cards.items()]
     got.sort(reverse=True)
-    return [BY_KEY[k] for _, _, k in got[:len(SPOTS)]]
+    return [BY_KEY[k] for _, _, k in got[:ROOM_CAP + len(SPOTS)]]
 
 
 def cats_in(state, area):
-    """(breed, spot) for every cat that lives in this room."""
+    """(breed, spot) for every cat that lives in this room.
+
+    The cat room is not in here: its residents move about and are owned
+    by CatRoom. These are the ones further down the list, asleep on the
+    furniture in the other two rooms.
+    """
+    if area == "cats":
+        return []
     out = []
-    for b, spot in zip(room_cats(state), SPOTS):
+    for b, spot in zip(room_cats(state)[ROOM_CAP:], SPOTS):
         if spot[0] == area:
             out.append((b, spot))
     return out
@@ -3061,134 +4034,32 @@ def _study(surf, state, t):
 # ---------------------------------------------------------------------------
 # THE CAT ROOM
 # ---------------------------------------------------------------------------
-def _catroom(surf, state, t):
-    surf.fill(INK)
-    _wallpaper(surf, CATS_FLOOR, (28, 21, 20), (46, 34, 30), 52)
-    _boards(surf, CATS_FLOOR, 0.78)
-    _rug(surf, pygame.Rect(760, 640, 500, 170), mix(RUG, EMBER, 0.12))
-    _rug(surf, pygame.Rect(120, 626, 420, 150), mix(RUG, WOOD, 0.3))
-
-    # a string of warm bulbs along the top of the wall
-    for i in range(13):
-        f = i / 12
-        x = 40 + f * (W - 80)
-        y = 54 + math.sin(f * math.pi) * 34
-        if i:
-            pygame.draw.line(surf, shade(WOOD, 1.1), (lastx, lasty), (x, y), 2)
-        lastx, lasty = x, y
-        tw = 0.72 + 0.28 * math.sin(t * 1.6 + i * 1.1)
-        glow(surf, (x, y + 8), 26, LAMP, 0.34 * tw)
-        pygame.draw.circle(surf, mix(LAMP, CREAM, 0.3), (int(x), int(y + 8)), 4)
-
-    # the window, with the curtains open
-    win = pygame.Rect(140, 150, 240, 190)
-    pygame.draw.rect(surf, (18, 22, 34), win)
-    rng = random.Random(4)
-    for i in range(26):
-        s = pygame.Surface((2, 2), pygame.SRCALPHA)
-        s.fill((*CREAM, int(70 + 70 * abs(math.sin(t * 0.3 + i)))))
-        surf.blit(s, (win.x + rng.randrange(6, win.w - 6),
-                      win.y + rng.randrange(6, win.h - 6)))
-    pygame.draw.rect(surf, WOOD, win, width=8)
-    pygame.draw.line(surf, WOOD, (win.centerx, win.y), (win.centerx, win.bottom), 5)
-    sill = pygame.Rect(win.x - 22, win.bottom - 2, win.w + 44, 18)
-    pygame.draw.rect(surf, WOOD_HI, sill, border_radius=3)
-    for sx, cx in ((-1, win.x - 10), (1, win.right + 10)):
-        pygame.draw.polygon(surf, mix(RUG, WOOD, 0.4), [
-            (cx, win.y - 14), (cx + sx * 46, win.y - 14),
-            (cx + sx * 34, win.bottom - 6), (cx, win.bottom - 6)])
-
-    # two shelves up the wall, in the way cats like
-    for i, (sx, sy, sw) in enumerate(((414, 358, 176), (556, 256, 168))):
-        r = pygame.Rect(sx, sy, sw, 12)
-        pygame.draw.rect(surf, WOOD_HI, r, border_radius=2)
-        pygame.draw.rect(surf, shade(WOOD, 0.75), (r.x, r.bottom - 4, r.w, 4))
-        for bx in (r.x + 14, r.right - 20):
-            pygame.draw.line(surf, shade(WOOD, 0.8), (bx, r.bottom),
-                             (bx, r.bottom + 14), 3)
-
-    # the cat tree
-    base = pygame.Rect(TREE_X - 96, CATS_FLOOR - 24, 206, 26)
-    pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.25), base, border_radius=4)
-    post = pygame.Rect(TREE_X - 18, 250, 40, CATS_FLOOR - 250)
-    pygame.draw.rect(surf, mix(PAPER, WOOD, 0.5), post)
-    for i in range(int(post.h // 9)):      # sisal, wound round and round
-        y = post.y + 5 + i * 9
-        pygame.draw.line(surf, mix(PAPER, WOOD, 0.66), (post.x, y),
-                         (post.right, y - 3), 3)
-    plat1 = pygame.Rect(TREE_X - 128, 372, 150, 20)
-    plat2 = pygame.Rect(TREE_X - 36, 238, 150, 20)
-    for p in (plat1, plat2):
-        pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.3), p, border_radius=5)
-        pygame.draw.rect(surf, shade(WOOD, 0.8), (p.x, p.bottom - 5, p.w, 5),
-                         border_radius=3)
-    pygame.draw.rect(surf, mix(PAPER, WOOD, 0.5),
-                     (plat1.centerx - 16, plat1.bottom, 32,
-                      CATS_FLOOR - 24 - plat1.bottom))
-    # a ball on a string, still swinging from earlier
-    sway = math.sin(t * 1.1) * 26
-    pygame.draw.line(surf, shade(TEA, 0.7), (plat2.x + 20, plat2.bottom),
-                     (plat2.x + 20 + sway, plat2.bottom + 86), 2)
-    pygame.draw.circle(surf, mix(EMBER, PAPER, 0.3),
-                       (int(plat2.x + 20 + sway), int(plat2.bottom + 92)), 11)
-
-    # a low chest, with the blankets nobody folds twice
-    chest = pygame.Rect(316, 424, 250, 132)
-    pygame.draw.rect(surf, mix(WOOD, RUG, 0.3), chest, border_radius=4)
-    pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.12),
-                     (chest.x - 8, chest.y - 14, chest.w + 16, 18),
-                     border_radius=4)
-    for i in range(2):
-        pygame.draw.rect(surf, shade(WOOD, 0.74),
-                         (chest.x + 18 + i * 120, chest.y + 24, 96, 82),
-                         border_radius=3)
-        pygame.draw.circle(surf, mix(TEA, CREAM, 0.2),
-                           (chest.x + 66 + i * 120, chest.y + 66), 5)
-    for i, col in enumerate(((132, 108, 126), (154, 122, 92))):
-        pygame.draw.rect(surf, mix(col, LAMP, 0.1),
-                         (chest.right - 118, chest.y - 30 + i * 16, 104, 18),
-                         border_radius=4)
-
-    # a basket, two bowls and the toys that end up under everything
-    bask = pygame.Rect(176, 648, 196, 84)
-    pygame.draw.ellipse(surf, mix(WOOD_HI, PAPER, 0.3), bask)
-    pygame.draw.ellipse(surf, mix(WOOD, PAPER, 0.18),
-                        bask.inflate(-24, -30).move(0, -6))
-    for i in range(12):
-        x = bask.x + 10 + i * 15
-        pygame.draw.line(surf, shade(WOOD, 0.9), (x, bask.y + 24),
-                         (x + 6, bask.bottom - 10), 2)
-    for i, (bx, col) in enumerate(((556, (138, 150, 164)), (628, (166, 126, 96)))):
-        pygame.draw.ellipse(surf, mix(col, LAMP, 0.1), (bx, 712, 58, 24))
-        pygame.draw.ellipse(surf, shade(col, 0.6), (bx + 7, 716, 44, 14))
-    pygame.draw.circle(surf, mix(GOOD, PAPER, 0.3), (436, 726), 10)
-    pygame.draw.ellipse(surf, mix(MUTED, PAPER, 0.2), (1052, 700, 40, 18))
-    pygame.draw.line(surf, MUTED, (1052, 709), (1024, 716), 2)
-
-    draw_cats(surf, state, "cats", t)
-    # the near rim of the basket, drawn last so whoever is in it is in it
-    pygame.draw.arc(surf, mix(WOOD_HI, PAPER, 0.3),
-                    (bask.x, bask.y + 2, bask.w, bask.h - 2), 3.34, 6.08, 15)
-    for i in range(12):
-        x = bask.x + 14 + i * 15
-        y = bask.centery + math.sqrt(max(0.0, 1 - ((x - bask.centerx) /
-                                                   (bask.w / 2)) ** 2)) * \
-            (bask.h / 2) - 7
-        pygame.draw.line(surf, shade(WOOD, 0.85), (x, y - 6), (x + 5, y + 6), 2)
-
-    edge = pygame.Surface((160, H), pygame.SRCALPHA)
-    for x in range(160):
-        a = int(24 * (1 - x / 159) ** 2)
-        pygame.draw.line(edge, (*LAMP, a), (x, 0), (x, H))
-    surf.blit(edge, (0, 0))
-
-
 _AREA_DRAW = {"hall": _hall, "study": _study, "cats": _catroom}
 _scratch = None
+_wide = None
 
 
-def draw_area(surf, area, state, t):
-    _AREA_DRAW[area](surf, state, t)
+def draw_area(surf, area, state, t, cam=0.0, room=None):
+    """Draw a room into `surf`, taking the camera into account.
+
+    A room no wider than the window is drawn straight onto it. The cat
+    room is drawn once at full width onto a spare surface and then
+    blitted through the window, which is also what keeps its hit areas
+    honest: everything in there is in room coordinates until the moment
+    it is shown.
+    """
+    if AREA_WIDE[area] <= W:
+        _AREA_DRAW[area](surf, state, t)
+        return
+    global _wide
+    if _wide is None or _wide.get_width() != AREA_WIDE[area]:
+        _wide = pygame.Surface((AREA_WIDE[area], H))
+    _AREA_DRAW[area](_wide, state, t)
+    if room is not None:
+        room.draw(_wide, t)
+    if area == "cats":
+        _catroom_front(_wide, t)
+    surf.blit(_wide, (-int(cam), 0))
 
 
 def area_scratch():
@@ -3208,6 +4079,8 @@ def area_scratch():
 # ---------------------------------------------------------------------------
 HINTS = (
     "A and D walk between the hall, the desk and the cat room",
+    "the cat room is wider than the window - keep walking",
+    "every breed has its own temperament. click one and see",
     "the post lands in the hall - go and get it",
     "click a cat. any cat",
     "the laptop is the only way to get cards",
@@ -3248,6 +4121,11 @@ class GameBase:
         self.pan = 0.0              # 1 while a room slides past, else 0
         self.pan_from = None
         self.pan_dir = 1
+        self.cam = 0.0              # how far along a wide room you are
+        self.cam_to = 0.0
+        self.room = CatRoom()       # the cat room runs its own simulation
+        self.focus = None           # a cat you have clicked on
+        self.focus_t = 0.0
         self.t = 0.0
         self.buttons = []
         self.toasts = []
@@ -3313,10 +4191,26 @@ class GameBase:
         self.pan = 1.0
         self.area = area
         self.state.area = area
+        # you come into a wide room from the side you walked in from
+        span = AREA_WIDE[area] - W
+        self.cam_to = span if (self.pan_dir < 0 and span > 0) else 0.0
+        self.cam = self.cam_to
         if not quiet:
             self.beep("step")
 
     def walk(self, d):
+        """One step. In a room wider than the window that means sliding
+        the camera along it; only at the end of a room do you leave it."""
+        span = AREA_WIDE[self.area] - W
+        if span > 0:
+            if d > 0 and self.cam_to < span - 1:
+                self.cam_to = min(span, self.cam_to + W * 0.78)
+                self.beep("step")
+                return
+            if d < 0 and self.cam_to > 1:
+                self.cam_to = max(0, self.cam_to - W * 0.78)
+                self.beep("step")
+                return
         i = AREAS.index(self.area) + d
         if 0 <= i < len(AREAS):
             self.walk_to(AREAS[i])
@@ -3464,18 +4358,56 @@ class GameBase:
             pygame.event.post(pygame.event.Event(pygame.QUIT))
 
     def pet(self, key):
-        """Click a cat and it tells you who it is. That is the whole
-        feature, and it is the reason the cat room exists."""
+        """Click a cat and it tells you who it is, what it is like, and
+        what it is doing. In the cat room that opens the card at the
+        bottom of the screen; elsewhere it is a line over its head."""
         card = self.state.cards.get(key)
         if card is None:
             return
         self.beep("purr")
+        if self.area == "cats":
+            for res in self.room.res:
+                if res.breed.key == key:
+                    self.focus = key
+                    self.focus_t = 7.0
+                    r = self.room.rect_of(res).move(-int(self.cam), 0)
+                    self.floats.append(Float(r.centerx, r.y - 6, "purr",
+                                             warm(CREAM, 0.1)))
+                    return
         for b, spot in cats_in(self.state, self.area):
             if b.key == key:
                 r = cat_rect(b, spot, card.level)
                 self.floats.append(Float(r.centerx, r.y - 6,
                                          f"{b.name}, level {card.level}",
                                          warm(CREAM, 0.1)))
+
+    def draw_focus(self, s):
+        """The card at the foot of the cat room: who this one is."""
+        if not self.focus or self.focus_t <= 0:
+            return
+        res = next((r for r in self.room.res
+                    if r.breed.key == self.focus), None)
+        if res is None:
+            return
+        b = res.breed
+        a = clamp(self.focus_t, 0, 1)
+        r = pygame.Rect(W // 2 - 300, H - 118, 600, 86)
+        acc = rarity_colour(b.rarity)
+        panel(s, r, mix(DEEP, acc, 0.10), shade(acc, 0.7), radius=10,
+              alpha=int(238 * a))
+        img = cat_surface(b, "sit", 74, False, res.level)
+        s.blit(img, img.get_rect(midbottom=(r.x + 52, r.bottom - 8)))
+        text(s, b.name, 22, (r.x + 98, r.y + 10), warm(CREAM, 0.2),
+             alpha=int(255 * a))
+        text(s, f"level {res.level}", 13, (r.right - 16, r.y + 16), acc,
+             right=True, kind="mono", alpha=int(255 * a))
+        text(s, b.temperament["label"], 14, (r.x + 98, r.y + 36),
+             warm(EMBER, 0.2), kind="mono", alpha=int(255 * a))
+        text(s, b.habit, 13, (r.x + 98, r.y + 56), MUTED, kind="mono",
+             alpha=int(240 * a), max_w=r.w - 320)
+        text(s, res.doing, 13, (r.right - 16, r.y + 38), TEA,
+             right=True, kind="mono", alpha=int(255 * a),
+             max_w=r.w - 330)
 
     # -- ordering -----------------------------------------------------------
     def place_order(self):
@@ -3559,6 +4491,10 @@ class GameBase:
     def update(self, dt):
         self.t += dt
         self.pan = max(0.0, self.pan - dt * 3.1)
+        self.cam += (self.cam_to - self.cam) * min(1.0, dt * 7.0)
+        self.room.update(dt, self.state, ROOM_CAP)
+        if self.focus_t > 0:
+            self.focus_t = max(0.0, self.focus_t - dt)
         st = self.state
         before = st.income
         landed = st.tick(dt)
@@ -3660,15 +4596,17 @@ class GameBase:
         if self.pan > 0.001 and self.pan_from:
             f = self.pan ** 1.7              # eased, 1 down to 0
             sc = area_scratch()
-            draw_area(sc, self.pan_from, st, t)
+            draw_area(sc, self.pan_from, st, t, 0.0, self.room)
             s.blit(sc, (int(-self.pan_dir * W * (1.0 - f)), 0))
-            draw_area(sc, self.area, st, t)
+            draw_area(sc, self.area, st, t, self.cam, self.room)
             s.blit(sc, (int(self.pan_dir * W * f), 0))
             self.draw_hud(s)
             return
-        draw_area(s, self.area, st, t)
+        draw_area(s, self.area, st, t, self.cam, self.room)
         self.hotspots(s)
         self.draw_hud(s)
+        if self.area == "cats":
+            self.draw_focus(s)
 
     def hotspots(self, s):
         """What can be touched in the room you are standing in."""
@@ -3698,6 +4636,20 @@ class GameBase:
                 text(s, f"{b.name}  lv {card.level}", 14,
                      (r.centerx, r.y - 16), warm(CREAM, 0.15), center=True,
                      kind="mono")
+        if self.area == "cats":
+            screen = pygame.Rect(0, 0, W, H)
+            for res in self.room.res:
+                r = self.room.rect_of(res).move(-int(self.cam), 0)
+                if not screen.colliderect(r):
+                    continue          # it is round the corner of the room
+                self.buttons.append(Button(r, "", ("cat", res.breed.key),
+                                           "hit"))
+                if r.collidepoint(mouse):
+                    text(s, f"{res.breed.name}  lv {res.level}", 14,
+                         (r.centerx, r.y - 16), warm(CREAM, 0.15),
+                         center=True, kind="mono")
+                    text(s, res.doing, 12, (r.centerx, r.y - 1), TEA,
+                         center=True, kind="mono")
 
         i = AREAS.index(self.area)
         if i > 0:
@@ -3736,11 +4688,18 @@ class GameBase:
                                            "hit" if on else "link", 14,
                                            kind="mono", colour=TEA))
                 x += wdt
+            if self.area == "cats" and self.room.res:
+                tal = self.room.tally()
+                bits = [f"{v} {k}" for k, v in
+                        sorted(tal.items(), key=lambda kv: -kv[1])[:3]]
+                text(s, f"{len(self.room.res)} cats in here: "
+                        + ", ".join(bits), 13, (W // 2, 58), TEA,
+                     center=True, kind="mono", max_w=W - 440)
             if st.parcels and self.area != "hall":
                 word = "parcel" if len(st.parcels) == 1 else "parcels"
                 text(s, f"{len(st.parcels)} {word} on the mat, in the hall",
-                     13, (W // 2, 58), warm(EMBER, 0.2), center=True,
-                     kind="mono")
+                     13, (W // 2, 58 + (20 if self.area == "cats" else 0)),
+                     warm(EMBER, 0.2), center=True, kind="mono")
             text(s, HINTS[self.hint_i], 14, (W // 2, H - 26), shade(TEA, 0.8),
                  center=True, kind="mono",
                  alpha=int(200 * min(1.0, self.hint * 0.8)))
@@ -4298,11 +5257,11 @@ class BinderMixin:
         dim = pygame.Surface((W, H), pygame.SRCALPHA)
         dim.fill((8, 6, 6, 200))
         s.blit(dim, (0, 0))
-        r = pygame.Rect(W // 2 - 380, H // 2 - 210, 760, 420)
+        r = pygame.Rect(W // 2 - 380, H // 2 - 236, 760, 472)
         acc = rarity_colour(b.rarity)
         panel(s, r, mix(DEEP, acc, 0.06), shade(acc, 0.6), radius=12)
         glow(s, (r.x + 150, r.centery), 220, acc, 0.14)
-        cr = pygame.Rect(r.x + 36, r.centery - 148, 212, 296)
+        cr = pygame.Rect(r.x + 36, r.centery - 160, 212, 296)
         if card:
             draw_card(s, cr, b, card.level, card.dupes, card.maxed)
         else:
@@ -4315,7 +5274,13 @@ class BinderMixin:
              kind="mono", shadow=False)
         paragraph(s, b.note, 16, (x, r.y + 104), mix(TEA, CREAM, 0.35),
                   r.right - x - 40, 5)
-        y = r.y + 170
+        text(s, "TEMPERAMENT", 12, (x, r.y + 160), TEA, kind="mono",
+             shadow=False)
+        text(s, b.temperament["label"], 15, (x + 124, r.y + 158),
+             warm(EMBER, 0.2), kind="mono")
+        paragraph(s, b.habit, 13, (x, r.y + 182), MUTED,
+                  r.right - x - 40, 4, kind="mono")
+        y = r.y + 230
         hairline(s, x, y - 10, r.right - 40, TEA, 60)
         if card:
             text(s, f"LEVEL {card.level}", 26, (x, y), warm(CREAM, 0.1))
@@ -4368,8 +5333,10 @@ RULES = (
                  "thing that raises it."),
     ("the flat", "Three rooms: the hall where the post lands, the desk, "
                  "and the cat room. A and D, or click the names."),
-    ("the cats", "The ones you have taken furthest take the best spots in "
-                 "them, and they earn whether you watch or not."),
+    ("the cat room", "Twice as wide as the window. The ten you have taken "
+                     "furthest live there and run their own day."),
+    ("temperament", "Every breed has one, and it decides what that cat "
+                    "does with its day. Click a cat to see it."),
 )
 
 
@@ -4390,13 +5357,13 @@ class MenuMixin:
              (r.centerx, r.y + 70), TEA, center=True, kind="mono")
         hairline(s, r.x + 40, r.y + 100, r.right - 40, TEA, 70)
 
-        y = r.y + 112
+        y = r.y + 104
         for name, line in RULES:
-            text(s, name, 16, (r.x + 36, y), warm(EMBER, 0.15), kind="mono",
-                 max_w=140)
-            paragraph(s, line, 14, (r.x + 186, y), mix(TEA, CREAM, 0.3),
-                      r.w - 230, 4, kind="mono")
-            y += 52
+            text(s, name, 15, (r.x + 34, y), warm(EMBER, 0.15), kind="mono",
+                 max_w=146)
+            paragraph(s, line, 13, (r.x + 188, y), mix(TEA, CREAM, 0.3),
+                      r.w - 232, 4, kind="mono")
+            y += 46
         hairline(s, r.x + 40, y - 4, r.right - 40, TEA, 70)
 
         y += 10
