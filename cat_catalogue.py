@@ -95,14 +95,18 @@ BAD      = (196, 104, 90)
 
 RARITY = (
     # name          colour             income/s at level 1
-    ("COMMON",    (171, 152, 126), 0.05),
-    ("UNCOMMON",  (126, 171, 131), 0.16),
-    ("RARE",      (116, 150, 208), 0.45),
-    ("PEDIGREE",  (184, 132, 208), 1.20),
-    ("CHAMPION",  (204, 74, 92),   1.90),
-    ("LEGEND",    (240, 178, 86),  3.00),
-    ("FOUNDATION", (72, 214, 170), 5.40),
-    ("UNLISTED",  (206, 214, 228), 2.50),
+    # The rates were set when the book held twenty-four breeds. At a
+    # hundred they added up to two thousand a second and the back half of
+    # the game was a player sitting on five million pounds with nothing
+    # that could absorb it. Everything here is a third of what it was.
+    ("COMMON",    (171, 152, 126), 0.016),
+    ("UNCOMMON",  (126, 171, 131), 0.055),
+    ("RARE",      (116, 150, 208), 0.15),
+    ("PEDIGREE",  (184, 132, 208), 0.40),
+    ("CHAMPION",  (204, 74, 92),   0.63),
+    ("LEGEND",    (240, 178, 86),  1.00),
+    ("FOUNDATION", (72, 214, 170), 1.80),
+    ("UNLISTED",  (206, 214, 228), 0.85),
 )
 (R_COMMON, R_UNCOMMON, R_RARE, R_PEDIGREE, R_CHAMPION, R_LEGEND,
  R_FOUNDATION, R_UNLISTED) = range(8)
@@ -3218,6 +3222,64 @@ SHELVES = ("standard", "special")
 def packs_on(shelf):
     return [p for p in PACKS if p.shelf == shelf]
 
+# ---------------------------------------------------------------------------
+# THE CONVENTION
+#
+# Every Saturday, across town: three trestle tables, a hall full of people
+# who want the same cards you do, and a man by the door selling at five
+# times the price. Nothing here can be ordered. The limited packs are won
+# by standing in the right queue, knowing a fake when you see one, and
+# talking a scalper down - which is the whole point of the day out, and
+# the reason the website cannot sell you everything.
+#
+# One go at each table per convention. The hall shuts at midnight and the
+# tables reset for next week.
+# ---------------------------------------------------------------------------
+CONV_PACKS = (
+    Pack("expo", "The Convention Exclusive", 0, 20, (0, 6, 22, 26, 20, 20, 6),
+         0, R_CHAMPION,
+         "Twenty cards printed for the hall and nowhere else. They do not "
+         "post these and they never will.",
+         (("queued an hour. would queue again.", 5),
+          ("two foundation cards out of one pack", 5)),
+         shelf="convention"),
+    Pack("judge", "The Judge's Table", 0, 10, (0, 0, 10, 24, 30, 26, 10),
+         0, R_LEGEND,
+         "Ten cards the judges put aside at the end of the show, every one "
+         "of them a cat that won something.",
+         (("the only place a foundation card is a sure thing", 5),
+          ("they check you know what you are looking at first", 4)),
+         shelf="convention"),
+    Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 24, 18, 18, 4),
+         0, R_PEDIGREE,
+         "Fifteen cards from a man by the fire door who will not say where "
+         "he got them. Face value is four thousand two hundred.",
+         (("he wanted twenty-one for this", 2),
+          ("talked him down. felt like a win. was it a win?", 4)),
+         shelf="convention", shiny_mult=2.0),
+)
+for _p in CONV_PACKS:
+    BY_PACK[_p.key] = _p
+PACKS = PACKS + CONV_PACKS
+
+SCALP_MULT = 5.0           # what he asks before you talk him down
+
+# key, name, who runs it, what it gives you, the game it takes
+STALLS = (
+    ("queue", "THE EXCLUSIVES QUEUE", "a volunteer with a clipboard",
+     "expo", "queue",
+     "Four hundred people want twenty packs. Get to the table before "
+     "the rope goes across."),
+    ("fake", "THE AUTHENTICATION DESK", "a judge with a loupe",
+     "judge", "fake",
+     "Three of these four cards came off a printer in somebody's garage. "
+     "Point at the one that did not."),
+    ("scalp", "THE MAN BY THE FIRE DOOR", "a scalper",
+     "scalp", "haggle",
+     "He has what you want and he knows it. Whatever you talk him down "
+     "to is what you pay - and he walks if you waste his afternoon."),
+)
+
 # Shipping. The cheap one is slow and the fast one is a luxury, which is
 # the only decision the shop ever asks you to make.
 SHIPPING = (
@@ -3263,16 +3325,16 @@ UPGRADES = (
     Upgrade("radcover", "A Radiator Shelf", 2600, 0.09, "hall",
             "A plank and two brackets over the hall radiator, which is "
             "all a cat has ever wanted from carpentry."),
-    Upgrade("perch", "The Window Catio", 6500, 0.11, "cats",
+    Upgrade("perch", "The Window Catio", 5200, 0.08, "cats",
             "A box of a balcony on the cat room window. They sit in it "
             "and watch the street like a pair of magistrates."),
-    Upgrade("heatbed", "A Heated Bed", 15000, 0.13, "cats",
+    Upgrade("heatbed", "A Heated Bed", 11000, 0.09, "cats",
             "Thermostatic, washable, and warmer than you are, which "
             "settles a long-running argument about laps."),
-    Upgrade("gramo", "The Gramophone", 40000, 0.16, "study",
+    Upgrade("gramo", "The Gramophone", 26000, 0.10, "study",
             "Plays something slow in the corner. The whole flat sleeps "
             "better, including you."),
-    Upgrade("skylight", "A Skylight", 95000, 0.20, "cats",
+    Upgrade("skylight", "A Skylight", 60000, 0.12, "cats",
             "Somebody comes and cuts a hole in the roof. The sun moves "
             "across the floor all day and they follow it round."),
 )
@@ -3317,6 +3379,55 @@ def ship_time(pack, mode, qty=1):
 # ---------------------------------------------------------------------------
 # THE RUN
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# THE CALENDAR
+#
+# Six minutes at the desk is a day, seven days is a week, and the week
+# ends on a Saturday with a convention across town. Time only runs while
+# you are playing: the point of a calendar here is not to simulate a
+# year, it is to make "next Saturday" mean something, and a Saturday that
+# arrives while the game is shut would be a Saturday you missed.
+# ---------------------------------------------------------------------------
+DAY = 360.0                # seconds of play to a day
+DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+             "Saturday", "Sunday")
+CONVENTION_DAY = 5         # Saturday
+WEEK_START = 3             # day one of a collection is a Thursday
+
+
+def day_of(played):
+    return int(played // DAY)
+
+
+def weekday_of(played):
+    return (day_of(played) + WEEK_START) % 7
+
+
+def date_words(played):
+    d = day_of(played) + WEEK_START
+    return f"{DAY_NAMES[d % 7]}, week {d // 7 + 1}"
+
+
+def convention_open(played):
+    return weekday_of(played) == CONVENTION_DAY
+
+
+def until_convention(played):
+    """Seconds until the hall next opens. Zero while it is open."""
+    if convention_open(played):
+        return 0.0
+    into = played - day_of(played) * DAY
+    days = (CONVENTION_DAY - weekday_of(played)) % 7 or 7
+    return days * DAY - into
+
+
+def until_shut(played):
+    """Seconds of convention left. Zero when there is none on."""
+    if not convention_open(played):
+        return 0.0
+    return DAY - (played - day_of(played) * DAY)
+
+
 FIRST_STRAY = 330.0        # seconds of play before the first one comes
 STRAY_GAP = (520.0, 820.0)  # ... and how long between the ones after it
 
@@ -3431,6 +3542,9 @@ class State:
         self.seen_end = False
         self.club = 0               # memberships bought, 0 to 3
         self.things = set()         # furnishings bought for the flat
+        self.conv_done = set()      # stalls played at this convention
+        self.conv_week = -1         # which convention that was
+        self.conv_wins = 0
         self.stray = None           # a cat on the mat, waiting to be let in
         self.stray_t = FIRST_STRAY
         self.strays = 0             # how many have been taken in
@@ -3535,6 +3649,32 @@ class State:
         self.next_num += 1
         self.orders.append(o)
         return o
+
+    # -- the convention -----------------------------------------------
+    @property
+    def week(self):
+        return day_of(self.played) // 7
+
+    def convention(self):
+        """True while the hall is open. It shuts when the day does."""
+        return convention_open(self.played)
+
+    def conv_refresh(self):
+        """Each Saturday is its own convention, with its own three goes."""
+        if self.conv_week != self.week:
+            self.conv_week = self.week
+            self.conv_done = set()
+
+    def conv_played(self, key):
+        return key in self.conv_done
+
+    def conv_take(self, key, pack, qty=1):
+        """A stall has been played. Whatever was won lands straight away -
+        nothing at a convention goes in the post."""
+        self.conv_done.add(key)
+        if pack is not None:
+            self.parcels.append((pack.key, qty))
+            self.conv_wins += 1
 
     def stray_tick(self, dt, rng):
         """Is there a cat at the door? Returns its key the moment there is.
@@ -3684,6 +3824,9 @@ class State:
             "seen_end": self.seen_end,
             "club": self.club,
             "things": sorted(self.things),
+            "conv_done": sorted(self.conv_done),
+            "conv_week": self.conv_week,
+            "conv_wins": self.conv_wins,
             "stray": self.stray,
             "stray_t": round(self.stray_t, 1),
             "strays": self.strays,
@@ -3725,6 +3868,9 @@ class State:
         s.seen_end = bool(d.get("seen_end", False))
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
         s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
+        s.conv_done = set(d.get("conv_done") or ())
+        s.conv_week = int(d.get("conv_week", -1))
+        s.conv_wins = int(d.get("conv_wins", 0))
         st_key = d.get("stray")
         s.stray = st_key if st_key in BY_KEY else None
         s.stray_t = float(d.get("stray_t", FIRST_STRAY))
@@ -4087,7 +4233,7 @@ def card_cat_height(rect):
 
 
 def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
-              show_rate=True, shut=False, variant=0, shiny=False):
+              show_rate=True, shut=False, variant=0, shiny=False, fake=None):
     rect = pygame.Rect(rect)
     acc = mix(rarity_colour(breed.rarity), LAMP, 0.45) if shiny \
         else rarity_colour(breed.rarity)
@@ -4181,17 +4327,24 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
     ink = mix(CREAM, acc, 0.3) if dark else mix(INK, acc, 0.22)
     quiet = mix(CREAM, acc, 0.5) if dark else mix(INK, acc, 0.4)
     faint = mix(CREAM, INK, 0.5) if dark else mix(INK, acc, 0.3)
-    text(surf, breed.name, fit(breed.name, 17, inner.w - 6),
+    nm = breed.name
+    if fake == "name":          # a letter doubled, the way a bad copy goes
+        nm = nm[:2] + nm[1] + nm[2:]
+    text(surf, nm, fit(nm, 17, inner.w - 6),
          (rect.centerx, name_y + 8), ink, center=True, shadow=False)
     hairline(surf, inner.x + 8, row_y - 3, inner.right - 8,
              mix(INK, acc, 0.5), 60)
-    text(surf, rarity_name(breed.rarity), 11 if not compact else 9,
+    said_rarity = (breed.rarity if fake != "rarity"
+                   else (breed.rarity + 2) % SOLD_RARITIES)
+    text(surf, rarity_name(said_rarity), 11 if not compact else 9,
          (inner.x + 4, row_y + (2 if compact else 0)),
          mix(CREAM, acc, 0.5) if breed.rarity == R_UNLISTED
          else mix(INK, acc, 0.45), kind="mono", shadow=False,
          max_w=inner.w - (56 if show_rate else 8))
     if show_rate and not compact:
-        text(surf, rate(breed.rate_at(level)), 11,
+        said_rate = breed.rate_at(min(MAX_LEVEL, level + 3)
+                                  if fake == "rate" else level)
+        text(surf, rate(said_rate), 11,
              (inner.right - 4, row_y + 6), faint, right=True,
              kind="mono", shadow=False)
 
@@ -4505,11 +4658,12 @@ def draw_parcel(surf, rect, seed=0, open_frac=0.0, num=0):
 # pendant in the hall, the desk lamp, and a string of warm bulbs over the
 # cat tree.
 # ---------------------------------------------------------------------------
-AREAS = ("hall", "study", "cats")
-AREA_NAME = {"hall": "THE HALL", "study": "THE DESK", "cats": "THE CAT ROOM"}
+AREAS = ("conv", "hall", "study", "cats")
+AREA_NAME = {"conv": "THE CONVENTION", "hall": "THE HALL",
+             "study": "THE DESK", "cats": "THE CAT ROOM"}
 # How wide each room is. Only the cat room is wider than the window onto
 # it, and walking inside it slides the camera rather than the room.
-AREA_WIDE = {"hall": W, "study": W, "cats": 2000}
+AREA_WIDE = {"conv": W, "hall": W, "study": W, "cats": 2000}
 
 # -- the desk ---------------------------------------------------------------
 WALL_H = 400          # the desk surface starts here
@@ -5715,7 +5869,144 @@ def _study(surf, state, t):
 # ---------------------------------------------------------------------------
 # THE CAT ROOM
 # ---------------------------------------------------------------------------
-_AREA_DRAW = {"hall": _hall, "study": _study, "cats": _catroom}
+# ---------------------------------------------------------------------------
+# THE HALL ACROSS TOWN
+# ---------------------------------------------------------------------------
+CONV_FLOOR = 520
+STALL_X = (212, 576, 940)         # where the three tables stand
+
+
+def _person(surf, x, y, h, col, t, seed, skin=0.55):
+    """One of the four hundred people who want the same cards you do."""
+    sway = math.sin(t * 1.1 + seed) * 2
+    bob = math.sin(t * 1.7 + seed * 2) * 2
+    w = h * 0.46
+    body = pygame.Rect(x - w / 2 + sway, y - h * 0.72 + bob, w, h * 0.72)
+    pygame.draw.rect(surf, col, body, border_radius=int(w * 0.34))
+    head = (x + sway * 1.2, y - h * 0.82 + bob)
+    pygame.draw.circle(surf, mix(col, (226, 190, 160), skin),
+                       (round(head[0]), round(head[1])), round(h * 0.15))
+    if h >= 46:
+        pygame.draw.ellipse(surf, shade(col, 0.72),
+                            (head[0] - h * 0.16, head[1] - h * 0.19,
+                             h * 0.32, h * 0.2))
+
+
+def _crowd(surf, t):
+    rng = random.Random(17)
+    rows = ((CONV_FLOOR + 36, 92, 0.42), (CONV_FLOOR + 96, 118, 0.62),
+            (CONV_FLOOR + 170, 150, 0.85))
+    for ry, hh, lit in rows:
+        x = -40
+        while x < W + 60:
+            col = mix(rng.choice(((74, 66, 78), (86, 64, 58), (62, 72, 86),
+                                  (92, 78, 56), (70, 60, 64))),
+                      LAMP, 0.10 * lit)
+            _person(surf, x, ry, hh * rng.uniform(0.9, 1.12), col, t,
+                    rng.random() * 9)
+            x += hh * rng.uniform(0.62, 0.95)
+
+
+def _stall(surf, x, title, who, t, taken):
+    """A trestle table with a cloth, a stack of boxes and a person behind."""
+    top = pygame.Rect(x - 150, CONV_FLOOR - 6, 300, 18)
+    cloth = pygame.Rect(top.x + 6, top.bottom - 2, top.w - 12, 96)
+    _person(surf, x, CONV_FLOOR - 4, 148, mix(RUG, WOOD, 0.3), t, x * 0.01)
+    pygame.draw.rect(surf, mix(RUG, EMBER, 0.18), cloth)
+    for i in range(7):
+        hairline(surf, cloth.x, cloth.y + 12 + i * 12, cloth.right,
+                 mix(PAPER, RUG, 0.3), 26)
+    pygame.draw.rect(surf, WOOD_HI, top, border_radius=3)
+    pygame.draw.rect(surf, shade(WOOD, 0.8), (top.x, top.bottom - 5,
+                                              top.w, 5))
+    for i in range(3):
+        bx = top.x + 22 + i * 78
+        by = top.y - 30 - (i % 2) * 8
+        pygame.draw.rect(surf, mix(WOOD, EMBER, 0.2) if not taken
+                         else shade(WOOD, 0.7), (bx, by, 62, 32),
+                         border_radius=3)
+        pygame.draw.rect(surf, mix(LAMP, EMBER, 0.3) if not taken
+                         else shade(TEA, 0.5), (bx + 8, by + 8, 46, 6),
+                         border_radius=2)
+    # the banner over the table
+    ban = pygame.Rect(x - 168, 150, 336, 54)
+    pygame.draw.rect(surf, mix(RUG, WOOD, 0.25), ban, border_radius=6)
+    pygame.draw.rect(surf, mix(EMBER, LAMP, 0.3), ban, width=2,
+                     border_radius=6)
+    text(surf, title, 17, (ban.centerx, ban.y + 10), warm(CREAM, 0.2),
+         center=True, kind="mono", max_w=ban.w - 24)
+    text(surf, who, 12, (ban.centerx, ban.y + 32), MUTED, center=True,
+         kind="mono", max_w=ban.w - 24)
+    for sx in (ban.x + 30, ban.right - 30):
+        pygame.draw.line(surf, shade(TEA, 0.6), (sx, 88), (sx, ban.y), 2)
+    return pygame.Rect(top.x, top.y - 54, top.w, cloth.bottom - top.y + 54)
+
+
+def _convention(surf, state, t):
+    surf.fill(INK)
+    for y in range(0, CONV_FLOOR, 4):
+        f = y / CONV_FLOOR
+        pygame.draw.rect(surf, mix((30, 26, 30), (52, 44, 44), f ** 0.7),
+                         (0, y, W, 4))
+    # strip lights, the one thing a hall like this has plenty of
+    for i in range(5):
+        x = 110 + i * 240
+        pygame.draw.rect(surf, mix(WOOD, LAMP, 0.25), (x - 60, 44, 120, 10),
+                         border_radius=4)
+        glow(surf, (x, 60), 150, mix(LAMP, CREAM, 0.35), 0.16)
+    pygame.draw.line(surf, shade(WOOD_LO, 1.2), (0, 88), (W, 88), 5)
+    for x in range(0, W, 46):
+        pygame.draw.line(surf, shade(WOOD_LO, 1.0), (x, 88), (x + 23, 104), 2)
+        pygame.draw.line(surf, shade(WOOD_LO, 1.0), (x + 46, 88),
+                         (x + 23, 104), 2)
+    # the rest of the show, too far away to be worth walking to
+    rng = random.Random(41)
+    for far in (0, 1):
+        by = 262 + far * 82
+        bh = 58 + far * 26
+        x = -30
+        while x < W + 40:
+            bw = rng.randint(90, 170)
+            tone = 0.12 + 0.10 * far
+            pygame.draw.rect(surf, mix(DEEP, WOOD, tone),
+                             (x, by, bw - 12, bh), border_radius=3)
+            pygame.draw.rect(surf, mix(DEEP, EMBER, tone * 0.8),
+                             (x, by, bw - 12, 9), border_radius=3)
+            glow(surf, (x + bw * 0.4, by + 6), int(bw * 0.5),
+                 mix(LAMP, EMBER, 0.4), 0.05 + 0.03 * far)
+            x += bw
+        # and the backs of the heads in front of them
+        hx = -20
+        while hx < W + 30:
+            _person(surf, hx, by + bh + 12, 30 + far * 14,
+                    mix(DEEP, (70, 62, 66), 0.3 + 0.2 * far), t,
+                    rng.random() * 9, skin=0.10 + 0.08 * far)
+            hx += rng.uniform(17, 26) + far * 6
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.9), (0, CONV_FLOOR, W,
+                                                 H - CONV_FLOOR))
+    for i in range(9):
+        hairline(surf, 0, CONV_FLOOR + 14 + i * 26, W, WOOD_HI, 22)
+
+    haze = pygame.Surface((W, CONV_FLOOR - 150), pygame.SRCALPHA)
+    for i in range(0, haze.get_height(), 3):
+        a = int(46 * (1.0 - i / haze.get_height()) ** 1.4)
+        pygame.draw.rect(haze, (*mix(WOOD, EMBER, 0.2), a), (0, i, W, 3))
+    surf.blit(haze, (0, 150))
+
+    for key, title, who, pack_key, game, blurb in STALLS:
+        i = ("queue", "fake", "scalp").index(key)
+        _stall(surf, STALL_X[i], title, who, t, key in state.conv_done)
+    _crowd(surf, t)
+
+    # the doors home, on the right
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.3), (W - 70, 150, 70, 370))
+    pygame.draw.rect(surf, shade(WOOD, 0.7), (W - 70, 150, 70, 370), width=3)
+    text(surf, "WAY", 13, (W - 35, 300), TEA, center=True, kind="mono")
+    text(surf, "OUT", 13, (W - 35, 318), TEA, center=True, kind="mono")
+
+
+_AREA_DRAW = {"conv": _convention, "hall": _hall,
+              "study": _study, "cats": _catroom}
 _scratch = None
 _wide = None
 
@@ -5807,12 +6098,14 @@ class GameBase:
         self.cam = 0.0              # how far along a wide room you are
         self.cam_to = 0.0
         self.room = CatRoom()       # the cat room runs its own simulation
+        self.mini = None            # the minigame being played, if any
         self.focus = None           # a cat you have clicked on
         self.focus_t = 0.0
         self.t = 0.0
         self.buttons = []
         self.toasts = []
         self.floats = []
+        self.was_conv = self.state.convention()
         self.autosave = 0.0
         self.coin_timer = 0.0
         self.since_coin = 0.0
@@ -5841,6 +6134,7 @@ class GameBase:
         self.open_qty = 1
         self.pulls = []
         self.flipped = 0
+        self.pack_i = 0             # which pack of the parcel is open
         self.lid = 0.0
         self.cut = False
         self.deal = 0.0
@@ -5873,11 +6167,21 @@ class GameBase:
             self.buttons = []
             self.beep("page")
 
+    def can_enter(self, area):
+        """The hall across town is only there on a Saturday."""
+        return area != "conv" or self.state.convention()
+
     def go_area(self, area, quiet=False):
         """Walk to another room. The slide IS the walk: there is no figure
         to follow about, because the flat is yours and you are the one
         carrying the camera through it."""
         if area == self.area or area not in AREAS or self.scene != "room":
+            return
+        if not self.can_enter(area):
+            self.toast("the hall is shut",
+                       f"the convention is on {DAY_NAMES[CONVENTION_DAY]}s"
+                       f" - {clock_str(until_convention(self.state.played))}"
+                       f" to go", TEA, 6.0)
             return
         self.pan_dir = 1 if AREAS.index(area) > AREAS.index(self.area) else -1
         self.pan_from = self.area
@@ -5980,8 +6284,10 @@ class GameBase:
             # three hundred times
             if not self.cut:
                 self.cut_tape()
-            elif self.flipped < len(self.pulls):
+            elif self.flipped < len(self.this_pack()):
                 self.flip_all() if self.flipped else self.flip_next()
+            else:
+                self.next_pack()
         return True
 
     def click(self, pos):
@@ -6005,6 +6311,10 @@ class GameBase:
             self.start_open()
         elif name == "stray":
             self.let_in()
+        elif name == "stall":
+            self.start_mini(val)
+        elif name == "mini":
+            self.mini_press(val)
         elif name == "go":
             self.go_area(val)
         elif name == "cat":
@@ -6048,6 +6358,8 @@ class GameBase:
             self.flip_all()
         elif name == "done":
             self.finish_open()
+        elif name == "nextpack":
+            self.next_pack()
         elif name == "next":
             self.finish_open()
             self.start_open()
@@ -6066,6 +6378,111 @@ class GameBase:
             self.state.sound = not self.state.sound
         elif name == "quit":
             pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    # -- the day out ----------------------------------------------------
+    def start_mini(self, key):
+        st = self.state
+        st.conv_refresh()
+        if st.conv_played(key) or not st.convention():
+            return
+        stall = next(x for x in STALLS if x[0] == key)
+        self.mini = Mini(stall[4], key, random.Random(), st)
+        self.beep("page")
+        self.go("mini")
+
+    def mini_press(self, what):
+        """Every move in every one of the three games comes through here."""
+        m = self.mini
+        if m is None:
+            return
+        if what == "leave" or m.done:
+            self.finish_mini()
+            return
+        if m.kind == "queue" and what == "stop":
+            lo, hi = m.band_rect()
+            if lo <= m.pos <= hi:
+                m.won += 1
+                self.beep("coin")
+            else:
+                m.lost = True
+                self.beep("flip")
+            m.stage += 1
+            if m.lost or m.stage >= m.rounds:
+                m.done = True
+        elif m.kind == "fake" and isinstance(what, int):
+            if what == m.real_index():
+                m.won += 1
+                self.beep("coin")
+                m.stage += 1
+                if m.stage >= m.rounds:
+                    m.done = True
+                else:
+                    m.deal_fakes(random.Random(), self.state)
+            else:
+                m.lost = True
+                m.done = True
+                self.beep("flip")
+        elif m.kind == "haggle" and what in ("up", "down", "offer"):
+            if what == "up":
+                m.guess = int(clamp(m.guess + 5, 5, 95))
+                return
+            if what == "down":
+                m.guess = int(clamp(m.guess - 5, 5, 95))
+                return
+            m.tries -= 1
+            if m.guess == m.secret or abs(m.guess - m.secret) <= 2:
+                m.won = 1
+                m.done = True
+                self.beep("coin")
+            elif m.tries <= 0:
+                m.lost = True
+                m.done = True
+                self.beep("flip")
+            else:
+                m.said = ("he laughs: more than that"
+                          if m.guess < m.secret else
+                          "he shrugs: you are over the odds")
+
+    def finish_mini(self):
+        """Hand over whatever was won, and close the stall for the day."""
+        m = self.mini
+        self.mini = None
+        self.go("room")
+        if m is None:
+            return
+        stall = next(x for x in STALLS if x[0] == m.stall)
+        pack = BY_PACK[stall[3]]
+        st = self.state
+        won = m.done and not m.lost and m.won >= m.rounds
+        if m.kind == "haggle":
+            # he sells either way; the game is only ever what it costs you
+            price = pack.price * SCALP_MULT * ((m.guess / 100.0) if won
+                                               else 1.0)
+            if st.money >= price:
+                st.money -= price
+                st.spent += price
+                st.conv_take(m.stall, pack)
+                self.beep("shiny" if won else "coin")
+                self.toast("you bought the scalped pack",
+                           f"{money(price)}" + (" - he took your offer"
+                                                if won else
+                                                " - he would not come down"),
+                           GOOD if won else BAD, 9.0)
+            else:
+                st.conv_take(m.stall, None)
+                self.toast("you could not afford him",
+                           f"he wanted {money(price)}", BAD, 8.0)
+        elif won:
+            st.conv_take(m.stall, pack)
+            self.beep("shiny")
+            self.toast("you got one", f"{pack.name} - straight into your "
+                                      f"bag, no post", mix(LAMP, CREAM, 0.3),
+                       10.0)
+        else:
+            st.conv_take(m.stall, None)
+            self.toast("that is the lot", "the table is cleared out until "
+                                          "next week", TEA, 8.0)
+        self.save()
 
     def let_in(self):
         """Open the door. The one thing in this game that costs nothing."""
@@ -6163,6 +6580,7 @@ class GameBase:
         self.open_qty = qty
         self.pulls = []
         self.flipped = 0
+        self.pack_i = 0
         self.lid = 0.0
         self.cut = False
         self.deal = 0.0
@@ -6178,10 +6596,23 @@ class GameBase:
                                           self.open_qty, rng)
         self.save()
 
+    def this_pack(self):
+        """The twenty (or fewer) cards on the table right now."""
+        lo = self.pack_i * PACK_SIZE
+        return self.pulls[lo:lo + PACK_SIZE]
+
+    def next_pack(self):
+        if (self.pack_i + 1) * PACK_SIZE < len(self.pulls):
+            self.pack_i += 1
+            self.flipped = 0
+            self.deal = 0.0
+            self.beep("page")
+
     def flip_next(self):
-        if self.flipped >= len(self.pulls):
+        here = self.this_pack()
+        if self.flipped >= len(here):
             return
-        p = self.pulls[self.flipped]
+        p = here[self.flipped]
         self.flipped += 1
         self.beep("flip", 0.8)
         if p.shiny:
@@ -6209,7 +6640,7 @@ class GameBase:
                            LAMP, 7.0)
 
     def flip_all(self):
-        while self.flipped < len(self.pulls):
+        while self.flipped < len(self.this_pack()):
             self.flip_next()
 
     def leave_open(self):
@@ -6242,6 +6673,21 @@ class GameBase:
         self.cam += (self.cam_to - self.cam) * min(1.0, dt * 7.0)
         self.room.update(dt, self.state, ROOM_CAP,
                          self.cam if self.area == "cats" else None)
+        if self.mini is not None:
+            self.mini.update(dt)
+        st_conv = self.state.convention()
+        if st_conv != self.was_conv:
+            self.was_conv = st_conv
+            if st_conv:
+                self.state.conv_refresh()
+                self.beep("bell")
+                self.toast("the convention is on today",
+                           "out of the hall door and left", EMBER, 12.0)
+            elif self.area == "conv":
+                self.toast("the hall has shut", "same time next week", TEA,
+                           8.0)
+        if self.area == "conv" and not st_conv:
+            self.go_area("hall", quiet=True)
         if self.focus_t > 0:
             self.focus_t = max(0.0, self.focus_t - dt)
         st = self.state
@@ -6313,6 +6759,8 @@ class GameBase:
             self.draw_shop(s)
         elif self.scene == "open":
             self.draw_open(s)
+        elif self.scene == "mini":
+            self.draw_mini(s)
         elif self.scene == "menu":
             self.draw_menu(s)
         elif self.scene == "end":
@@ -6371,7 +6819,15 @@ class GameBase:
         """What can be touched in the room you are standing in."""
         st = self.state
         mouse = pygame.mouse.get_pos()
-        if self.area == "study":
+        if self.area == "conv":
+            spots = []
+            for i, (key, title, who, pk, game, blurb) in enumerate(STALLS):
+                r = pygame.Rect(STALL_X[i] - 150, CONV_FLOOR - 60, 300, 162)
+                done = st.conv_played(key)
+                spots.append((r, "played this one" if done else "have a go",
+                              ("stall", key)))
+            spots = tuple(spots)
+        elif self.area == "study":
             spots = ((LAPTOP_R, "order some cards", ("laptop", None)),
                      (BINDER_R, "the binder", ("binder", None)))
         elif self.area == "hall":
@@ -6435,6 +6891,9 @@ class GameBase:
         line = f"{st.owned}/{len(BREEDS)} breeds   {st.retired} retired"
         if st.comfort > 1.001:
             line += f"   flat +{int(round(st.comfort * 100 - 100))}%"
+        text(s, date_words(st.played), 12, (r.right - 13, r.y + 44),
+             mix(TEA, CREAM, 0.1) if st.convention() else shade(MUTED, 0.9),
+             right=True, kind="mono", shadow=False)
         text(s, line, 12, (r.x + 15, r.y + 48), shade(MUTED, 0.9),
              kind="mono", shadow=False)
 
@@ -6450,9 +6909,21 @@ class GameBase:
                           radius=8, shadow=False)
                     text(s, AREA_NAME[a], 14, r.center, warm(CREAM, 0.2),
                          center=True, kind="mono", shadow=False)
+                shut = a == "conv" and not st.convention()
                 self.buttons.append(Button(r, AREA_NAME[a], ("go", a),
                                            "hit" if on else "link", 14,
-                                           kind="mono", colour=TEA))
+                                           kind="mono",
+                                           colour=shade(TEA, 0.55) if shut
+                                           else TEA))
+                if a == "conv":
+                    if shut:
+                        note = f"in {clock_str(until_convention(st.played))}"
+                        col = shade(MUTED, 0.85)
+                    else:
+                        note = f"on now - {clock_str(until_shut(st.played))}"
+                        col = mix(EMBER, CREAM, 0.35)
+                    text(s, note, 11, (r.centerx, r.bottom + 3), col,
+                         center=True, kind="mono", shadow=False)
                 x += wdt
             if self.area == "cats" and self.room.res:
                 tal = self.room.tally()
@@ -6617,17 +7088,30 @@ class ShopMixin:
             draw_pack_art(s, art, p, self.t)
             col = CREAM if live else DIM
             text(s, p.name, 21, (art.right + 16, r.y + 10), col)
-            paragraph(s, p.blurb, 13, (art.right + 16, r.y + 36),
-                      MUTED if live else shade(DIM, 0.9), 520, 3, kind="mono")
-            text(s, f"{p.cards} card" + ("s" if p.cards > 1 else ""), 13,
+            # Six rungs on a page that used to hold five: the blurb now
+            # has to stop where the line of stats begins rather than
+            # running through it. Draw only the lines that fit.
+            blurb_y = r.y + 34
+            room = (r.bottom - 26) - blurb_y
+            lines = wrap(p.blurb, 13, 520, kind="mono")
+            fit_n = max(1, room // 16)
+            for k, line in enumerate(lines[:fit_n]):
+                if k == fit_n - 1 and len(lines) > fit_n:
+                    line = line.rstrip(" .,") + "..."
+                text(s, line, 13, (art.right + 16, blurb_y + k * 16),
+                     MUTED if live else shade(DIM, 0.9), kind="mono",
+                     shadow=False)
+            text(s, f"{p.cards} card" + ("s" if p.cards > 1 else "")
+                 + (f", {parcel_words(p.cards)}" if p.cards > PACK_SIZE
+                    else ""), 13,
                  (art.right + 16, r.bottom - 22),
                  mix(TEA, CREAM, 0.2), kind="mono", shadow=False)
             text(s, f"ships in {clock_str(p.ship)}", 13,
-                 (art.right + 116, r.bottom - 22), DIM, kind="mono",
+                 (art.right + 196, r.bottom - 22), DIM, kind="mono",
                  shadow=False)
-            _stars(s, 5 - i // 2, (art.right + 256, r.bottom - 16))
+            _stars(s, 5 - i // 2, (art.right + 330, r.bottom - 16))
             text(s, f"{(i + 2) * 307 % 900 + 104:,} reviews", 12,
-                 (art.right + 320, r.bottom - 16), DIM, kind="mono",
+                 (art.right + 420, r.bottom - 16), DIM, kind="mono",
                  shadow=False, left=True)
             if live:
                 text(s, money(p.price), 26, (r.right - 150, r.y + 18),
@@ -6883,6 +7367,47 @@ class ShopMixin:
 # standing order of seventy-five gets a sheet of small ones, because
 # flipping seventy-five cards one at a time is not a ritual, it is a job.
 # ---------------------------------------------------------------------------
+# A parcel is not a heap. Twenty cards to a pack and twenty packs to a
+# box, the way trading cards have always been sold - and the reason it is
+# done that way is the reason it is done here: a hundred and seventy
+# cards dealt onto one table is not an opening, it is a wall, and you
+# cannot see a single one of them. You open a pack. Then you open the
+# next pack.
+PACK_SIZE = 20
+BOX_PACKS = 20
+
+
+def packs_in(cards):
+    """How many packs a number of cards comes to."""
+    return max(1, (cards + PACK_SIZE - 1) // PACK_SIZE)
+
+
+def parcel_words(cards):
+    """What is in the parcel, said in boxes and packs."""
+    packs = packs_in(cards)
+    boxes, rest = divmod(packs, BOX_PACKS)
+    bits = []
+    if boxes:
+        bits.append(f"{boxes} box" + ("es" if boxes > 1 else ""))
+    if rest or not boxes:
+        bits.append(f"{rest or packs} pack" + ("s" if (rest or packs) > 1
+                                               else ""))
+    return " and ".join(bits)
+
+
+def pack_label(index, cards):
+    """Where you are in the parcel: pack 3 of 9, or box 2, pack 3 of 20."""
+    packs = packs_in(cards)
+    if packs <= 1:
+        return ""
+    if packs <= BOX_PACKS:
+        return f"pack {index + 1} of {packs}"
+    box, within = divmod(index, BOX_PACKS)
+    left = min(BOX_PACKS, packs - box * BOX_PACKS)
+    return (f"box {box + 1} of {packs_in(cards) // BOX_PACKS + 1}"
+            f"   pack {within + 1} of {left}")
+
+
 def deal_grid(n, area):
     """Where the cards go, and how big they are, for any size of parcel."""
     best = None
@@ -6927,6 +7452,9 @@ class OpenMixin:
 
         title = pack.name + (f"  x{self.open_qty}" if self.open_qty > 1 else "")
         text(s, title, 30, (W // 2, 40), warm(CREAM, 0.2), center=True)
+        if self.cut and len(self.pulls) > PACK_SIZE:
+            text(s, parcel_words(len(self.pulls)), 13, (W // 2, 72), MUTED,
+                 center=True, kind="mono")
 
         if not self.cut:
             text(s, "cut the tape", 17, (W // 2, 82), TEA, center=True,
@@ -6947,10 +7475,14 @@ class OpenMixin:
                                        "link", 15, kind="mono", colour=TEA))
             return
 
-        area = pygame.Rect(90, 108, W - 180, 500)
-        rects = deal_grid(len(self.pulls), area)
-        dealt = int(self.deal * len(self.pulls) * 1.8) + 1
-        for i, (p, r) in enumerate(zip(self.pulls, rects)):
+        here = self.this_pack()
+        label = pack_label(self.pack_i, len(self.pulls))
+        if label:
+            text(s, label, 15, (W // 2, 90), TEA, center=True, kind="mono")
+        area = pygame.Rect(90, 116, W - 180, 492)
+        rects = deal_grid(len(here), area)
+        dealt = int(self.deal * len(here) * 1.8) + 1
+        for i, (p, r) in enumerate(zip(here, rects)):
             if i >= dealt:
                 continue
             if i < self.flipped:
@@ -6996,7 +7528,8 @@ class OpenMixin:
                 draw_card_back(s, r, self.t)
                 self.buttons.append(Button(r, "", ("flip", i), "hit"))
 
-        left = len(self.pulls) - self.flipped
+        left = len(here) - self.flipped
+        more = (self.pack_i + 1) * PACK_SIZE < len(self.pulls)
         if left:
             self.buttons.append(Button((W // 2 - 230, H - 86, 210, 48),
                                        "FLIP ONE", ("flip", self.flipped),
@@ -7004,6 +7537,20 @@ class OpenMixin:
             self.buttons.append(Button((W // 2 + 20, H - 86, 210, 48),
                                        f"FLIP ALL {left}", ("flipall", None),
                                        "solid", 18, kind="mono"))
+        elif more:
+            done = (self.pack_i + 1) * PACK_SIZE
+            news = sum(1 for p in self.pulls[:done] if p.kind == "new")
+            shn = sum(1 for p in self.pulls[:done] if p.shiny)
+            bits = [f"{done} of {len(self.pulls)} cards"]
+            if news:
+                bits.append(f"{news} new")
+            if shn:
+                bits.append(f"{shn} SHINY")
+            text(s, "   ".join(bits), 16, (W // 2, H - 104), TEA,
+                 center=True, kind="mono")
+            self.buttons.append(Button((W // 2 - 150, H - 86, 300, 48),
+                                       "THE NEXT PACK", ("nextpack", None),
+                                       "solid", 19, kind="mono"))
         else:
             news = sum(1 for p in self.pulls if p.kind == "new")
             ups = sum(1 for p in self.pulls if p.kind == "level")
@@ -7248,6 +7795,76 @@ class BinderMixin:
 
 
 # ---------------------------------------------------------------------------
+# THREE SMALL GAMES
+#
+# None of them is a game in its own right; each is a thing you have to do
+# with your hands before the hall will give you a pack it would not sell
+# you. They are deliberately short - a convention lasts six minutes and
+# there are three tables - and every one of them can be lost.
+# ---------------------------------------------------------------------------
+class Mini:
+    """The state of whichever game is being played."""
+    __slots__ = ("kind", "stall", "stage", "rounds", "won", "lost", "t",
+                 "pos", "dir", "band", "cards", "pick", "secret", "guess",
+                 "tries", "said", "done")
+
+    def __init__(self, kind, stall, rng, state):
+        self.kind = kind
+        self.stall = stall
+        self.stage = 0
+        self.rounds = 3 if kind == "queue" else 2 if kind == "fake" else 1
+        self.won = 0
+        self.lost = False
+        self.done = False
+        self.t = 0.0
+        self.pos = 0.0
+        self.dir = 1.0
+        self.band = 0.30
+        self.cards = []
+        self.pick = -1
+        self.said = ""
+        self.tries = 5
+        self.secret = rng.randrange(20, 81)
+        self.guess = 50
+        if kind == "fake":
+            self.deal_fakes(rng, state)
+
+    # -- spot the fake --------------------------------------------------
+    def deal_fakes(self, rng, state):
+        """Four of a breed, three of them wrong in one small way each."""
+        pool = [b for b in BREEDS if b.rarity >= R_RARE] or list(BREEDS)
+        b = rng.choice(pool)
+        tells = rng.sample(("rarity", "name", "rate"), 3)
+        self.cards = [{"breed": b, "tell": None}]
+        for tell in tells:
+            self.cards.append({"breed": b, "tell": tell})
+        rng.shuffle(self.cards)
+        self.pick = -1
+
+    def real_index(self):
+        return next(i for i, c in enumerate(self.cards) if c["tell"] is None)
+
+    # -- time ------------------------------------------------------------
+    def update(self, dt):
+        self.t += dt
+        if self.kind == "queue" and not self.done:
+            speed = 0.78 + 0.26 * self.stage
+            self.pos += self.dir * speed * dt
+            if self.pos > 1.0:
+                self.pos, self.dir = 1.0, -1.0
+            elif self.pos < 0.0:
+                self.pos, self.dir = 0.0, 1.0
+
+    def band_rect(self):
+        half = self.band * 0.5 * (1.0 - 0.22 * self.stage)
+        return 0.5 - half, 0.5 + half
+
+
+MINI_TITLE = {"queue": "GET TO THE TABLE", "fake": "WHICH ONE IS REAL",
+              "haggle": "TALK HIM DOWN"}
+
+
+# ---------------------------------------------------------------------------
 # THE TWO OVERLAYS
 #
 # A pause card, which is also where the rules are written down, and an
@@ -7278,6 +7895,140 @@ RULES = (
 
 
 class MenuMixin:
+    def draw_mini(self, s):
+        """Whichever of the three is being played, on the hall behind it."""
+        m = self.mini
+        if m is None:
+            self.go("room")
+            return
+        self.draw_room(s)
+        del self.buttons[:]
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((8, 6, 6, 212))
+        s.blit(dim, (0, 0))
+        stall = next(x for x in STALLS if x[0] == m.stall)
+        r = pygame.Rect(W // 2 - 400, 110, 800, 480)
+        panel(s, r, mix(DEEP, WOOD, 0.3), shade(TEA, 0.5), radius=12)
+        text(s, MINI_TITLE[m.kind], 30, (r.centerx, r.y + 20),
+             warm(CREAM, 0.2), center=True)
+        text(s, stall[2], 13, (r.centerx, r.y + 58), TEA, center=True,
+             kind="mono")
+        paragraph(s, stall[5], 14, (r.x + 60, r.y + 84),
+                  mix(TEA, CREAM, 0.3), r.w - 120, 5, kind="mono",
+                  center=True)
+
+        if m.kind == "queue":
+            self._mini_queue(s, m, r)
+        elif m.kind == "fake":
+            self._mini_fake(s, m, r)
+        else:
+            self._mini_haggle(s, m, r)
+
+        if m.done:
+            won = not m.lost and m.won >= m.rounds
+            if m.kind == "haggle":
+                word = ("he shakes on it" if won
+                        else "he will not come down")
+            else:
+                word = "you got one" if won else "the table is cleared out"
+            text(s, word, 22, (r.centerx, r.bottom - 92),
+                 GOOD if won else BAD, center=True)
+            self.buttons.append(Button((r.centerx - 120, r.bottom - 62, 240,
+                                        44), "LEAVE THE TABLE",
+                                       ("mini", "leave"), "solid", 18,
+                                       kind="mono"))
+
+    def _mini_queue(self, s, m, r):
+        """A rope with one gap in it, and you going up and down the line
+        looking for it. Every round the line moves faster and the gap gets
+        narrower, which is roughly what being four hundredth in a queue of
+        four hundred feels like."""
+        bar = pygame.Rect(r.x + 90, r.y + 248, r.w - 180, 30)
+        lo, hi = m.band_rect()
+        win = pygame.Rect(bar.x + bar.w * lo, bar.y, bar.w * (hi - lo), bar.h)
+        rng = random.Random(5)
+        x = bar.x + 6
+        while x < bar.right:
+            through = win.x - 8 < x < win.right + 8
+            _person(s, x, bar.y - 6, 54,
+                    mix((76, 68, 72), WOOD, 0.3 if through else 0.0),
+                    0.0 if through else m.t, rng.random() * 9)
+            x += rng.uniform(26, 38)
+        pygame.draw.rect(s, shade(DEEP, 1.5), bar, border_radius=8)
+        pygame.draw.rect(s, mix(GOOD, DEEP, 0.4), win, border_radius=8)
+        pygame.draw.rect(s, GOOD, win, width=2, border_radius=8)
+        text(s, "THE GAP", 11, (win.centerx, bar.bottom + 6), GOOD,
+             center=True, kind="mono")
+        ry = bar.y + 4            # the rope, over the top of them
+        pygame.draw.line(s, shade(WOOD_HI, 0.9), (bar.x, ry), (win.x, ry), 3)
+        pygame.draw.line(s, shade(WOOD_HI, 0.9), (win.right, ry),
+                         (bar.right, ry), 3)
+        x = bar.x + bar.w * m.pos
+        pygame.draw.rect(s, warm(CREAM, 0.1), (x - 3, bar.y - 16, 6,
+                                               bar.h + 26), border_radius=3)
+        pygame.draw.circle(s, warm(CREAM, 0.1), (int(x), int(bar.y - 22)), 7)
+        text(s, f"round {min(m.stage + 1, m.rounds)} of {m.rounds}"
+                f"    {m.won} through", 14, (r.centerx, bar.bottom + 34),
+             TEA, center=True, kind="mono")
+        text(s, "stop on the gap three times and you are at the table", 13,
+             (r.centerx, bar.bottom + 56), MUTED, center=True, kind="mono")
+        if not m.done:
+            self.buttons.append(Button((r.centerx - 110, r.bottom - 112, 220,
+                                        52), "NOW", ("mini", "stop"),
+                                       "solid", 22, kind="mono"))
+
+    def _mini_fake(self, s, m, r):
+        """Four of one breed. Three came off somebody's printer, and each
+        of those three is wrong in one printed line - so every row has an
+        odd one out, and the card with no odd line on it is the real one."""
+        cw, gap = 150, 22
+        gx = r.centerx - (4 * cw + 3 * gap) // 2
+        for i, c in enumerate(m.cards):
+            rect = pygame.Rect(gx + i * (cw + gap), r.y + 148, cw, 206)
+            draw_card(s, rect, c["breed"], 6, dupes=2, fake=c["tell"])
+            self.buttons.append(Button(rect, "", ("mini", i), "hit"))
+            if rect.collidepoint(pygame.mouse.get_pos()) and not m.done:
+                pygame.draw.rect(s, warm(CREAM, 0.1), rect.inflate(8, 8),
+                                 width=2, border_radius=9)
+        text(s, "the name, the tier, the rate - a forgery gets one of the "
+                "three wrong", 13, (r.centerx, r.y + 368), MUTED,
+             center=True, kind="mono")
+        text(s, f"round {min(m.stage + 1, m.rounds)} of {m.rounds}", 14,
+             (r.centerx, r.y + 390), TEA, center=True, kind="mono")
+
+    def _mini_haggle(self, s, m, r):
+        """He has a number in his head. You have five goes at it, and
+        whatever you talk him down to is what comes out of your pocket."""
+        ask = BY_PACK["scalp"].price * SCALP_MULT
+        text(s, f"he is asking {money(ask)}", 20, (r.centerx, r.y + 148),
+             BAD, center=True, kind="mono")
+        text(s, "your offer", 14, (r.centerx, r.y + 184), TEA, center=True,
+             kind="mono")
+        text(s, f"{m.guess}%", 54, (r.centerx, r.y + 228), warm(CREAM, 0.2),
+             center=True)
+        due = ask * m.guess / 100.0
+        text(s, f"= {money(due)}", 20, (r.centerx, r.y + 278),
+             mix(LAMP, CREAM, 0.3) if self.state.money >= due else BAD,
+             center=True, kind="mono")
+        if m.said:
+            text(s, m.said, 16, (r.centerx, r.y + 308), EMBER, center=True,
+                 kind="mono")
+        text(s, f"{m.tries} goes left", 14, (r.centerx, r.y + 336), TEA,
+             center=True, kind="mono")
+        text(s, "run out of goes and he walks - then it is the full "
+                "asking price", 13, (r.centerx, r.y + 358), MUTED,
+             center=True, kind="mono")
+        if not m.done:
+            self.buttons.append(Button((r.centerx - 220, r.bottom - 112, 90,
+                                        52), "-5", ("mini", "down"),
+                                       "plain", 20, kind="mono"))
+            self.buttons.append(Button((r.centerx + 130, r.bottom - 112, 90,
+                                        52), "+5", ("mini", "up"), "plain",
+                                       20, kind="mono"))
+            self.buttons.append(Button((r.centerx - 110, r.bottom - 112, 220,
+                                        52), "OFFER IT", ("mini", "offer"),
+                                       "solid", 20, kind="mono"))
+
     def draw_menu(self, s):
         self.draw_room(s)
         del self.buttons[:]

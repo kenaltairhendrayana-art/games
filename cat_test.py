@@ -186,9 +186,18 @@ def shelves():
         if len(on) > 6:
             print(f"  {len(on)} products on one page is more than it holds")
             ok = False
-    if len(cc.packs_on("standard")) + len(cc.packs_on("special")) \
+    hall = cc.packs_on("convention")
+    print(f"    {'convention':<9} {len(hall)}: "
+          + ", ".join(p.name for p in hall) + "   (not for sale)")
+    if sum(len(cc.packs_on(sh)) for sh in cc.SHELVES) + len(hall) \
             != len(cc.PACKS):
-        print("  a pack is on neither shelf")
+        print("  a pack is on no shelf at all")
+        ok = False
+    if any(p.shelf in cc.SHELVES for p in cc.CONV_PACKS):
+        print("  a convention pack can be ordered off the website")
+        ok = False
+    if not hall:
+        print("  the convention has nothing to give out")
         ok = False
     # the ladder has to keep going up, on every axis
     last = None
@@ -217,8 +226,9 @@ def pack_value():
         tot = sum(wt for wt in p.weights)
         ev = sum(p.weights[r] / tot * cc.RARITY[r][2] for r in range(cc.SOLD_RARITIES))
         per = ev * p.cards
+        worth = f"{per / p.price * 100:>11.3f}" if p.price else f"{'free':>11}"
         print(f"{p.name:<22}{p.price:>6}{p.cards:>6}"
-              f"{per:>14.3f}{per / p.price * 100:>11.3f}{p.ship:>7.0f}s")
+              f"{per:>14.3f}{worth}{p.ship:>7.0f}s")
 
 
 def dupe_ladder():
@@ -284,7 +294,7 @@ def _affordable(state, policy):
     # two hours over a binder the ladder finishes in fifty minutes. The
     # guarantee is priced like a guarantee; it is not a staple.
     can = [p for p in cc.PACKS if p.price <= state.money
-           and state.sellable(p)]
+           and state.sellable(p) and p.shelf in cc.SHELVES]
     if not can:
         return None
     want = max(range(cc.SOLD_RARITIES), key=lambda r: state.missing(r))
@@ -1140,8 +1150,58 @@ def flow():
     g.go_area("study")
     g.pan = 0.0
 
+    # a parcel of more than twenty cards opens a pack at a time
+    g.go_area("hall")                           # the post is in the hall
+    g.pan = 0.0
+    g.state.parcels.append(("shelf", 3))        # 102 cards, six packs
+    ok &= tap(("mat", None))
+    ok &= tap(("cut", None))
+    if len(g.this_pack()) != cc.PACK_SIZE:
+        print(f"  the first pack held {len(g.this_pack())} cards, not "
+              f"{cc.PACK_SIZE}")
+        ok = False
+    seen = 0
+    guard = 0
+    while guard < 40:
+        guard += 1
+        g.draw()
+        if [b for b in g.buttons if b.key == ("flipall", None)]:
+            tap(("flipall", None))
+            seen += len(g.this_pack())
+        elif [b for b in g.buttons if b.key == ("nextpack", None)]:
+            tap(("nextpack", None))
+        else:
+            break
+    if seen != len(g.pulls):
+        print(f"  walked {seen} cards of a {len(g.pulls)}-card parcel")
+        ok = False
+    if cc.packs_in(len(g.pulls)) != 6:
+        print(f"  102 cards came to {cc.packs_in(len(g.pulls))} packs")
+        ok = False
+    ok &= tap(("done", None))
+    g.go_area("study")                          # the binder is on the desk
+    g.pan = 0.0
+
     ok &= tap(("binder", None))
+    # The binder runs to five pages at a hundred breeds, and the first
+    # card out of a parcel is on whichever of them its rarity puts it on.
+    # Taking the first key and clicking it blind passed four times in five
+    # and failed on the fifth, which is the worst way for a test to be
+    # wrong - so it turns pages until it finds the card, and the paging is
+    # part of what is being tested.
     first = list(g.state.cards)[0]
+    page, pages = 0, 0
+    while page < 12:
+        g.draw()
+        pages = max(pages, len([b for b in g.buttons
+                                if isinstance(b.key, tuple)
+                                and b.key[0] == "page"]))
+        if [b for b in g.buttons if b.key == ("pick", first)]:
+            break
+        page += 1
+        if not tap(("page", page)):
+            break
+    print(f"  the binder is {pages} pages; {first} is on page {page + 1}")
     ok &= tap(("pick", first))
     if g.pick != first:
         print("  clicking a card in the binder did not open it")
@@ -1300,6 +1360,226 @@ def layout():
     return ok
 
 
+
+def convention():
+    """The calendar, the door, and the three tables behind it.
+
+    The whole feature rests on two rules that are easy to break by
+    accident: the hall exists on exactly one day in seven, and each table
+    gives out exactly one pack per convention. Both of them are a single
+    comparison in the code, and a single comparison is the kind of thing a
+    later change walks over without anyone noticing until the player is
+    standing in an empty hall on a Tuesday with nine packs in their bag.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    # which second of play is a convention, and which is not, is the
+    # calendar's business - the test asks it rather than counting days
+    # itself, which is how it broke the first time the week moved.
+    on = next(cc.DAY * d + 60 for d in range(14)
+              if cc.convention_open(cc.DAY * d + 60))
+    off = next(cc.DAY * d + 60 for d in range(14)
+               if not cc.convention_open(cc.DAY * d + 60))
+    print(f"  day one is a {cc.DAY_NAMES[cc.weekday_of(0)]}; the first "
+          f"convention is {cc.clock_str(cc.until_convention(0))} in")
+
+    # -- one day in seven, and the right one -----------------------------
+    open_days = []
+    for d in range(21):
+        t = cc.DAY * d + cc.DAY * 0.5
+        if cc.convention_open(t):
+            open_days.append((d, cc.weekday_of(t)))
+    want = [(d, cc.CONVENTION_DAY) for d in range(21)
+            if (d + cc.WEEK_START) % 7 == cc.CONVENTION_DAY]
+    print(f"  open on days {[d for d, _ in open_days]} of 21 - "
+          f"{cc.DAY_NAMES[cc.CONVENTION_DAY]}s")
+    if open_days != want:
+        print(f"  the hall is open on the wrong days: {open_days}")
+        ok = False
+    # and it is shut the rest of the time, at every hour of the day
+    shut = off
+    for frac in (0.0, 0.01, 0.25, 0.5, 0.75, 0.99):
+        if cc.convention_open(shut + cc.DAY * frac):
+            print(f"  the hall is open on a {cc.DAY_NAMES[cc.weekday_of(shut)]}")
+            ok = False
+            break
+    # the countdown has to land on the door opening, not near it
+    for d in (0, 1, 4, 5, 6, 9):
+        t = cc.DAY * d + 11.0
+        left = cc.until_convention(t)
+        if cc.convention_open(t):
+            if left != 0:
+                print(f"  day {d}: open now but says {left:.0f}s to go")
+                ok = False
+            continue
+        if left <= 0 or not cc.convention_open(t + left + 0.5):
+            print(f"  day {d}: {left:.0f}s to go does not reach a convention")
+            ok = False
+
+    # -- the door --------------------------------------------------------
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.played = off                 # a day it is shut
+    g.was_conv = g.state.convention()
+    g.go_area("conv")
+    if g.area == "conv":
+        print("  you can walk into the hall on a day it is shut")
+        ok = False
+    g.state.played = on
+    g.go_area("conv")
+    if g.area != "conv":
+        print("  you cannot walk into the hall on the day it is open")
+        ok = False
+
+    # the clock running past midnight has to put you back in the flat
+    g.state.played = on + cc.DAY
+    g.was_conv = True
+    g.update(0.05)
+    if g.area == "conv":
+        print("  the hall stayed open past the end of the convention")
+        ok = False
+    # and a game that walks in without ever seeing the door shut - a save
+    # loaded in the hall, a clock pushed on - comes out of it too
+    g.state.played = on
+    g.go_area("conv")
+    g.state.played = on + cc.DAY * 2
+    g.was_conv = False
+    g.update(0.05)
+    if g.area == "conv":
+        print("  the hall stayed open after the convention ended")
+        ok = False
+
+    # -- one go per table, per convention --------------------------------
+    for key, title, who, pack_key, game, blurb in cc.STALLS:
+        g = cc.Game(screen)
+        g.state = cc.State()
+        g.state.played = on
+        g.state.money = 500000
+        g.go_area("conv")
+        g.state.conv_refresh()
+        g.press(("stall", key))
+        if g.scene != "mini":
+            print(f"  {key}: pressing the stall did not start a game")
+            ok = False
+            continue
+        rounds = _play_mini(g, win=True)
+        g.press(("mini", "leave"))
+        got = len(g.state.parcels)
+        g.press(("stall", key))          # and again, same day
+        if g.scene == "mini":
+            print(f"  {key}: you can play it twice at one convention")
+            ok = False
+            g.mini = None
+            g.go("room")
+        if len(g.state.parcels) != got:
+            print(f"  {key}: a second go handed out a second pack")
+            ok = False
+        print(f"    {key:<6} won in {rounds} presses -> "
+              + (g.state.parcels[-1][0] if g.state.parcels else "nothing"))
+        if not g.state.parcels:
+            print(f"  {key}: winning gave you nothing")
+            ok = False
+        elif g.state.parcels[-1][0] != pack_key:
+            print(f"  {key}: gave out {g.state.parcels[-1][0]}, not {pack_key}")
+            ok = False
+        # next week it is open again
+        g.state.played += cc.DAY * 7
+        g.state.conv_refresh()
+        if g.state.conv_played(key):
+            print(f"  {key}: still closed at the next convention")
+            ok = False
+
+    # -- losing ----------------------------------------------------------
+    for key, want_pack in (("queue", False), ("fake", False), ("scalp", True)):
+        g = cc.Game(screen)
+        g.state = cc.State()
+        g.state.played = on
+        g.state.money = 500000
+        g.go_area("conv")
+        g.state.conv_refresh()
+        g.press(("stall", key))
+        _play_mini(g, win=False)
+        before = g.state.money
+        g.press(("mini", "leave"))
+        held = len(g.state.parcels)
+        print(f"    {key:<6} lost -> {held} parcel(s), "
+              f"${before - g.state.money:,.0f} out of pocket")
+        if bool(held) != want_pack:
+            print(f"  {key}: losing gave you {held} packs, wanted "
+                  f"{int(want_pack)}")
+            ok = False
+        if not g.state.conv_played(key):
+            print(f"  {key}: losing left the table open")
+            ok = False
+
+    # the scalper's two prices, which is the whole game at his table
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.played = on
+    g.state.money = 500000
+    g.go_area("conv")
+    g.state.conv_refresh()
+    g.press(("stall", "scalp"))
+    g.mini.secret = 30
+    g.mini.guess = 30
+    start = g.state.money
+    g.press(("mini", "offer"))
+    g.press(("mini", "leave"))
+    paid = start - g.state.money
+    face = cc.BY_PACK["scalp"].price * cc.SCALP_MULT * 0.30
+    full = cc.BY_PACK["scalp"].price * cc.SCALP_MULT
+    print(f"    haggled to 30% and paid ${paid:,.0f}; he was asking "
+          f"${full:,.0f}")
+    if abs(paid - face) > 1:
+        print(f"  a 30% offer that lands should cost ${face:,.0f}")
+        ok = False
+
+    # -- and none of it is on the website --------------------------------
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.money = 10 ** 9
+    seen = set()
+    for shelf in cc.SHELVES:
+        g.go("shop")
+        g.shelf = shelf
+        g.draw()
+        seen |= {b.key for b in g.buttons if isinstance(b.key, str)}
+    bad = seen & {p.key for p in cc.CONV_PACKS}
+    if bad:
+        print(f"  the shop is selling {sorted(bad)}")
+        ok = False
+    else:
+        print("    the shop sells none of the three")
+
+    print("  convention:", "ok" if ok else "FAILED")
+    return ok
+
+
+def _play_mini(g, win):
+    """Press buttons at a minigame until it is over, winning or losing on
+    purpose. Returns how many presses it took."""
+    presses = 0
+    while g.mini is not None and not g.mini.done and presses < 60:
+        presses += 1
+        m = g.mini
+        if m.kind == "queue":
+            lo, hi = m.band_rect()
+            m.pos = (lo + hi) * 0.5 if win else 0.0
+            g.press(("mini", "stop"))
+        elif m.kind == "fake":
+            i = m.real_index()
+            g.press(("mini", i if win else (i + 1) % len(m.cards)))
+        else:
+            if win:
+                m.guess = m.secret - m.secret % 5
+                if abs(m.guess - m.secret) > 2:
+                    m.guess += 5
+            else:
+                m.guess = 5 if m.secret > 50 else 95
+            g.press(("mini", "offer"))
+    return presses
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -1334,6 +1614,9 @@ def main():
         print()
     if cmd in ("flat", "all"):
         ok &= flat()
+        print()
+    if cmd in ("convention", "all"):
+        ok &= convention()
         print()
     if cmd in ("shelves", "all"):
         ok &= shelves()
