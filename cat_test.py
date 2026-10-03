@@ -2,6 +2,7 @@
 measured.
 
     python cat_test.py economy [n]   play n runs to a full binder, print it
+    python cat_test.py shelves      both pages of the shop, and the ladder
     python cat_test.py value         what each pack is worth per dollar
     python cat_test.py dupes         prove the levelling ladder adds up
     python cat_test.py coats        every coat a different cat, and the odds
@@ -42,6 +43,43 @@ def _fmt(secs):
     if secs >= 3600:
         return f"{secs // 3600}h{(secs % 3600) // 60:02d}m"
     return f"{secs // 60}m{secs % 60:02d}s"
+
+
+def shelves():
+    """Every pack has to be ON a shelf, and every shelf has to have packs.
+
+    Four products were added to a page that fits five, and the thing that
+    goes wrong is silent: they appear, squeezed, on the page the ladder
+    lives on, and the ladder stops reading as a ladder.
+    """
+    ok = True
+    for shelf in cc.SHELVES:
+        on = cc.packs_on(shelf)
+        print(f"    {shelf:<9} {len(on)}: "
+              + ", ".join(p.name for p in on))
+        if not on:
+            print(f"  nothing on the {shelf} shelf")
+            ok = False
+        if len(on) > 6:
+            print(f"  {len(on)} products on one page is more than it holds")
+            ok = False
+    if len(cc.packs_on("standard")) + len(cc.packs_on("special")) \
+            != len(cc.PACKS):
+        print("  a pack is on neither shelf")
+        ok = False
+    # the ladder has to keep going up, on every axis
+    last = None
+    for p in cc.packs_on("standard"):
+        tot = sum(p.weights)
+        ev = sum(p.weights[r] / tot * cc.RARITY[r][2] for r in range(5))
+        per = ev * p.cards / p.price * 100
+        if last and (p.price <= last[0] or per <= last[1]
+                     or p.cards <= last[2]):
+            print(f"  {p.name} does not improve on the rung below it")
+            ok = False
+        last = (p.price, per, p.cards)
+    print("  shelves:", "ok" if ok else "FAILED")
+    return ok
 
 
 def pack_value():
@@ -110,19 +148,33 @@ def _affordable(state, policy):
     one. `need` spends on whatever rarity it is furthest from finishing,
     which is what a person does once they have looked at the binder.
     """
+    ladder = [p for p in cc.packs_on("standard") if p.price <= state.money
+              and state.sellable(p)]
+    if policy in ("cheap", "dear"):
+        if not ladder:
+            return None
+        return ladder[0] if policy == "cheap" else ladder[-1]
+    # `need` shops off both pages: it buys for the rarity it is furthest
+    # from finishing. It ranks by THROUGHPUT and not by price, because
+    # ranking by price sent it to The Single - one guaranteed legend for
+    # eighteen hundred - and a bot that buys eight hundred of those takes
+    # two hours over a binder the ladder finishes in fifty minutes. The
+    # guarantee is priced like a guarantee; it is not a staple.
     can = [p for p in cc.PACKS if p.price <= state.money
            and state.sellable(p)]
     if not can:
         return None
-    if policy == "cheap":
-        return can[0]
-    if policy == "dear":
-        return can[-1]
     want = max(range(5), key=lambda r: state.missing(r))
-    for p in reversed(can):
-        if p.weights[want] > 0:
-            return p
-    return can[-1]
+    best, score = None, -1.0
+    for p in can:
+        tot = sum(p.weights)
+        share = p.weights[want] / tot if tot else 0
+        if share <= 0:
+            continue
+        per_min = share * p.cards / p.ship          # cards of what I need
+        if per_min > score:
+            best, score = p, per_min
+    return best or can[-1]
 
 
 def _mode_for(state, pack):
@@ -184,7 +236,7 @@ def economy(n=3):
         done = [r for r in rows if r[2].complete]
         print(f"  {policy:<6} "
               f"first breed retired {_fmt(min(r[1].get('first_retired', 0) for r in rows))}"
-              f" | all 24 owned "
+              f" | all {len(cc.BREEDS)} owned "
               f"{_fmt(sum(r[1].get('all_owned', 0) for r in rows) / len(rows))}"
               f" | binder full "
               f"{(_fmt(sum(r[0] for r in done) / len(done)) if done else 'never')}"
@@ -289,6 +341,34 @@ def coats():
         if c.coats_seen(cc.BY_KEY[k]) < 1:
             print(f"  {k} has a card but no coat recorded")
             ok = False
+
+    # the two boxes that do something other than hold cards
+    rng = random.Random(11)
+    st2 = cc.State()
+    st2.open_pack(cc.BY_PACK["crate"], 40, rng)      # a binder with gaps
+    before = sum(c.coats_seen(cc.BY_KEY[k]) for k, c in st2.cards.items())
+    gaps = sum(len(cc.BY_KEY[k].coats) - c.coats_seen(cc.BY_KEY[k])
+               for k, c in st2.cards.items())
+    fresh = 0
+    for p in st2.open_pack(cc.BY_PACK["swatch"], 6, rng):
+        fresh += 1 if p.new_coat else 0
+    after = sum(c.coats_seen(cc.BY_KEY[k]) for k, c in st2.cards.items())
+    print(f"  the swatch book: {fresh} of 36 cards were a coat not seen "
+          f"before ({gaps} gaps were open), {after - before} new")
+    if after <= before:
+        print("  the swatch book found no new coats at all")
+        ok = False
+
+    st3 = cc.State()
+    odd = sum(1 for _ in range(200)
+              for p in st3.open_pack(cc.BY_PACK["odd"], 1, rng) if p.shiny)
+    pulls3 = 200 * cc.BY_PACK["odd"].cards
+    print(f"  the oddity crate: {odd} shiny in {pulls3} cards - one in "
+          f"{pulls3 / max(1, odd):.0f}, against one in {cc.SHINY_IN} "
+          f"everywhere else")
+    if odd < 2:
+        print("  the oddity crate is not finding shinies")
+        ok = False
 
     # one in 150 has to survive being written to disk
     import json
@@ -666,6 +746,12 @@ def smoke():
     g.mode = 1
     shot("shop_product")
     g.product = None
+    g.tab = "specials"
+    shot("shop_specials")
+    g.product = "odd"
+    shot("shop_oddity")
+    g.product = None
+    g.tab = "catalogue"
     g.tab = "orders"
     shot("shop_orders")
     g.tab = "club"
@@ -1005,6 +1091,9 @@ def main():
         print()
     if cmd in ("layout", "all"):
         ok &= layout()
+        print()
+    if cmd in ("shelves", "all"):
+        ok &= shelves()
         print()
     if cmd in ("value", "all"):
         pack_value()
