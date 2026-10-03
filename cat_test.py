@@ -4,6 +4,7 @@ measured.
     python cat_test.py economy [n]   play n runs to a full binder, print it
     python cat_test.py value         what each pack is worth per dollar
     python cat_test.py dupes         prove the levelling ladder adds up
+    python cat_test.py grades       prove every level changes the picture
     python cat_test.py sameness      every breed against every other breed
     python cat_test.py smoke         draw every screen offscreen, save PNGs
     python cat_test.py score        every sound and the loop, measured
@@ -238,6 +239,89 @@ def sameness():
 
 
 # ---------------------------------------------------------------------------
+def _differs(a, b, box=(88, 124)):
+    """How much two surfaces differ, 0 to 1, with the size normalised.
+
+    Scaled into one box first, so "it got bigger" on its own does not
+    count as "it looks different" - the same trick `sameness` uses on the
+    silhouettes, for the same reason.
+    """
+    sa = pygame.transform.smoothscale(a.convert(), box)
+    sb = pygame.transform.smoothscale(b.convert(), box)
+    diff = 0
+    for y in range(box[1]):
+        for x in range(box[0]):
+            ca, cb = sa.get_at((x, y)), sb.get_at((x, y))
+            if (abs(ca[0] - cb[0]) + abs(ca[1] - cb[1]) +
+                    abs(ca[2] - cb[2])) > 18:
+                diff += 1
+    return diff / (box[0] * box[1])
+
+
+def grades():
+    """Every level has to CHANGE something, and the ten have to add up.
+
+    The request this is written against was "when your cat levels up the
+    card looks better and the cat looks better", and the way that goes
+    wrong is silently: a knob gets tuned down, or a grade threshold moves,
+    and three levels in a row start drawing the same picture. Nothing
+    raises. So this measures the picture.
+    """
+    pygame.display.set_mode((cc.W, cc.H))
+    ok = True
+    card = pygame.Surface((152, 214))
+    prev_card = prev_cat = None
+    rows = []
+    for lv in range(1, cc.MAX_LEVEL + 1):
+        b = cc.BY_KEY["dsh"]
+        card.fill(cc.INK)
+        cc.draw_card(card, card.get_rect(), b, lv, dupes=lv,
+                     maxed=(lv == cc.MAX_LEVEL))
+        cat = cc.cat_surface(b, "sit", 150, level=lv)
+        if prev_card is not None:
+            dc = _differs(card, prev_card)
+            da = _differs(cat, prev_cat)
+            rows.append((lv, dc, da))
+            if dc < 0.010:
+                print(f"  level {lv}: the card is the same picture as "
+                      f"level {lv - 1} ({dc:.3f})")
+                ok = False
+            if da < 0.010:
+                print(f"  level {lv}: the cat is the same picture as "
+                      f"level {lv - 1} ({da:.3f})")
+                ok = False
+        prev_card = card.copy()
+        prev_cat = cat
+    for lv, dc, da in rows:
+        print(f"    level {lv - 1} -> {lv:<3} card {dc:.3f}   cat {da:.3f}")
+
+    # and the whole climb has to be worth making
+    b = cc.BY_KEY["dsh"]
+    one = pygame.Surface((152, 214))
+    ten = pygame.Surface((152, 214))
+    one.fill(cc.INK)
+    ten.fill(cc.INK)
+    cc.draw_card(one, one.get_rect(), b, 1)
+    cc.draw_card(ten, ten.get_rect(), b, cc.MAX_LEVEL, maxed=True)
+    far = _differs(one, ten)
+    print(f"  level 1 against level 10: {far:.3f} of the card")
+    if far < 0.30:
+        print("  a finished card does not look much better than a stray")
+        ok = False
+
+    # the grades themselves, and that each one is reachable
+    for g in range(5):
+        at = [lv for lv in range(1, cc.MAX_LEVEL + 1)
+              if cc.grade_of(lv) == g]
+        print(f"    grade {g} ({cc.GRADE_NAME[g]:<14}) levels "
+              f"{at[0]}-{at[-1]}")
+        if not at:
+            print(f"  grade {g} can never be reached")
+            ok = False
+    print("  grades:", "ok" if ok else "FAILED")
+    return ok
+
+
 def save_round_trip():
     import json
     s = cc.State()
@@ -658,6 +742,9 @@ def main():
         print()
     if cmd in ("save", "all"):
         ok &= save_round_trip()
+        print()
+    if cmd in ("grades", "all"):
+        ok &= grades()
         print()
     if cmd in ("sameness", "all"):
         ok &= sameness()

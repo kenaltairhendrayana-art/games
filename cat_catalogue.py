@@ -632,6 +632,65 @@ BY_RARITY = tuple(tuple(b for b in BREEDS if b.rarity == r) for r in range(5))
 
 
 # ---------------------------------------------------------------------------
+# WHAT A LEVEL LOOKS LIKE
+#
+# A cat on level 1 has just come out of a paper sack. By level 10 it has
+# been fed, brushed and kept for a long time, and it should be possible
+# to see that across the room without reading the number.
+#
+# The levelling does NOT get its own drawing code. It moves the same
+# knobs the breed table moves - coat, condition, fluff, size - so a
+# groomed cat cannot come out a shape the routine does not already know
+# how to make, and a breed that looks wrong at level 10 is wrong at level
+# 1 as well. The only things grooming adds that the table has no column
+# for are the collar, the tag and the bell, and those are worn, not grown.
+#
+# Five grades, because a change you cannot see is not a reward:
+#     1-2  a stray      3-4  settling in    5-6  kept
+#     7-9  somebody-s   10   retired, and it knows
+# ---------------------------------------------------------------------------
+GRADE_AT = (1, 3, 5, 7, 10)
+GRADE_NAME = ("off the street", "settling in", "kept", "well kept",
+              "retired")
+COLLAR_AT = 4            # a collar
+TAG_AT = 7               # ... with a tag on it
+BELL_AT = 10             # ... and a bell
+
+
+def grade_of(level):
+    """0 to 4. What a cat and its card look like at this level."""
+    g = 0
+    for i, need in enumerate(GRADE_AT):
+        if level >= need:
+            g = i
+    return g
+
+
+def _dull(c, k):
+    """Pull a colour toward its own grey. A coat in poor condition is not
+    a darker coat, it is a greyer one - which is the thing that actually
+    reads at the size these are drawn."""
+    g = round(c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11)
+    return mix(c, (g, g, g), k)
+
+
+def groom(P, level):
+    """The same breed, better kept. Returns a look, not a drawing."""
+    f = (clamp(level, 1, MAX_LEVEL) - 1) / (MAX_LEVEL - 1)
+    out = dict(P)
+    out["coat"] = mix(_dull(shade(P["coat"], 0.74), 0.72),
+                      warm(P["coat"], 0.08), f)
+    out["belly"] = mix(_dull(shade(P["belly"], 0.78), 0.66), P["belly"], f)
+    out["mark"] = mix(_dull(shade(P["mark"], 0.82), 0.58), P["mark"], f)
+    out["body"] = P["body"] * (0.90 + 0.12 * f)
+    out["fluff"] = P["fluff"] * (0.82 + 0.26 * f)
+    out["size"] = P["size"] * (0.94 + 0.07 * f)
+    out["nick"] = 1.0 if level < GRADE_AT[1] else 0.0
+    out["bib"] = 1.0 if level >= GRADE_AT[3] else 0.0
+    return out
+
+
+# ---------------------------------------------------------------------------
 # DRAWING A CAT
 #
 # One routine, twenty-four sets of numbers. It is built once per breed,
@@ -772,6 +831,16 @@ def _shapes_head(P, w, h):
             # small triangle, which is what it looked like at first.
             out.append(("ellipse", (bx - ew * 0.80, by - eh * 0.44,
                                     ew * 1.60, eh * 1.05)))
+        elif sx > 0 and P.get("nick"):
+            # The tipped ear. Every cat that has lived outside has one,
+            # and it is drawn as a flat top rather than a small notch
+            # because at 70 pixels tall a notch is one grey pixel.
+            tip_x = bx + sx * ew * 0.42
+            out.append(("poly", [
+                (bx - sx * ew * 0.72, by + eh * 0.22),
+                (tip_x - ew * 0.26, by - eh * 0.60),
+                (tip_x + ew * 0.20, by - eh * 0.48),
+                (bx + sx * ew * 0.86, by + eh * 0.10)]))
         else:
             tip_x = bx + sx * ew * 0.42
             out.append(("poly", [
@@ -1079,7 +1148,7 @@ _MARKS = {"tabby": _marks_tabby, "blotched": _marks_blotched,
 
 
 # -- the face ---------------------------------------------------------------
-def _eye(surf, P, cx, cy, rw, rh, colour, shut):
+def _eye(surf, P, cx, cy, rw, rh, colour, shut, shine=0.0):
     if shut:
         pygame.draw.arc(surf, shade(P["mark"], 0.8),
                         (cx - rw, cy - rh * 0.8, rw * 2, rh * 1.6),
@@ -1109,10 +1178,14 @@ def _eye(surf, P, cx, cy, rw, rh, colour, shut):
                         (cx - pr_w, cy - pr_h, pr_w * 2, pr_h * 2))
     pygame.draw.circle(surf, (252, 240, 216),
                        (round(cx - rw * 0.30), round(cy - rh * 0.36)),
-                       max(1, round(rw * 0.19)))
+                       max(1, round(rw * (0.17 + 0.09 * shine))))
+    if shine > 0.5:                   # a second catchlight, from the lamp
+        pygame.draw.circle(surf, (250, 234, 206),
+                           (round(cx + rw * 0.34), round(cy + rh * 0.30)),
+                           max(1, round(rw * 0.09)))
 
 
-def _face(surf, P, w, h, hb, shut, pose="sit"):
+def _face(surf, P, w, h, hb, shut, pose="sit", shine=0.0):
     ew = hb.w * (0.19 + 0.03 * P["flat"])
     eh = hb.h * (0.15 if P["eyeshape"] == "round" else 0.12) * \
         (1.18 if P["ear"] > 1.4 else 1.0)
@@ -1120,7 +1193,8 @@ def _face(surf, P, w, h, hb, shut, pose="sit"):
     eye = P["eye"]
     cols = (eye[1], eye[2]) if eye[0] == "odd" else (eye, eye)
     for i, sx in enumerate((-1, 1)):
-        _eye(surf, P, hb.centerx + sx * hb.w * 0.235, ey, ew, eh, cols[i], shut)
+        _eye(surf, P, hb.centerx + sx * hb.w * 0.235, ey, ew, eh, cols[i],
+             shut, shine)
 
     # ear insides, which an upright ear shows and a folded one does not.
     # Only on a sitting cat: a curled one wears its ears somewhere else
@@ -1172,7 +1246,7 @@ def _face(surf, P, w, h, hb, shut, pose="sit"):
     for sx in (-1, 1):
         for k in range(3):
             y0 = ny + nw * (0.1 + k * 0.45)
-            pygame.draw.line(wh, (*CREAM, 110),
+            pygame.draw.line(wh, (*CREAM, int(100 + 80 * shine)),
                              (round(hb.centerx + sx * nw * 0.9), round(y0)),
                              (round(hb.centerx + sx * hb.w * (0.62 + 0.06 * k)),
                               round(y0 - hb.h * (0.10 - k * 0.07))), 1)
@@ -1205,18 +1279,83 @@ def _face(surf, P, w, h, hb, shut, pose="sit"):
         surf.blit(s, (0, 0))
 
 
+def _collar(surf, P, w, h, hb, pose, level, acc):
+    """A collar at level 4, a tag at 7, and a bell when it retires.
+
+    Worn rather than grown, so it is drawn on top of the finished cat
+    and takes the card's rarity colour - which is the one thread tying
+    the animal to the paper it comes on.
+    """
+    if level < COLLAR_AT:
+        return
+    # Leather first, rarity second. Taking the rarity colour straight
+    # gave the uncommon breeds a green strap, which reads as a fish.
+    col = mix(RUG, acc, 0.30)
+    lip = mix(col, CREAM, 0.42)         # the light along the top of it
+    if pose == "curl":
+        bw = hb.w * 1.02
+        br = pygame.Rect(hb.centerx - bw * 0.42, hb.bottom - hb.h * 0.26,
+                         bw, hb.h * 0.55)
+        tk = max(4, round(h * 0.05))
+        pygame.draw.arc(surf, shade(col, 0.45), br.inflate(2, 2), 3.88, 5.62,
+                        tk + 2)
+        pygame.draw.arc(surf, col, br, 3.9, 5.6, tk)
+        return
+    # Low enough to be on the neck and not across the mouth, and
+    # narrower than the skull, or it reads as a moustache.
+    # A strap round a neck: wider than the part you can see, so its ends
+    # pass behind the jowls instead of stopping in mid air, and drawn
+    # across a shallow arc rather than a deep one.
+    bw = hb.w * 1.02
+    bh = h * 0.13
+    cy = hb.bottom + h * 0.052
+    br = pygame.Rect(hb.centerx - bw * 0.5, cy - bh * 0.5, bw, bh)
+    thick = max(5, round(h * 0.055))
+    pygame.draw.arc(surf, shade(col, 0.45), br.inflate(3, 3), 3.84, 5.60,
+                    thick + 3)
+    pygame.draw.arc(surf, col, br, 3.86, 5.58, thick)
+    pygame.draw.arc(surf, lip, br.inflate(0, -max(2, thick - 2)), 3.98, 5.46,
+                    max(2, thick // 3))
+    bx = hb.centerx - bw * 0.20       # a brass buckle, off to one side
+    by = cy + bh * 0.12
+    pygame.draw.rect(surf, mix(LAMP, TEA, 0.4),
+                     (round(bx), round(by), max(4, round(h * 0.035)),
+                      max(4, round(h * 0.030))), border_radius=2)
+    if level >= TAG_AT:
+        tx, ty = hb.centerx, cy + bh * 0.48 + thick * 0.4
+        r = max(4, round(h * 0.036))
+        if level >= BELL_AT:
+            pygame.draw.circle(surf, mix(LAMP, EMBER, 0.35), (round(tx),
+                                                              round(ty)), r)
+            pygame.draw.circle(surf, shade(EMBER, 0.65), (round(tx),
+                                                          round(ty)), r, 1)
+            pygame.draw.line(surf, shade(EMBER, 0.5), (tx - r * 0.6, ty + r * 0.3),
+                             (tx + r * 0.6, ty + r * 0.3), 2)
+            pygame.draw.circle(surf, mix(CREAM, LAMP, 0.4),
+                               (round(tx - r * 0.3), round(ty - r * 0.35)),
+                               max(1, r // 3))
+        else:
+            pygame.draw.circle(surf, mix(TEA, LAMP, 0.4), (round(tx),
+                                                           round(ty)), r)
+            pygame.draw.circle(surf, shade(TEA, 0.6), (round(tx), round(ty)),
+                               r, 1)
+
+
 # -- one finished cat -------------------------------------------------------
 _cats = {}
 CAT_RATIO = 0.95          # a sitting cat is this much wider than it is tall
 
 
-def cat_surface(breed, pose="sit", height=140, shut=False):
-    """A cat, built once and cached. The room animates by blitting this."""
-    key = (breed.key, pose, int(height), shut)
+def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
+    """A cat at a level, built once and cached. The room animates by
+    blitting this; nothing below here knows what a card is."""
+    level = int(clamp(level, 1, MAX_LEVEL))
+    key = (breed.key, pose, int(height), shut, level)
     got = _cats.get(key)
     if got is not None:
         return got
-    P = breed.look
+    P = groom(breed.look, level)
+    shine = (level - 1) / (MAX_LEVEL - 1)
     h = max(24, int(height * P["size"]))
     if pose == "curl":
         h = int(h * 0.66)
@@ -1278,7 +1417,7 @@ def cat_surface(breed, pose="sit", height=140, shut=False):
     gradient = pygame.Surface((w, h))
     for y in range(h):
         f = y / max(1, h - 1)
-        k = 1.16 - 0.44 * f
+        k = (1.14 + 0.10 * shine) - (0.46 - 0.06 * shine) * f
         pygame.draw.line(gradient, shade((255, 250, 242), k), (0, y), (w, y))
     surf.blit(gradient, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
@@ -1312,9 +1451,27 @@ def cat_surface(breed, pose="sit", height=140, shut=False):
     except (ValueError, AttributeError):
         pts = []
     if len(pts) > 6:
-        pygame.draw.lines(surf, shade(P["coat"], 0.42), True, pts, 2)
+        pygame.draw.lines(surf, mix(shade(P["coat"], 0.42), LAMP, 0.22 * shine),
+                          True, pts, 2)
 
-    _face(surf, P, w, h, hb, shut or pose == "curl", pose)
+    if shine > 0.05 and pose == "sit":
+        gl = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.ellipse(gl, (*CREAM, int(10 + 26 * shine)),
+                            (hb.x + hb.w * 0.12, hb.y - h * 0.01,
+                             hb.w * 0.76, hb.h * 0.42))
+        pygame.draw.ellipse(gl, (*CREAM, int(8 + 20 * shine)),
+                            (w * 0.30, h * 0.46, w * 0.40, h * 0.16))
+        gl.blit(sil, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        surf.blit(gl, (0, 0))
+    if P.get("bib") and pose == "sit":
+        bb = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.ellipse(bb, (*mix(P["belly"], CREAM, 0.35), 120),
+                            (w * 0.38, h * 0.50, w * 0.24, h * 0.22))
+        bb.blit(sil, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        surf.blit(bb, (0, 0))
+
+    _face(surf, P, w, h, hb, shut or pose == "curl", pose, shine)
+    _collar(surf, P, w, h, hb, pose, level, rarity_colour(breed.rarity))
     _cats[key] = surf
     return surf
 
@@ -2059,6 +2216,63 @@ def init_audio():
 # binder of twenty-four differently coloured cards looks like a toy and
 # this is meant to look like something you would keep.
 # ---------------------------------------------------------------------------
+def _corner_ticks(surf, r, col, inset, length, wide=2):
+    for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+        x = r.centerx + sx * (r.w // 2 - inset)
+        y = r.centery + sy * (r.h // 2 - inset)
+        pygame.draw.line(surf, col, (x, y), (x - sx * length, y), wide)
+        pygame.draw.line(surf, col, (x, y), (x, y - sy * length), wide)
+
+
+def _card_frame(surf, rect, inner, acc, stock, grade, maxed):
+    """What the card is PRINTED on, which is the part that climbs.
+
+    Grade 0 is a plain rule on plain stock. By grade 4 it has a foil
+    frame, bracketed corners and a banner, and the whole thing is warm.
+    The ornaments are all gated on the card being big enough to carry
+    them: the binder is drawn at 117px wide and a flourish at that size
+    is a smudge.
+    """
+    big = rect.w >= 108
+    line = mix(stock, acc, 0.35 + 0.10 * grade)
+    pygame.draw.rect(surf, line, inner, width=2, border_radius=5)
+
+    if grade >= 1:                      # a second rule, and corner ticks
+        pygame.draw.rect(surf, mix(stock, acc, 0.22), inner.inflate(-7, -7),
+                         width=1, border_radius=4)
+        if big:
+            _corner_ticks(surf, inner, mix(stock, acc, 0.45), 2, 9)
+    if grade >= 2 and big:              # foil corners
+        foil = mix(acc, LAMP, 0.35)
+        for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+            x = inner.centerx + sx * inner.w // 2
+            y = inner.centery + sy * inner.h // 2
+            pygame.draw.polygon(surf, foil, [
+                (x, y), (x - sx * 15, y), (x, y - sy * 15)])
+    if grade >= 3 and big:              # brackets, and a line of guilloche
+        br = mix(acc, INK, 0.35)
+        for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+            x = inner.centerx + sx * (inner.w // 2 - 6)
+            y = inner.centery + sy * (inner.h // 2 - 6)
+            pygame.draw.lines(surf, br, False,
+                              [(x - sx * 16, y), (x, y), (x, y - sy * 16)], 2)
+        for i in range(5):
+            cx = rect.centerx - 34 + i * 17
+            pygame.draw.arc(surf, mix(stock, acc, 0.5),
+                            (cx - 9, rect.bottom - 26, 18, 14), 3.4, 6.1, 1)
+    if maxed:                           # the retired frame, in foil
+        gold = mix(LAMP, acc, 0.35)
+        pygame.draw.rect(surf, gold, rect, width=3, border_radius=7)
+        pygame.draw.rect(surf, mix(gold, stock, 0.45), rect.inflate(-7, -7),
+                         width=1, border_radius=6)
+        if big:
+            for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+                x = rect.centerx + sx * (rect.w // 2 - 7)
+                y = rect.centery + sy * (rect.h // 2 - 7)
+                pygame.draw.circle(surf, gold, (x, y), 4)
+                pygame.draw.circle(surf, mix(gold, INK, 0.4), (x, y), 4, 1)
+
+
 def card_cat_height(rect):
     return int(rect.h * 0.46)
 
@@ -2067,14 +2281,15 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
               show_rate=True, shut=False):
     rect = pygame.Rect(rect)
     acc = rarity_colour(breed.rarity)
-    stock = mix(PAPER, acc, 0.07)
+    grade = 4 if maxed else grade_of(level)
+    # better paper as it goes: a stray comes on card, a retired breed
+    # comes on something you would frame
+    stock = mix(PAPER, acc, 0.05 + 0.02 * grade)
+    if grade >= 3:
+        stock = mix(stock, LAMP, 0.05 + 0.05 * (grade - 3))
     panel(surf, rect, stock, None, radius=7)
     inner = rect.inflate(-10, -10)
-    pygame.draw.rect(surf, mix(stock, acc, 0.55 if maxed else 0.35), inner,
-                     width=2, border_radius=5)
-    if maxed:
-        pygame.draw.rect(surf, mix(LAMP, acc, 0.4), rect, width=3,
-                         border_radius=7)
+    _card_frame(surf, rect, inner, acc, stock, grade, maxed)
 
     # Everything below the window is measured UP from the foot of the
     # card, so a small card in the binder and a big one in a parcel have
@@ -2092,19 +2307,50 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
     # the window the cat sits in
     win = pygame.Rect(inner.x + 6, inner.y + 6, inner.w - 12,
                       max(30, name_y - 14 - (inner.y + 6)))
-    pygame.draw.rect(surf, mix(acc, INK, 0.80), win, border_radius=4)
+    pygame.draw.rect(surf, mix(acc, INK, 0.88 - 0.055 * grade), win,
+                     border_radius=4)
     old = surf.get_clip()
     surf.set_clip(win)
     glow(surf, (win.centerx, win.centery + win.h * 0.10),
-         int(win.w * 0.62), mix(acc, LAMP, 0.55), 0.30 * lit)
+         int(win.w * (0.60 + 0.05 * grade)), mix(acc, LAMP, 0.55),
+         (0.26 + 0.07 * grade) * lit)
+    if grade >= 2:                 # a floor for it to sit on, not a void
+        pygame.draw.ellipse(surf, mix(acc, INK, 0.62),
+                            (win.x + win.w * 0.12, win.bottom - win.h * 0.20,
+                             win.w * 0.76, win.h * 0.22))
     # never taller than the window it has to sit in, or the ears go
     img = cat_surface(breed, "sit",
-                      min(card_cat_height(rect), win.h - 5), shut)
+                      min(card_cat_height(rect), win.h - 5), shut, level)
     surf.blit(img, img.get_rect(midbottom=(win.centerx, win.bottom - 4)))
     surf.set_clip(old)
-    pygame.draw.rect(surf, mix(acc, INK, 0.45), win, width=1, border_radius=4)
+    pygame.draw.rect(surf, mix(acc, INK if grade < 3 else LAMP,
+                               0.45 if grade < 3 else 0.30), win, width=1,
+                     border_radius=4)
+
+    # The level, as a number, in the corner of the window. The pips along
+    # the foot say the same thing, but counting ten dots is not reading,
+    # and this is the one part of the card that moves on EVERY level and
+    # not only at a grade.
+    if rect.w >= 92:
+        cw = int(clamp(rect.w * 0.21, 22, 32))
+        chip = pygame.Rect(win.x + 4, win.y + 4, cw, int(cw * 0.64))
+        face = (mix(LAMP, acc, 0.4) if maxed else
+                mix(acc, PAPER, 0.25 + 0.12 * grade))
+        pygame.draw.rect(surf, mix(face, INK, 0.25), chip.move(1, 1),
+                         border_radius=4)
+        pygame.draw.rect(surf, face, chip, border_radius=4)
+        pygame.draw.rect(surf, mix(face, CREAM, 0.4), chip, width=1,
+                         border_radius=4)
+        text(surf, str(level), min(15, chip.h - 3), chip.center,
+             mix(INK, acc, 0.15), center=True, kind="mono", bold=True,
+             shadow=False)
 
     # name, rarity, and what it earns
+    if grade >= 3 and rect.w >= 108:
+        plate = pygame.Rect(inner.x + 10, name_y - 1, inner.w - 20, 19)
+        pygame.draw.rect(surf, mix(stock, acc, 0.16), plate, border_radius=4)
+        pygame.draw.rect(surf, mix(stock, acc, 0.42), plate, width=1,
+                         border_radius=4)
     text(surf, breed.name, fit(breed.name, 17, inner.w - 6),
          (rect.centerx, name_y + 8), mix(INK, acc, 0.22), center=True,
          shadow=False)
@@ -2121,8 +2367,12 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
     if compact:
         pass
     elif maxed:
+        ban = pygame.Rect(inner.x + 14, sub_y, inner.w - 28, 15)
+        pygame.draw.rect(surf, mix(acc, LAMP, 0.42), ban, border_radius=3)
+        pygame.draw.rect(surf, mix(acc, INK, 0.35), ban, width=1,
+                         border_radius=3)
         text(surf, "RETIRED", 11, (rect.centerx, sub_y + 6),
-             mix(INK, LAMP, 0.3), center=True, kind="mono", shadow=False)
+             mix(INK, acc, 0.25), center=True, kind="mono", shadow=False)
     elif level < MAX_LEVEL:
         text(surf, f"{dupes} of {dupes_for(level)}", 11,
              (rect.centerx, sub_y + 6), mix(INK, acc, 0.4), center=True,
@@ -2179,7 +2429,7 @@ def draw_unknown(surf, rect, hint=None):
                       int(inner.h * 0.58))
     pygame.draw.rect(surf, shade(INK, 1.3), win, border_radius=4)
     if hint is not None:
-        img = cat_surface(hint, "sit", card_cat_height(rect))
+        img = cat_surface(hint, "sit", card_cat_height(rect), level=1)
         sil = img.copy()
         sil.fill(shade(DEEP, 1.6), special_flags=pygame.BLEND_RGBA_MULT)
         surf.blit(sil, sil.get_rect(midbottom=(win.centerx, win.bottom - 4)))
@@ -2380,9 +2630,14 @@ def cats_in(state, area):
     return out
 
 
-def cat_rect(b, spot):
+def cat_level(state, b):
+    card = state.cards.get(b.key)
+    return card.level if card else 1
+
+
+def cat_rect(b, spot, level=1):
     _, x, y, pose, hgt = spot
-    img = cat_surface(b, pose, hgt)
+    img = cat_surface(b, pose, hgt, level=level)
     return img.get_rect(midbottom=(x, y))
 
 
@@ -2390,7 +2645,7 @@ def draw_cats(surf, state, area, t):
     for i, (b, spot) in enumerate(cats_in(state, area)):
         _, x, y, pose, hgt = spot
         blink = math.sin(t * 0.7 + i * 2.1) > 0.985
-        img = cat_surface(b, pose, hgt, blink)
+        img = cat_surface(b, pose, hgt, blink, cat_level(state, b))
         breathe = 1.0 + 0.012 * math.sin(t * 1.3 + i)
         iw, ih = img.get_size()
         img = pygame.transform.smoothscale(img, (iw, max(2, int(ih * breathe))))
@@ -3217,7 +3472,7 @@ class GameBase:
         self.beep("purr")
         for b, spot in cats_in(self.state, self.area):
             if b.key == key:
-                r = cat_rect(b, spot)
+                r = cat_rect(b, spot, card.level)
                 self.floats.append(Float(r.centerx, r.y - 6,
                                          f"{b.name}, level {card.level}",
                                          warm(CREAM, 0.1)))
@@ -3323,7 +3578,7 @@ class GameBase:
             here = cats_in(st, self.area)
             if here:
                 b, spot = random.choice(here)
-                r = cat_rect(b, spot)
+                r = cat_rect(b, spot, cat_level(st, b))
                 self.floats.append(Float(r.centerx + random.uniform(-14, 14),
                                          r.y - 10,
                                          "+" + money(self.since_coin), LAMP))
@@ -3436,7 +3691,7 @@ class GameBase:
                 text(s, label, 15, (r.centerx, r.y - 12), warm(CREAM, 0.2),
                      center=True, kind="mono")
         for b, spot in cats_in(st, self.area):
-            r = cat_rect(b, spot)
+            r = cat_rect(b, spot, cat_level(st, b))
             self.buttons.append(Button(r, "", ("cat", b.key), "hit"))
             if r.collidepoint(mouse):
                 card = st.cards[b.key]
@@ -4105,6 +4360,8 @@ RULES = (
                    "room, and slow post is free."),
     ("duplicates", "Two of a breed take it to level 2, four more to 3, "
                    "six to 4, and so on by twos."),
+    ("every level", "Better paper, a brighter frame, and a cat in better "
+                    "condition. A collar at 4, a tag at 7, a bell at 10."),
     ("level 10", "The breed retires. The shop takes it off the page and "
                  "will never send it again."),
     ("the post", "Four parcels at a time. The delivery club is the only "
@@ -4124,7 +4381,7 @@ class MenuMixin:
         dim.fill((8, 6, 6, 206))
         s.blit(dim, (0, 0))
         st = self.state
-        r = pygame.Rect(W // 2 - 330, 96, 660, 566)
+        r = pygame.Rect(W // 2 - 330, 68, 660, 624)
         panel(s, r, mix(DEEP, WOOD, 0.3), shade(TEA, 0.5), radius=12)
         glow(s, (r.centerx, r.y + 150), 300, mix(LAMP, EMBER, 0.5), 0.12)
         text(s, "CAT CATALOGUE", 36, (r.centerx, r.y + 26), warm(CREAM, 0.2),
@@ -4133,12 +4390,13 @@ class MenuMixin:
              (r.centerx, r.y + 70), TEA, center=True, kind="mono")
         hairline(s, r.x + 40, r.y + 100, r.right - 40, TEA, 70)
 
-        y = r.y + 118
+        y = r.y + 112
         for name, line in RULES:
-            text(s, name, 16, (r.x + 40, y), warm(EMBER, 0.15), kind="mono")
-            paragraph(s, line, 14, (r.x + 170, y), mix(TEA, CREAM, 0.3),
-                      r.w - 220, 4, kind="mono")
-            y += 58
+            text(s, name, 16, (r.x + 36, y), warm(EMBER, 0.15), kind="mono",
+                 max_w=140)
+            paragraph(s, line, 14, (r.x + 186, y), mix(TEA, CREAM, 0.3),
+                      r.w - 230, 4, kind="mono")
+            y += 52
         hairline(s, r.x + 40, y - 4, r.right - 40, TEA, 70)
 
         y += 10
