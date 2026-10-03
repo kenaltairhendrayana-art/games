@@ -99,9 +99,14 @@ RARITY = (
     ("UNCOMMON",  (126, 171, 131), 0.16),
     ("RARE",      (116, 150, 208), 0.45),
     ("PEDIGREE",  (184, 132, 208), 1.20),
+    ("CHAMPION",  (204, 74, 92),   1.90),
     ("LEGEND",    (240, 178, 86),  3.00),
+    ("FOUNDATION", (72, 214, 170), 5.40),
+    ("UNLISTED",  (206, 214, 228), 2.50),
 )
-R_COMMON, R_UNCOMMON, R_RARE, R_PEDIGREE, R_LEGEND = range(5)
+(R_COMMON, R_UNCOMMON, R_RARE, R_PEDIGREE, R_CHAMPION, R_LEGEND,
+ R_FOUNDATION, R_UNLISTED) = range(8)
+SOLD_RARITIES = 7          # the catalogue stocks the first seven of them
 
 MAX_LEVEL = 10
 
@@ -542,6 +547,17 @@ COAT_FAMILY = {
     "golden":    ((218, 178, 104), (158, 116, 52), (242, 222, 180)),
     # no "lavender" here: it is a shiny colour, and as an ordinary coat
     # it sits on top of both lilac and silver
+    "cinnamon":  ((182, 122, 78), (124, 72, 42), (220, 180, 142)),
+    "gold":      ((214, 176, 108), (150, 112, 56), (238, 218, 180)),
+    "peach":     ((232, 192, 166), (190, 142, 112), (244, 222, 206)),
+    "champagne": ((222, 202, 172), (170, 142, 110), (238, 226, 206)),
+    "blue mink": ((160, 162, 170), (112, 114, 124), (198, 200, 206)),
+    "blue point": ((226, 224, 226), (118, 128, 146), (240, 240, 242)),
+    "black and white": ((60, 58, 60), (240, 238, 234), (244, 242, 238)),
+    "white and black": ((240, 238, 234), (60, 58, 60), (246, 244, 242)),
+    "grey and white": ((132, 132, 134), (240, 238, 234), (244, 242, 240)),
+    "white and red": ((240, 238, 232), (192, 118, 70), (246, 244, 240)),
+    "dilute calico": ((238, 234, 228), (150, 156, 168), (246, 244, 240)),
     "grey":      ((134, 134, 132), (82, 82, 84), (192, 192, 190)),
     "smoke":     ((98, 94, 100), (58, 56, 62), (152, 148, 154)),
 }
@@ -588,7 +604,7 @@ def shiny_coat(breed):
     """
     if not _shiny_of:
         used = {row[0]: 0 for row in SHINY_COATS}
-        for i, b in enumerate(BREEDS):
+        for i, b in enumerate(ALL_BREEDS):
             # Eligibility is a question about COLOUR, not about names.
             # Checking the names let a Maine Coon whose coats include
             # "black" be given the shiny called "ebony", and the two of
@@ -654,7 +670,7 @@ def coat_name(breed, variant=0, shiny=False, full=False):
 TEMPERS = {
     "sleeper": dict(
         label="sleeps through most of it",
-        acts={"sleep": 7, "loaf": 3, "groom": 2, "watch": 1,
+        acts={"sleep": 7, "loaf": 3, "groom": 2, "watch": 1, "sit": 1,
               "scratch": 1, "drink": 1, "eat": 1},
         likes=("bed", "warm", "perch"), speed=0.62, stay=(22, 50)),
     "hunter": dict(
@@ -674,7 +690,7 @@ TEMPERS = {
         likes=("food", "water", "bed"), speed=0.85, stay=(10, 24)),
     "groomer": dict(
         label="washes, and washes again",
-        acts={"groom": 6, "loaf": 3, "watch": 2, "sleep": 2,
+        acts={"groom": 6, "loaf": 3, "watch": 2, "sleep": 2, "sit": 2,
               "scratch": 1, "drink": 1, "eat": 1},
         likes=("perch", "bed"), speed=0.9, stay=(12, 26)),
     "shadow": dict(
@@ -694,7 +710,7 @@ TEMPERS = {
         likes=("post", "toy", "floor"), speed=1.25, stay=(6, 14)),
     "warmth": dict(
         label="finds the warmest thing in the room",
-        acts={"sleep": 5, "loaf": 4, "groom": 2, "watch": 1,
+        acts={"sleep": 5, "loaf": 4, "groom": 2, "watch": 1, "sit": 2,
               "scratch": 1, "eat": 1, "drink": 1},
         likes=("warm", "bed", "chair"), speed=0.8, stay=(20, 44)),
 }
@@ -734,13 +750,23 @@ class Breed:
 
 
 def L(**kw):
-    """One breed's look, with the ordinary cat as the default."""
+    """One breed's look, with the ordinary cat as the default.
+
+          eyeshape="almond")),
+    went in, nothing complained, and that breed quietly kept the
+    default eyes. At
+    a hundred breeds a typo like that is never going to be spotted by
+    eye, so it raises.
+    """
     look = dict(size=1.0, body=1.0, facew=1.0, faceh=1.0, cheek=1.0, ear=1.0,
                 fold=0.0, tuft=0.0, flat=0.0, fluff=0.25, legs=1.0,
                 tail="plain", eyeshape="almond", eye=(188, 164, 74),
-                earcurl=0.0,
+                earcurl=0.0, collar=None,
                 coat=(126, 104, 86), mark=(78, 60, 48), belly=(196, 176, 150),
                 pat="tabby", skin=0.0, curl=0.0, nose=(198, 128, 124))
+    bad = set(kw) - set(look)
+    if bad:
+        raise KeyError(f"no such look: {sorted(bad)}")
     look.update(kw)
     return look
 
@@ -799,8 +825,9 @@ BREEDS = (
     Breed("bom", "Bombay", R_COMMON, "Louisville, out of a Burmese",
           "A patent-leather shadow with two copper coins in it.",
           L(coat=(58, 56, 58), mark=(38, 36, 38), belly=(84, 82, 84),
-            pat="solid", body=1.06, facew=1.06, cheek=1.04, ear=0.98,
-            legs=1.02, fluff=0.18, eye=(214, 160, 56), eyeshape="round"),
+            pat="solid", body=0.96, facew=1.0, faceh=1.04, cheek=0.96,
+            ear=1.08, legs=1.16, fluff=0.1, eye=(214, 160, 56),
+            eyeshape="round"),
           "shadow",
           "Can only be found by the eyes, and only when it wants to be.",
           ("sable black", "charcoal", "smoke")),
@@ -944,7 +971,7 @@ BREEDS = (
           "On the radiator, under a blanket, against a lamp.",
           ("bare pink", "blue", "black", "ivory")),
 
-    Breed("mau", "Egyptian Mau", R_RARE, "the Nile, actually",
+    Breed("mau", "Egyptian Mau", R_CHAMPION, "the Nile, actually",
           "Spotted on the hair, not the skin. The only one that is.",
           L(size=1.02, body=0.96, facew=0.94, faceh=1.04, cheek=0.9,
             ear=1.12, legs=1.22, fluff=0.1, coat=(168, 170, 174),
@@ -973,7 +1000,7 @@ BREEDS = (
           ("platinum curl", "cream", "blue", "chocolate")),
 
     # -- PEDIGREE ----------------------------------------------------------
-    Breed("sav", "Savannah", R_PEDIGREE, "a serval and a nerve",
+    Breed("sav", "Savannah", R_CHAMPION, "a serval and a nerve",
           "Legs like a deer. Can reach the top of the bookcase, flat.",
           L(size=1.18, body=0.98, facew=0.86, faceh=1.06, cheek=0.78,
             ear=1.5, legs=1.42, fluff=0.1, coat=(214, 172, 96),
@@ -1028,7 +1055,7 @@ BREEDS = (
           "climber",
           "Fits in a shoe, sleeps in the shoe, defends the shoe.",
           ("sepia agouti", "fawn", "ivory")),
-    Breed("neb", "Nebelung", R_PEDIGREE, "Denver, out of a long-haired blue",
+    Breed("neb", "Nebelung", R_CHAMPION, "Denver, out of a long-haired blue",
           "Mist with a tail on it. Keeps to the people it has chosen.",
           L(size=1.04, body=0.80, facew=0.92, faceh=1.08, cheek=0.80,
             ear=1.38, legs=1.26, fluff=1.0, tail="plume",
@@ -1037,6 +1064,25 @@ BREEDS = (
           "shadow",
           "Watches the room from the doorway for an hour before entering.",
           ("mist blue", "silver", "charcoal")),
+
+    Breed("ser", "Serengeti", R_CHAMPION, "a Bengal and an Oriental",
+          "Legs like scaffolding and ears you could signal with.",
+          L(size=1.1, body=0.84, facew=0.84, faceh=1.08, cheek=0.74,
+            ear=1.54, legs=1.3, fluff=0.06, coat=(196, 176, 120),
+            mark=(48, 44, 40), belly=(226, 212, 176), pat="spotted",
+            eye=(214, 198, 92), eyeshape="round"),
+          "climber",
+          "Goes over the furniture rather than round it.",
+          ("spotted gold", "silver", "charcoal"), ),
+    Breed("kur", "Kurilian Bobtail", R_CHAMPION, "the islands north of Japan",
+          "A pom-pom tail on a cat built like a hiking boot.",
+          L(size=1.12, body=1.28, facew=1.1, faceh=0.98, cheek=1.18,
+            ear=1.0, legs=1.1, fluff=0.66, tail="pom",
+            coat=(164, 134, 96), mark=(96, 72, 50), belly=(220, 202, 172),
+            pat="blotched", eye=(176, 184, 104)),
+          "hunter",
+          "Brings things back. Has never been asked to.",
+          ("forest tabby", "red", "silver", "cream")),
 
     # -- LEGEND ------------------------------------------------------------
     Breed("kma", "Khao Manee", R_LEGEND, "Siam, kept by kings",
@@ -1057,6 +1103,26 @@ BREEDS = (
           "shadow",
           "Works the edges of the room at a trot.",
           ("roan", "charcoal", "silver")),
+    # -- FOUNDATION ---
+    Breed("cha2", "Chausie", R_FOUNDATION, "a jungle cat, three generations back",
+          "Foundation stock. Half the registry will not take it yet.",
+          L(size=1.3, body=1.2, facew=1.0, faceh=1.04, cheek=1.04,
+            ear=1.16, legs=1.2, fluff=0.22, coat=(140, 110, 72),
+            mark=(58, 46, 36), belly=(190, 166, 130), pat="ticked",
+            eye=(226, 190, 78), eyeshape="almond"),
+          "hunter",
+          "Clears the kitchen counter from a standing start.",
+          ("grizzled brown", "black", "silver")),
+    Breed("saf", "Safari", R_FOUNDATION, "a Geoffroy cat and a very long wait",
+          "Perhaps a hundred of them exist. This is one of the hundred.",
+          L(size=1.28, body=0.92, facew=0.88, faceh=1.12, cheek=0.8,
+            ear=1.24, legs=1.42, fluff=0.08, coat=(186, 168, 132),
+            mark=(44, 40, 38), belly=(224, 212, 184), pat="spotted",
+            eye=(188, 200, 110), eyeshape="round"),
+          "shadow",
+          "Watches the whole room from the one place you cannot see it.",
+          ("rosetted fawn", "silver", "charcoal")),
+
     Breed("lev", "Ukrainian Levkoy", R_LEGEND, "Kyiv, this century",
           "Bald, and the ears fold in. There is nothing else like it.",
           L(size=1.0, body=0.9, facew=1.0, faceh=1.08, cheek=0.8, ear=1.0,
@@ -1077,8 +1143,593 @@ BREEDS = (
           ("brown blotched", "silver", "chocolate")),
 )
 
-BY_KEY = {b.key: b for b in BREEDS}
-BY_RARITY = tuple(tuple(b for b in BREEDS if b.rarity == r) for r in range(5))
+# ---------------------------------------------------------------------------
+# THE REST OF THE BOOK
+#
+# Sixty more, written as a table rather than sixty more constructor calls,
+# because at this length the shape of the data matters more than the shape
+# of the code. Column order is the one the Breed takes:
+#
+#   key  name  rarity  origin  note  temper  habit  coats  look
+#
+# The look column is the whole point of the table: a hundred cats have to
+# differ from each other in SHAPE, and the only way to see whether they do
+# is to have the numbers in one place where they can be read down a column
+# and compared. `cat_test.py sameness` is the judge of it.
+# ---------------------------------------------------------------------------
+_MORE = (
+    # -- COMMON -------------------------------------------------------------
+    ("dsh2", "Farm Tabby", R_COMMON, "a barn in the west country",
+     "Works for board. Has never once been indoors in daylight.",
+     "hunter", "Brings things to the back step and waits to be praised.",
+     ("brown tabby", "red", "silver"),
+     dict(body=0.92, facew=0.96, faceh=1.04, cheek=0.9, ear=1.18,
+          legs=1.22, fluff=0.22, coat=(140, 118, 88), mark=(88, 68, 48),
+          belly=(206, 188, 158),
+          pat="tabby", eye=(186, 166, 84))),
+    ("tux", "Tuxedo Moggy", R_COMMON, "everywhere, always",
+     "Dressed for an occasion that never comes.",
+     "lap", "Sits on the one chair with a cushion on it.",
+     ("black and white", "grey and white", "charcoal"),
+     dict(body=1.08, facew=1.1, faceh=0.98, cheek=1.1, ear=0.96,
+          legs=1.14, fluff=0.3, coat=(58, 56, 58), mark=(242, 240, 236),
+          belly=(246, 244, 240),
+          pat="bicolour", eye=(200, 176, 80), eyeshape="round")),
+    ("ging", "Ginger Moggy", R_COMMON, "the end of every street",
+     "Ninety per cent of them are toms, and all of them know it.",
+     "glutton", "Eats, sleeps, eats again, and is somehow still thin.",
+     ("marmalade", "cream", "silver"),
+     dict(body=1.1, facew=1.12, cheek=1.12, ear=0.98, legs=0.96, fluff=0.28,
+          coat=(204, 142, 76), mark=(150, 92, 42), belly=(236, 212, 180),
+          pat="tabby", eye=(196, 168, 72))),
+    ("calico", "Calico Moggy", R_COMMON, "a litter nobody planned",
+     "Three colours, and a different cat on each side.",
+     "shadow", "Watches from under the furniture until it is sure.",
+     ("calico", "dilute calico", "cream"),
+     dict(size=0.92, body=0.86, facew=0.94, faceh=1.04, cheek=0.9,
+          ear=1.12, legs=1.1, fluff=0.36, coat=(242, 238, 230),
+          mark=(78, 66, 58), belly=(248, 246, 242),
+          pat="tortie", eye=(176, 158, 86))),
+    ("dragon", "Dragon Li", R_COMMON, "China, and a very long way back",
+     "The oldest working cat in the world, and still working.",
+     "hunter", "Patrols the skirting boards like a watchman.",
+     ("golden tabby", "brown", "silver"),
+     dict(size=1.08, body=1.04, facew=0.96, faceh=1.1, cheek=0.94,
+          ear=1.12, legs=1.26, fluff=0.14, coat=(176, 148, 96),
+          mark=(96, 76, 50),
+          belly=(216, 196, 158), pat="tabby", eye=(188, 196, 110))),
+    ("aeg", "Aegean", R_COMMON, "the harbours of the Cyclades",
+     "Fishes. Actually fishes, with its feet, out of the water.",
+     "busy", "Supervises the sink and everything that happens in it.",
+     ("white and red", "white and black", "cream"),
+     dict(body=0.9, facew=0.92, faceh=1.06, cheek=0.86, ear=1.24,
+          legs=1.3, fluff=0.34, tail="plume", coat=(240, 236, 228),
+          mark=(188, 112, 66),
+          belly=(248, 246, 240), pat="bicolour", eye=(176, 186, 110))),
+    ("brz", "Brazilian Shorthair", R_COMMON, "the streets of Rio",
+     "Lean, loud, and entirely unbothered by weather.",
+     "lap", "Finds the sunniest tile and holds it all afternoon.",
+     ("red tabby", "black", "blue", "cream"),
+     dict(size=0.96, body=0.82, facew=0.9, faceh=1.1, cheek=0.82,
+          ear=1.3, legs=1.24, fluff=0.08, tail="whip", coat=(188, 136, 82),
+          mark=(118, 72, 40),
+          belly=(224, 198, 164), pat="tabby", eye=(180, 192, 104))),
+    ("arab", "Arabian Mau", R_COMMON, "the desert edge of the Gulf",
+     "Built for forty degrees in the shade, and there is no shade.",
+     "shadow", "Goes out at dusk and comes back at dawn, saying nothing.",
+     ("sand", "white and red", "black"),
+     dict(body=0.94, facew=0.94, faceh=1.06, cheek=0.88, ear=1.3,
+          legs=1.22, fluff=0.08, coat=(214, 196, 158), mark=(150, 128, 92),
+          belly=(238, 228, 204), pat="tabby", eye=(198, 182, 96))),
+    ("poly", "American Polydactyl", R_COMMON, "a dockside in Key West",
+     "Six toes a foot, which it uses for doors.",
+     "busy", "Has worked out the cupboard. All of the cupboards.",
+     ("brown tabby", "black and white", "red"),
+     dict(size=1.1, body=1.26, facew=1.16, faceh=0.96, cheek=1.24,
+          ear=0.9, legs=0.88, fluff=0.4, coat=(132, 112, 90),
+          mark=(82, 64, 48), belly=(208, 190, 164),
+          pat="tabby", eye=(190, 170, 78))),
+    ("brit2", "British Longhair", R_COMMON, "Britain, with more coat",
+     "The round grey full stop, after a winter indoors.",
+     "sleeper", "Occupies a cushion the way weather occupies a county.",
+     ("blue", "cream", "silver", "black"),
+     dict(body=1.26, facew=1.22, faceh=0.96, cheek=1.3, ear=0.84, legs=0.84,
+          fluff=0.86, tail="plume", coat=(126, 136, 150),
+          mark=(98, 108, 122), belly=(150, 160, 174), pat="smoke",
+          eye=(214, 150, 60), eyeshape="round")),
+
+    # -- UNCOMMON -----------------------------------------------------------
+    ("ori", "Oriental Shorthair", R_UNCOMMON, "a Siamese without the points",
+     "All ears and opinions, in rather a lot of colours.",
+     "lap", "Narrates the entire evening from the arm of the chair.",
+     ("ebony", "blue", "red", "lilac"),
+     dict(size=0.98, body=0.78, facew=0.8, faceh=1.14, cheek=0.72, ear=1.48,
+          legs=1.2, fluff=0.08, tail="whip", coat=(62, 58, 60),
+          mark=(40, 38, 40), belly=(92, 88, 90), pat="solid",
+          eye=(150, 196, 128), eyeshape="almond")),
+    ("bali", "Balinese", R_UNCOMMON, "a long-haired Siamese litter",
+     "The points, the voice, and a tail like a feather duster.",
+     "lap", "Follows, comments, and sits down on the thing you need.",
+     ("seal point", "blue", "chocolate", "lilac"),
+     dict(size=1.0, body=0.84, facew=0.84, faceh=1.1, cheek=0.76, ear=1.3,
+          legs=1.14, fluff=0.68, tail="plume", coat=(228, 212, 184),
+          mark=(74, 56, 52), belly=(240, 228, 206), pat="point",
+          eye=(104, 164, 212), eyeshape="almond")),
+    ("tonk", "Tonkinese", R_UNCOMMON, "a Burmese and a Siamese",
+     "Halfway between two arguments, and pleased about it.",
+     "lap", "Arrives on your lap the moment you sit down. Every time.",
+     ("natural mink", "blue mink", "champagne"),
+     dict(body=0.9, facew=0.92, faceh=1.06, cheek=0.88, ear=1.22,
+          legs=1.14, fluff=0.14, coat=(166, 136, 104), mark=(104, 78, 60),
+          belly=(206, 184, 156), pat="point", eye=(126, 186, 196),
+          eyeshape="almond")),
+    ("snow", "Snowshoe", R_UNCOMMON, "a Siamese litter with white feet",
+     "Points, and then four white boots nobody ordered.",
+     "lap", "Puts one white foot on you and leaves it there.",
+     ("seal point", "blue point", "chocolate"),
+     dict(size=1.08, body=1.06, facew=1.02, faceh=1.04, cheek=1.0,
+          ear=1.1, legs=1.22, fluff=0.3, coat=(230, 218, 196),
+          mark=(88, 68, 64),
+          belly=(244, 236, 220), pat="gloves", eye=(110, 162, 212),
+          eyeshape="round")),
+    ("himal", "Himalayan", R_UNCOMMON, "a Persian and a Siamese",
+     "A Persian that took the points and kept the face.",
+     "sleeper", "Has not moved since lunch and does not intend to.",
+     ("seal point", "blue", "cream", "chocolate"),
+     dict(size=1.04, body=1.14, facew=1.18, faceh=0.98, cheek=1.2,
+          ear=0.8, flat=0.7, fluff=0.86, tail="plume", legs=0.9,
+          coat=(236, 224, 200), mark=(96, 74, 70), belly=(246, 238, 220),
+          pat="point", eye=(112, 160, 214), eyeshape="round")),
+    ("exotic", "Exotic Shorthair", R_UNCOMMON, "a Persian in a hurry",
+     "The Persian face on a coat you can actually brush.",
+     "sleeper", "Breathes audibly on the warm end of the sofa.",
+     ("cream", "blue", "silver", "red"),
+     dict(size=1.06, body=1.24, facew=1.28, faceh=0.9, cheek=1.32, ear=0.7,
+          flat=1.0, fluff=0.3, legs=0.8, coat=(226, 206, 176),
+          mark=(176, 152, 122), belly=(240, 226, 202), pat="smoke",
+          eye=(214, 148, 62), eyeshape="round")),
+    ("ragam", "Ragamuffin", R_UNCOMMON, "a Ragdoll that went its own way",
+     "Enormous, and entirely unaware of it.",
+     "lap", "Goes limp in whichever direction it is picked up.",
+     ("red and white", "blue", "cream", "chocolate"),
+     dict(size=1.24, body=1.34, facew=1.22, faceh=0.94, cheek=1.3,
+          ear=0.8, fluff=0.62, tail="plume", legs=0.84,
+          coat=(226, 200, 172), mark=(168, 118, 80),
+          belly=(240, 226, 206), pat="bicolour", eye=(140, 180, 128),
+          eyeshape="round")),
+    ("sib", "Siberian", R_UNCOMMON, "the forests east of the Urals",
+     "Triple-coated, and it has opinions about open windows.",
+     "climber", "Is on the top of the bookcase. Was not seen going up.",
+     ("brown tabby", "silver", "red", "black"),
+     dict(size=1.2, body=1.26, facew=1.08, faceh=1.02, cheek=1.12, ear=1.0,
+          tuft=1.0, fluff=1.0, tail="plume", legs=1.02,
+          coat=(150, 118, 84), mark=(92, 66, 44), belly=(216, 196, 164),
+          pat="tabby", eye=(168, 186, 112))),
+    ("neva", "Neva Masquerade", R_UNCOMMON, "the Neva, in a mask",
+     "A Siberian in a mask, which is a sentence that makes sense in Russia.",
+     "sleeper", "Sleeps where the heating pipe runs under the floor.",
+     ("seal point", "blue", "red"),
+     dict(size=1.18, body=1.22, facew=1.06, faceh=1.04, cheek=1.08,
+          ear=1.04, fluff=0.96, tail="plume", legs=1.0,
+          coat=(234, 222, 198), mark=(92, 72, 70), belly=(244, 236, 218),
+          pat="point", eye=(108, 164, 212))),
+    ("amb", "American Bobtail", R_UNCOMMON, "a roadside motel in Arizona",
+     "A short tail, a long body, and the walk of something wild.",
+     "hunter", "Carries one toy from room to room for days at a time.",
+     ("brown tabby", "silver", "red", "black"),
+     dict(size=1.14, body=1.2, facew=1.1, faceh=0.98, cheek=1.12, ear=1.02,
+          legs=1.08, fluff=0.5, tail="bob", coat=(154, 126, 92),
+          mark=(94, 70, 48), belly=(214, 194, 164), pat="tabby",
+          eye=(184, 164, 90))),
+    ("pixie", "Pixie-bob", R_UNCOMMON, "the Cascades, allegedly",
+     "Looks like something that came down off the mountain.",
+     "shadow", "Walks the edge of the room and never the middle of it.",
+     ("brown spotted", "charcoal", "silver"),
+     dict(size=1.16, body=1.24, facew=1.16, faceh=0.96, cheek=1.2, ear=0.9,
+          tuft=1.0, legs=1.06, fluff=0.4, tail="bob", coat=(168, 136, 96),
+          mark=(74, 56, 42), belly=(214, 192, 158), pat="spotted",
+          eye=(188, 176, 96))),
+    ("cymric", "Cymric", R_UNCOMMON, "the Isle of Man, with a coat on",
+     "No tail at all, and a great deal of everything else.",
+     "sleeper", "Rolls onto its back and stays there for an hour.",
+     ("brown tabby", "red", "silver", "cream"),
+     dict(body=1.24, facew=1.14, cheek=1.18, legs=0.86, fluff=0.94,
+          tail="none", coat=(162, 132, 96), mark=(100, 74, 50),
+          belly=(220, 200, 170), pat="tabby", eye=(190, 164, 76))),
+    ("ocicat", "Ocicat", R_UNCOMMON, "an accident in a Siamese programme",
+     "Spotted like a wild cat and soft as a cushion.",
+     "busy", "Opens the bathroom door and announces the fact.",
+     ("tawny", "chocolate", "silver", "blue"),
+     dict(size=1.14, body=1.0, facew=0.94, faceh=1.08, cheek=0.9,
+          ear=1.22, legs=1.3, fluff=0.08, coat=(196, 164, 108),
+          mark=(74, 56, 40), belly=(228, 206, 168), pat="spotted",
+          eye=(184, 174, 92), eyeshape="almond")),
+
+    # -- RARE ---------------------------------------------------------------
+    ("korat", "Korat", R_RARE, "Thailand, given in pairs for luck",
+     "Silver-blue, heart-faced, and never sold - only given.",
+     "lap", "Picks one person in the flat and treats the rest as weather.",
+     ("silver blue",),
+     dict(body=1.04, facew=1.14, faceh=0.94, cheek=1.1, ear=1.06, legs=0.98,
+          fluff=0.22, coat=(132, 146, 158), mark=(104, 118, 130),
+          belly=(166, 180, 192), pat="solid", eye=(142, 196, 140),
+          eyeshape="round")),
+    ("havana", "Havana Brown", R_RARE, "a London breeding programme",
+     "One colour only, and the whiskers are brown as well.",
+     "lap", "Puts a paw on your wrist while you are trying to type.",
+     ("chocolate",),
+     dict(body=1.1, facew=1.04, faceh=1.0, cheek=1.06, ear=1.04,
+          legs=1.0, fluff=0.18, coat=(110, 76, 56), mark=(74, 48, 34),
+          belly=(150, 114, 88), pat="solid", eye=(140, 196, 128),
+          eyeshape="round")),
+    ("burmilla", "Burmilla", R_RARE, "one unlocked door in 1981",
+     "A Burmese and a Chinchilla met by accident. This is the result.",
+     "groomer", "Keeps the silver immaculate and resents the floor.",
+     ("silver shaded", "golden", "blue"),
+     dict(body=0.94, facew=0.98, faceh=1.06, cheek=0.9, ear=1.16,
+          legs=1.2, fluff=0.5, coat=(216, 214, 210), mark=(126, 124, 128),
+          belly=(238, 238, 236),
+          pat="smoke", eye=(150, 190, 120), eyeshape="round")),
+    ("aussie", "Australian Mist", R_RARE, "Sydney, out of three breeds",
+     "Spots under a haze, like weather over a map.",
+     "lap", "Wants to be carried. Will wait by your feet until it is.",
+     ("brown mist", "blue", "gold", "peach"),
+     dict(body=1.22, facew=1.18, faceh=0.94, cheek=1.2, ear=0.92,
+          legs=0.88, fluff=0.28, coat=(188, 160, 124), mark=(118, 94, 70),
+          belly=(222, 202, 174),
+          pat="spotted", eye=(154, 192, 128), eyeshape="round")),
+    ("laperm", "LaPerm", R_RARE, "a cherry orchard in Oregon",
+     "Born bald, comes back in ringlets.",
+     "busy", "Sheds curls on everything and looks pleased about it.",
+     ("red curl", "silver", "chocolate", "blue"),
+     dict(body=1.0, facew=1.0, faceh=1.02, cheek=1.0, ear=1.14, legs=1.04,
+          fluff=0.74, curl=1.0, tail="plume", coat=(196, 142, 94),
+          mark=(136, 90, 56), belly=(226, 198, 168), pat="tabby",
+          eye=(178, 186, 110))),
+    ("cornish", "Cornish Rex", R_RARE, "a Cornish barn, 1950",
+     "No guard hairs at all. Feels like warm suede.",
+     "busy", "Runs the length of the flat for no stated reason.",
+     ("silver", "cream", "black", "blue"),
+     dict(size=0.94, body=0.8, facew=0.86, faceh=1.12, cheek=0.74, ear=1.5,
+          legs=1.24, fluff=0.1, curl=1.0, tail="whip", coat=(176, 172, 170),
+          mark=(118, 114, 114), belly=(212, 210, 208), pat="smoke",
+          eye=(186, 190, 118), eyeshape="round")),
+    ("germ", "German Rex", R_RARE, "a Berlin hospital garden",
+     "The older curl, and the steadier one.",
+     "lap", "Settles against your leg and goes off like a kettle.",
+     ("blue", "black", "cream"),
+     dict(body=0.98, facew=1.04, faceh=0.98, cheek=1.04, ear=1.18,
+          legs=1.0, fluff=0.3, curl=1.0, coat=(124, 134, 146),
+          mark=(92, 102, 114), belly=(162, 172, 184), pat="smoke",
+          eye=(188, 174, 88), eyeshape="round")),
+    ("wire", "American Wirehair", R_RARE, "one kitten in a New York barn",
+     "Every hair bent, including the whiskers. One barn, one cat, once.",
+     "shadow", "Takes the high shelf and watches the door from it.",
+     ("brown tabby", "silver", "red"),
+     dict(body=1.1, facew=1.1, cheek=1.12, ear=0.98, legs=1.0, fluff=0.36,
+          curl=1.0, coat=(146, 124, 98), mark=(92, 72, 52),
+          belly=(206, 190, 164), pat="tabby", eye=(192, 170, 82))),
+    ("somali", "Somali", R_RARE, "an Abyssinian with a long coat",
+     "A fox, if a fox were a cat and knew where the food was.",
+     "climber", "Is on top of the door. The door is open.",
+     ("ruddy", "red", "blue", "fawn"),
+     dict(size=1.02, body=0.96, facew=0.92, faceh=1.04, cheek=0.88,
+          ear=1.3, legs=1.2, fluff=0.8, tail="plume", coat=(180, 118, 68),
+          mark=(102, 60, 36), belly=(212, 160, 110), pat="ticked",
+          eye=(206, 164, 70), eyeshape="almond")),
+    ("thai", "Thai", R_RARE, "Wichien Maat, the original",
+     "The old Siamese, before anyone narrowed the face.",
+     "lap", "Tells the room about the weather at four in the morning.",
+     ("seal point", "blue", "chocolate"),
+     dict(body=1.0, facew=1.04, faceh=1.0, cheek=1.02, ear=1.14, legs=1.04,
+          fluff=0.16, tail="kink", coat=(228, 212, 186), mark=(76, 58, 54),
+          belly=(240, 228, 206), pat="point", eye=(104, 164, 212),
+          eyeshape="round")),
+    ("colour", "Colourpoint Shorthair", R_RARE, "a Siamese in sixteen colours",
+     "The points, in colours the registry argued about for years.",
+     "lap", "Has chosen the chair you were going to sit in.",
+     ("red point", "cream", "lilac", "chocolate"),
+     dict(body=0.88, facew=0.86, faceh=1.1, cheek=0.78, ear=1.32, legs=1.16,
+          fluff=0.12, tail="whip", coat=(234, 222, 200), mark=(190, 112, 74),
+          belly=(244, 236, 220), pat="point", eye=(108, 168, 214),
+          eyeshape="almond")),
+    ("sey", "Seychellois", R_RARE, "the islands, by way of a breeder",
+     "Points, and white thrown over the top like a sheet.",
+     "shadow", "Behind the curtain. Has been for some time.",
+     ("seal and white", "blue", "red"),
+     dict(size=1.0, body=0.86, facew=0.84, faceh=1.12, cheek=0.76, ear=1.36,
+          legs=1.18, fluff=0.14, tail="whip", coat=(240, 236, 228),
+          mark=(84, 64, 60), belly=(248, 246, 242), pat="van",
+          eye=(106, 166, 212), eyeshape="almond")),
+    ("ceylon", "Ceylon", R_RARE, "the hill country of Sri Lanka",
+     "Ticked sand with a ringed tail. Barely anyone has one.",
+     "hunter", "Hunts the stair rail at speed, nightly.",
+     ("sand ticked", "silver", "fawn"),
+     dict(size=0.94, body=0.9, facew=0.94, faceh=1.0, cheek=0.9, ear=1.18,
+          legs=1.08, fluff=0.1, coat=(206, 184, 146), mark=(128, 104, 74),
+          belly=(230, 216, 188), pat="ticked", eye=(176, 188, 110))),
+
+    # -- PEDIGREE -----------------------------------------------------------
+    ("peter", "Peterbald", R_PEDIGREE, "St Petersburg, 1994",
+     "Bald, or nearly, on the frame of an Oriental.",
+     "warmth", "Under the blanket within four seconds of it appearing.",
+     ("bare fawn", "blue", "chocolate"),
+     dict(size=1.0, body=0.78, facew=0.82, faceh=1.14, cheek=0.7, ear=1.52,
+          legs=1.26, fluff=0.0, skin=1.0, tail="whip", coat=(210, 174, 156),
+          mark=(176, 140, 124), belly=(224, 192, 176), pat="solid",
+          eye=(188, 196, 116), eyeshape="almond", nose=(190, 134, 130))),
+    ("donskoy", "Donskoy", R_PEDIGREE, "Rostov-on-Don",
+     "Bald by a different gene, and wrinkled with it.",
+     "warmth", "Sleeps on the router because it is warm.",
+     ("bare pink", "silver", "fawn"),
+     dict(body=0.92, facew=1.0, faceh=1.04, cheek=0.86, ear=1.36, legs=1.08,
+          fluff=0.0, skin=1.0, coat=(206, 166, 150), mark=(172, 132, 118),
+          belly=(220, 186, 170), pat="solid", eye=(196, 188, 112),
+          eyeshape="almond", nose=(188, 132, 128))),
+    ("bambino", "Bambino", R_PEDIGREE, "a Sphynx and a Munchkin",
+     "Bald and four inches off the ground.",
+     "busy", "Cannot get on the sofa. Has a plan about it.",
+     ("bare pink", "blue", "cream"),
+     dict(size=0.9, body=0.94, facew=0.96, faceh=1.02, cheek=0.8, ear=1.44,
+          legs=0.48, fluff=0.0, skin=1.0, coat=(208, 170, 154),
+          mark=(174, 136, 122), belly=(222, 190, 174), pat="solid",
+          eye=(192, 192, 114), eyeshape="almond", nose=(188, 132, 128))),
+    ("minskin", "Minskin", R_PEDIGREE, "Boston, out of four breeds",
+     "Bald body, furred points, short legs. Somebody meant this.",
+     "warmth", "Found the radiator on day one and has not left it.",
+     ("fawn point", "blue", "silver"),
+     dict(size=0.9, body=1.0, facew=1.0, faceh=1.0, cheek=0.9, ear=1.3,
+          legs=0.5, fluff=0.08, skin=0.6, coat=(216, 190, 168),
+          mark=(140, 108, 96), belly=(230, 208, 190), pat="point",
+          eye=(178, 190, 120), eyeshape="round")),
+    ("napoleon", "Minuet", R_PEDIGREE, "a Persian and a Munchkin",
+     "The flat face, three inches off the carpet.",
+     "sleeper", "Sleeps in the middle of the floor, in everyone's way.",
+     ("cream", "silver", "blue", "red"),
+     dict(size=0.96, body=1.18, facew=1.24, faceh=0.94, cheek=1.26, ear=0.74,
+          flat=0.8, legs=0.5, fluff=0.8, tail="plume", coat=(230, 212, 182),
+          mark=(180, 158, 128), belly=(242, 230, 208), pat="smoke",
+          eye=(214, 150, 62), eyeshape="round")),
+    ("kinkalow", "Kinkalow", R_PEDIGREE, "a Munchkin and an American Curl",
+     "Short legs, curled ears, and a complete lack of doubt.",
+     "busy", "Climbs what it cannot reach, slowly, and gets there.",
+     ("brown tabby", "cream", "black"),
+     dict(size=0.92, body=1.02, facew=1.02, cheek=1.0, ear=1.22,
+          earcurl=1.0, legs=0.5, fluff=0.36, coat=(164, 136, 104),
+          mark=(102, 78, 56), belly=(216, 198, 170), pat="tabby",
+          eye=(184, 174, 94))),
+    ("dwelf", "Dwelf", R_PEDIGREE, "three mutations in one cat",
+     "Bald, short-legged, curl-eared. There are not many.",
+     "warmth", "Is inside your dressing gown. It was on the hook.",
+     ("bare fawn", "silver", "blue"),
+     dict(size=0.88, body=0.94, facew=1.0, faceh=1.0, cheek=0.84, ear=1.38,
+          earcurl=1.0, legs=0.48, fluff=0.0, skin=1.0, coat=(206, 168, 152),
+          mark=(172, 134, 120), belly=(220, 188, 172), pat="solid",
+          eye=(190, 190, 112), eyeshape="round", nose=(188, 132, 128))),
+    ("foldex", "Foldex", R_PEDIGREE, "Quebec, out of an Exotic",
+     "The folded ear on the flat face. Round, and then rounder.",
+     "sleeper", "A loaf, on the warm side of the room, indefinitely.",
+     ("cream", "blue", "silver", "red"),
+     dict(size=1.04, body=1.2, facew=1.28, faceh=0.92, cheek=1.32,
+          fold=1.0, ear=0.72, flat=0.8, legs=0.88, fluff=0.5,
+          coat=(224, 206, 178), mark=(170, 150, 124), belly=(240, 228, 206),
+          pat="smoke", eye=(212, 152, 64), eyeshape="round")),
+    ("chantilly", "Chantilly-Tiffany", R_PEDIGREE, "thought extinct twice",
+     "Chocolate, long-coated, and twice given up for lost.",
+     "lap", "Sits beside you, not on you, and keeps up a commentary.",
+     ("chocolate", "blue", "cinnamon"),
+     dict(size=1.08, body=1.1, facew=1.04, faceh=1.0, cheek=1.04, ear=1.06,
+          fluff=0.88, tail="plume", legs=1.0, coat=(112, 80, 58),
+          mark=(74, 50, 34), belly=(166, 132, 104), pat="smoke",
+          eye=(204, 174, 76))),
+    ("york", "York Chocolate", R_PEDIGREE, "a farm in New York state",
+     "Chocolate, farm-bred, and nearly gone again.",
+     "hunter", "Patrols the hall at dusk with great seriousness.",
+     ("chocolate", "lilac", "white"),
+     dict(size=1.16, body=1.24, facew=1.14, faceh=0.96, cheek=1.18,
+          ear=0.94, fluff=0.72, tail="plume", legs=0.92,
+          coat=(104, 74, 56),
+          mark=(68, 46, 32), belly=(158, 126, 100), pat="solid",
+          eye=(198, 178, 84))),
+    ("ojos", "Ojos Azules", R_PEDIGREE, "a feral colony in New Mexico",
+     "Blue eyes on any colour of cat at all, which should not happen.",
+     "shadow", "Watches from the dark, and the eyes give it away.",
+     ("brown tabby", "black", "red"),
+     dict(body=1.18, facew=1.14, faceh=0.96, cheek=1.18, ear=0.92,
+          legs=0.9, fluff=0.44, coat=(138, 114, 88), mark=(86, 66, 48),
+          belly=(206, 188, 160), pat="tabby", eye=(96, 158, 222),
+          eyeshape="round")),
+
+    # -- CHAMPION -----------------------------------------------------------
+    ("cheetoh", "Cheetoh", R_CHAMPION, "an Ocicat and a Bengal",
+     "Spotted twice over, and it walks like something on a documentary.",
+     "hunter", "Stalks the hall rug in a crouch and means it.",
+     ("golden spotted", "silver", "charcoal"),
+     dict(size=1.16, body=1.1, facew=0.98, faceh=1.0, cheek=0.96, ear=1.0,
+          legs=1.2, fluff=0.08, coat=(206, 170, 100), mark=(54, 42, 34),
+          belly=(232, 210, 168), pat="spotted", eye=(186, 180, 94),
+          eyeshape="almond")),
+    ("highland", "Highlander", R_CHAMPION, "a curl and a jungle line",
+     "Curled ears, bobbed tail, and the shoulders of a prop forward.",
+     "busy", "Rearranges the room nightly and tells nobody.",
+     ("brown spotted", "silver", "charcoal"),
+     dict(size=1.2, body=1.26, facew=1.14, faceh=0.96, cheek=1.2, ear=1.1,
+          earcurl=1.0, legs=1.1, fluff=0.3, tail="bob",
+          coat=(176, 144, 102), mark=(70, 54, 40), belly=(218, 196, 164),
+          pat="spotted", eye=(196, 182, 96))),
+    ("kanaani", "Kanaani", R_CHAMPION, "Jerusalem, out of a desert cat",
+     "Half a wildcat by design, and it shows in the shoulders.",
+     "shadow", "Chooses the one spot in the room with a view of both doors.",
+     ("desert spotted", "silver", "cinnamon"),
+     dict(size=1.18, body=1.0, facew=0.92, faceh=1.08, cheek=0.86, ear=1.34,
+          legs=1.3, fluff=0.08, coat=(206, 186, 140), mark=(96, 76, 54),
+          belly=(230, 216, 184), pat="spotted", eye=(190, 196, 108),
+          eyeshape="almond")),
+    ("jungle", "Jungle Curl", R_CHAMPION, "a jungle cat and a curl",
+     "Wild lines, curled ears, and a great deal of leg.",
+     "climber", "Gets to the top of the door frame. Sits there.",
+     ("ticked bronze", "charcoal", "silver"),
+     dict(size=1.22, body=1.0, facew=0.9, faceh=1.1, cheek=0.84, ear=1.3,
+          earcurl=1.0, legs=1.34, fluff=0.1, coat=(166, 132, 86),
+          mark=(86, 62, 42), belly=(208, 184, 146), pat="ticked",
+          eye=(214, 186, 86), eyeshape="almond")),
+    ("mekong", "Mekong Bobtail", R_CHAMPION, "the old Siamese court cats",
+     "The points, and the kinked bobtail they were famous for.",
+     "lap", "Keeps one eye on you and both ears on the kitchen.",
+     ("seal point", "blue", "chocolate"),
+     dict(body=1.0, facew=1.0, faceh=1.02, cheek=0.98, ear=1.12, legs=1.1,
+          fluff=0.2, tail="bob", coat=(230, 216, 190), mark=(80, 60, 56),
+          belly=(242, 232, 212), pat="point", eye=(106, 166, 212),
+          eyeshape="almond")),
+    ("ural", "Ural Rex", R_CHAMPION, "the Urals, before the war",
+     "Waved coat, old line, and almost none of them left.",
+     "groomer", "Washes the wave back into place, over and over.",
+     ("blue and white", "black", "silver"),
+     dict(body=1.02, facew=1.04, faceh=1.0, cheek=1.02, ear=1.08, legs=1.02,
+          fluff=0.52, curl=1.0, coat=(128, 138, 150), mark=(238, 236, 232),
+          belly=(242, 240, 238), pat="bicolour", eye=(176, 186, 110))),
+    ("toybob", "Toybob", R_CHAMPION, "Rostov, and the size of a kitten",
+     "Stays kitten-sized its whole life. Weighs as much as a book.",
+     "lap", "Sleeps in a slipper. Fits, with room to spare.",
+     ("seal point", "silver", "cream"),
+     dict(size=0.74, body=0.92, facew=1.04, faceh=0.96, cheek=0.96,
+          ear=1.06, legs=0.9, fluff=0.22, tail="bob", coat=(228, 214, 190),
+          mark=(86, 66, 62), belly=(240, 230, 212), pat="point",
+          eye=(110, 164, 210), eyeshape="round")),
+
+    # -- LEGEND -------------------------------------------------------------
+    ("sokoke2", "Khadzonzo", R_LEGEND, "the Arabuko-Sokoke forest",
+     "The forest name for the forest cat, from before it was a breed.",
+     "hunter", "Hunts the same circuit of the flat every single night.",
+     ("brown blotched", "silver"),
+     dict(size=1.0, body=0.82, facew=0.9, faceh=1.02, cheek=0.8, ear=1.08,
+          legs=1.32, fluff=0.04, tail="whip", coat=(174, 138, 98),
+          mark=(72, 52, 38), belly=(204, 174, 134), pat="blotched",
+          eye=(178, 182, 108), eyeshape="almond")),
+    ("suphalak", "Suphalak", R_LEGEND, "a Thai poem about cats",
+     "Solid copper, named in a manuscript six hundred years old.",
+     "lap", "Follows the sun round the flat and takes you with it.",
+     ("copper",),
+     dict(body=1.16, facew=1.12, faceh=0.94, cheek=1.14, ear=0.96,
+          legs=0.94, fluff=0.1, coat=(146, 84, 48), mark=(100, 54, 28),
+          belly=(190, 126, 80), pat="solid", eye=(212, 170, 68),
+          eyeshape="almond")),
+    ("ninja", "Sam Sawet", R_LEGEND, "a Thai village, unregistered",
+     "The grey one from the poem that nobody has standardised.",
+     "shadow", "Is in the room. You will find out later.",
+     ("smoke grey", "charcoal"),
+     dict(size=0.94, body=0.88, facew=1.0, faceh=1.0, cheek=0.96,
+          ear=1.12, legs=1.04, fluff=0.26, tail="kink",
+          coat=(104, 102, 106), mark=(66, 64, 68),
+          belly=(146, 144, 148), pat="smoke", eye=(176, 194, 126),
+          eyeshape="almond")),
+    ("elf", "Elf Cat", R_LEGEND, "a Sphynx and an American Curl",
+     "Bald, with the ears turned back. Perhaps two hundred exist.",
+     "warmth", "Is in the airing cupboard. The door was shut.",
+     ("bare fawn", "blue", "silver"),
+     dict(size=1.0, body=0.86, facew=0.94, faceh=1.06, cheek=0.74, ear=1.5,
+          earcurl=1.0, legs=1.1, fluff=0.0, skin=1.0, coat=(208, 168, 152),
+          mark=(174, 134, 120), belly=(222, 190, 172), pat="solid",
+          eye=(196, 192, 112), eyeshape="almond", nose=(188, 132, 128))),
+
+    # -- FOUNDATION ---------------------------------------------------------
+    ("caracat", "Caracat", R_FOUNDATION, "a caracal and a very long argument",
+     "A caracal crossed into a house cat. The registries are not speaking.",
+     "hunter", "Takes the top of the wardrobe in one go, from the floor.",
+     ("desert tawny", "charcoal"),
+     dict(size=1.34, body=1.08, facew=0.9, faceh=1.14, cheek=0.86, ear=1.6,
+          tuft=1.0, legs=1.44, fluff=0.1, coat=(196, 154, 104),
+          mark=(78, 58, 42), belly=(224, 198, 158), pat="ticked",
+          eye=(216, 184, 80), eyeshape="almond")),
+    ("genetta", "Genetta", R_FOUNDATION, "a genet, in outline only",
+     "Short legs, long spotted body, and a tail twice the cat.",
+     "shadow", "Pours itself under the door gap and is gone.",
+     ("spotted silver", "charcoal", "gold"),
+     dict(size=1.0, body=1.16, facew=0.94, faceh=1.0, cheek=0.9, ear=1.16,
+          legs=0.46, fluff=0.1, tail="whip", coat=(190, 182, 164),
+          mark=(58, 54, 52), belly=(222, 216, 202), pat="spotted",
+          eye=(188, 186, 104), eyeshape="almond")),
+)
+
+
+def _build_more():
+    out = []
+    for key, name, rar, origin, note, temper, habit, coats, look in _MORE:
+        out.append(Breed(key, name, rar, origin, note, L(**look), temper,
+                         habit, coats))
+    return tuple(out)
+
+
+# The book, in tier order, which is the order the binder reads in.
+BREEDS = tuple(sorted(BREEDS + _build_more(),
+                      key=lambda b: (b.rarity, b.name)))
+
+
+# ---------------------------------------------------------------------------
+# THE ONES THAT ARE NOT IN THE CATALOGUE
+#
+# Five cats the shop has never heard of and will never send. They turn up
+# at the front door instead, one at a time, with a long wait between
+# them, and they do not appear in the binder at all until the first one
+# is standing on the mat. Nothing about the shop, the packs, the odds or
+# the ending counts them: the binder is still thirty-six, and these are
+# whatever else happened while you were filling it.
+#
+# The first is somebody's actual cat, drawn from a photograph.
+# ---------------------------------------------------------------------------
+SECRETS = (
+    Breed("kam", "Kucing Kampung", R_UNLISTED, "a doorway in Jakarta",
+          "Walked in off the step, looked round once, and stayed.",
+          L(size=1.02, body=0.98, facew=1.02, faceh=1.02, cheek=0.98,
+            ear=1.18, legs=1.08, fluff=0.18, tail="plain",
+            coat=(150, 136, 112), mark=(84, 74, 60), belly=(248, 246, 242),
+            pat="tabbywhite", eye=(152, 176, 108), eyeshape="round",
+            nose=(186, 128, 124), collar=(230, 138, 162)),
+          "lap",
+          "Sits just inside the door, facing out, in case of weather.",
+          ("tabby and white", "silver", "red")),
+    Breed("chp", "The Chip Shop Cat", R_UNLISTED, "the queue, every Friday",
+          "Belongs to the street. Is fed by the whole of it.",
+          L(size=1.16, body=1.3, facew=1.14, faceh=0.94, cheek=1.26,
+            ear=0.86, legs=0.84, fluff=0.4, coat=(206, 146, 78),
+            mark=(150, 94, 44), belly=(238, 214, 182), pat="tabby",
+            eye=(200, 170, 70), eyeshape="round"),
+          "glutton",
+          "Has four homes and eats at all of them.",
+          ("marmalade", "cream", "charcoal")),
+    Breed("dck", "The Dockyard Tom", R_UNLISTED, "the container port",
+          "One ear short, one eye narrowed, and entirely in charge.",
+          L(size=1.1, body=1.18, facew=1.2, faceh=0.96, cheek=1.3, ear=0.92,
+            legs=1.0, fluff=0.22, coat=(108, 106, 104), mark=(66, 64, 64),
+            belly=(156, 154, 152), pat="tabby", eye=(198, 162, 66),
+            eyeshape="almond"),
+          "shadow",
+          "Walks the whole flat at three in the morning. Checking.",
+          ("storm grey", "charcoal", "silver")),
+    Breed("lib", "The Library Cat", R_UNLISTED, "between the shelves",
+          "Sleeps on whatever you were about to read.",
+          L(size=1.0, body=1.02, facew=1.0, faceh=1.06, cheek=1.0, ear=1.1,
+            legs=1.0, fluff=0.82, tail="plume", coat=(94, 88, 96),
+            mark=(236, 232, 226), belly=(240, 236, 230), pat="bicolour",
+            eye=(140, 186, 150), eyeshape="round"),
+          "sleeper",
+          "Chooses the warmest lap in the room and does not negotiate.",
+          ("ink and paper", "charcoal", "silver")),
+    Breed("nbs", "The Night Bus Cat", R_UNLISTED, "the last bus, every night",
+          "Gets on at the terminus. Nobody knows where it gets off.",
+          L(size=1.04, body=0.9, facew=0.94, faceh=1.06, cheek=0.86,
+            ear=1.3, legs=1.22, fluff=0.12, coat=(54, 52, 56),
+            mark=(36, 34, 38), belly=(78, 76, 82), pat="smoke",
+            eye=(232, 196, 92), eyeshape="almond"),
+          "shadow",
+          "Is in the room. Was not in the room. Is in the room again.",
+          ("midnight", "charcoal", "smoke")),
+)
+
+ALL_BREEDS = BREEDS + SECRETS
+BY_KEY = {b.key: b for b in ALL_BREEDS}
+BY_RARITY = tuple(tuple(b for b in BREEDS if b.rarity == r)
+                  for r in range(SOLD_RARITIES))
 
 
 # ---------------------------------------------------------------------------
@@ -1202,6 +1853,21 @@ def _shapes_sit(P, w, h):
     return out
 
 
+# A hundred breeds will not fit through the handful of knobs that held
+# forty: squeeze them all through the same ones and the silhouettes start
+# landing on top of each other whatever the numbers say. A tail is a
+# quarter of an outline on its own, so there are seven of them now.
+#
+#   none   nothing at all        pom    a ball (the Japanese Bobtail)
+#   bob    a short thick stub    kink   a long one with a hook in it
+#   plain  the ordinary one      whip   long and very thin
+#   plume  long and very thick
+TAIL_LEN = {"plain": 1.0, "plume": 1.0, "whip": 1.18, "kink": 1.0,
+            "bob": 0.40}
+TAIL_FAT = {"plain": 1.0, "plume": 1.5, "whip": 0.58, "kink": 0.9,
+            "bob": 1.5}
+
+
 def _bell(P, w, h):
     """The two sides of the sitting body, and where its base is.
 
@@ -1243,24 +1909,29 @@ def _tail_path(P, w, h, pose="sit"):
     body, fluff, tail = P["body"], P["fluff"], P["tail"]
     if tail in ("none", "pom"):
         return []
+    fat = TAIL_FAT.get(tail, 1.0)
+    run = TAIL_LEN.get(tail, 1.0)
     out = []
     if pose == "curl":
-        thick = h * (0.05 + 0.04 * fluff) * (1.45 if tail == "plume" else 1.0)
+        thick = h * (0.05 + 0.04 * fluff) * fat
         n = 18
         for i in range(n):
             f = i / (n - 1)
-            a = -0.10 + f * 2.7
+            a = -0.10 + f * 2.7 * run
             out.append((w * (0.56 + 0.37 * math.cos(a)),
                         h * (0.74 + 0.26 * math.sin(a)),
                         thick * (0.6 + 0.4 * (1 - f))))
         return out
-    thick = h * (0.028 + 0.026 * fluff) * (1.5 if tail == "plume" else 1.0)
+    thick = h * (0.028 + 0.026 * fluff) * fat
     n = 22
     for i in range(n):
         f = i / (n - 1)
-        a = -0.35 + f * 2.2
+        a = -0.35 + f * 2.2 * run
         tx = w * 0.5 + w * (0.19 * body + 0.155 * math.sin(a))
-        ty = h * (0.90 - 0.48 * f ** 1.2)
+        ty = h * (0.90 - 0.48 * run * f ** 1.2)
+        if tail == "kink" and f > 0.82:      # the hook in the end
+            tx += w * 0.10 * (f - 0.82) / 0.18
+            ty += h * 0.05 * (f - 0.82) / 0.18
         out.append((tx, ty, thick * (0.60 + 0.40 * (1 - f * 0.5))))
     return out
 
@@ -1350,11 +2021,12 @@ def _tail_path_stand(P, w, h):
     if P["tail"] in ("none", "pom"):
         return []
     leg, bh, top, back, body = _stand_metrics(P, w, h)
-    thick = h * (0.028 + 0.024 * P["fluff"]) * \
-        (1.5 if P["tail"] == "plume" else 1.0)
+    fat = TAIL_FAT.get(P["tail"], 1.0)
+    run = TAIL_LEN.get(P["tail"], 1.0)
+    thick = h * (0.028 + 0.024 * P["fluff"]) * fat
     p0 = (body.x + w * 0.03, top + bh * 0.42)
-    p1 = (body.x - w * 0.16, top + bh * 0.10)
-    p2 = (body.x - w * 0.06, top - h * 0.24)
+    p1 = (body.x - w * 0.16 * run, top + bh * 0.10)
+    p2 = (body.x - w * 0.06 * run, top - h * 0.24 * run)
     out = []
     for i in range(20):
         f = i / 19
@@ -1513,6 +2185,11 @@ def _stand_marks(surf, P, w, h, hb, rng):
                 pygame.draw.ellipse(surf, P["belly"],
                                     (w * lx - w * 0.014, h - leg * 0.2,
                                      w * 0.086, leg * 0.22))
+    elif pat == "tabbywhite":
+        P2 = dict(P)
+        P2["pat"] = "tabby"
+        _stand_marks(surf, P2, w, h, hb, rng)
+        _stand_marks_white(surf, dict(P, mark=P["belly"]), w, h, hb)
     elif pat == "van":
         _marks_van(surf, P, w, h, hb, rng, "stand")
     elif pat == "bicolour":
@@ -1888,7 +2565,42 @@ def _marks_solid(surf, P, w, h, hb, rng, pose='sit'):
     _belly_wash(surf, P, w, h, 95)
 
 
+def _marks_tabbywhite(surf, P, w, h, hb, rng, pose='sit'):
+    """Stripes, and then the white over the top of them.
+
+    The commonest cat in the world and the one pattern the table could
+    not make: bicolour paints white over a plain coat, tabby draws
+    stripes on one, and a cat off a doorstep is both at once. The white
+    comes from the belly colour so the stripes can keep the mark colour.
+    """
+    _marks_tabby(surf, P, w, h, hb, rng, pose)
+    white = dict(P)
+    white["mark"] = P["belly"]
+    if pose == "stand":
+        _stand_marks_white(surf, white, w, h, hb)
+    else:
+        _marks_bicolour(surf, white, w, h, hb, rng, pose)
+
+
+def _stand_marks_white(surf, P, w, h, hb):
+    c = P["mark"]
+    leg, bh, top, back, body = _stand_metrics(P, w, h)
+    s2 = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.ellipse(s2, (*c, 255), (body.x + body.w * 0.08,
+                                        body.centery - bh * 0.04,
+                                        body.w * 0.82, bh * 0.60))
+    for lx in (0.24, 0.30, 0.58, 0.64):
+        pygame.draw.ellipse(s2, (*c, 255), (w * lx - w * 0.014,
+                                            h - leg * 0.40,
+                                            w * 0.086, leg * 0.42))
+    pygame.draw.ellipse(s2, (*c, 255), (hb.x + hb.w * 0.40,
+                                        hb.y + hb.h * 0.44,
+                                        hb.w * 0.64, hb.h * 0.62))
+    surf.blit(s2, (0, 0))
+
+
 _MARKS = {"tabby": _marks_tabby, "blotched": _marks_blotched,
+          "tabbywhite": _marks_tabbywhite,
           "spotted": _marks_spotted, "ticked": _marks_ticked,
           "point": _marks_point, "gloves": _marks_gloves,
           "bicolour": _marks_bicolour, "tortie": _marks_tortie,
@@ -2058,7 +2770,10 @@ def _collar(surf, P, w, h, hb, pose, level, acc, head_prims=()):
         return
     # Leather first, rarity second. Taking the rarity colour straight
     # gave the uncommon breeds a green strap, which reads as a fish.
-    col = mix(RUG, acc, 0.30)
+    # A breed may name its own colour instead, and then it is worn as
+    # given - somebody chose it in a shop rather than the house buying
+    # another brown strap.
+    col = P.get("collar") or mix(RUG, acc, 0.30)
     lip = mix(col, CREAM, 0.42)
     band = pygame.Surface((w, h), pygame.SRCALPHA)
 
@@ -2426,40 +3141,40 @@ class Pack:
 
 
 PACKS = (
-    Pack("sack", "Paper Sack of Strays", 10, 2, (86, 13, 1, 0, 0), 25,
+    Pack("sack", "Paper Sack of Strays", 10, 2, (86, 13, 1, 0, 0, 0, 0), 25,
          R_COMMON,
          "Two cards in a paper sack, folded over twice and stapled. "
          "Mostly the cats you could meet on the way to the shop.",
          (("vastly better than the bin it came from", 4),
           ("one was damp. still a cat.", 3))),
-    Pack("box", "Shelf Box", 25, 3, (56, 33, 10, 1, 0), 55,
+    Pack("box", "Shelf Box", 25, 3, (56, 33, 10, 1, 0, 0, 0), 55,
          R_COMMON,
          "Three cards in a proper box with a window in the lid. The kind "
          "of thing a corner shop keeps by the till.",
          (("the lid window is a nice touch", 5),
           ("got a Russian Blue first go. no notes.", 5),
           ("three commons. the dice do what they like.", 3))),
-    Pack("case", "Pedigree Case", 85, 5, (30, 38, 24, 7, 1), 90,
+    Pack("case", "Pedigree Case", 85, 5, (30, 37, 24, 7, 1, 1, 0), 90,
          R_UNCOMMON,
          "Five cards in a hinged case with a felt tray, and a guarantee "
          "printed inside the lid: nothing in here is quite ordinary.",
          (("the felt smells like a library", 5),
           ("bought six. opened six. no regrets, slight debt.", 4))),
-    Pack("crate", "Breeders Crate", 250, 9, (10, 32, 36, 18, 4), 140,
+    Pack("crate", "Breeders Crate", 250, 9, (10, 32, 34, 16, 5, 3, 0), 140,
          R_RARE,
          "Nine cards, wood wool, and a crowbar you are expected to own. "
          "One card in here is rare or better. It says so on the lid.",
          (("arrived with actual straw in it", 5),
           ("my Bengal came out of one of these", 5),
           ("the crowbar is not included, which they do say", 4))),
-    Pack("lot", "The Estate Lot", 600, 15, (0, 17, 38, 33, 12), 200,
+    Pack("lot", "The Estate Lot", 600, 15, (0, 17, 34, 26, 12, 10, 1), 200,
          R_PEDIGREE,
          "Fifteen cards from a collection being broken up. No commons at "
          "all, and the last card is pedigree or legend. Sold as seen.",
          (("the whole binder in four orders. rude.", 5),
           ("Khao Manee. I had to sit down.", 5),
           ("expensive. correct, but expensive.", 4))),
-    Pack("shelf", "The Whole Shelf", 1500, 34, (0, 10, 34, 38, 18), 300,
+    Pack("shelf", "The Whole Shelf", 1500, 34, (0, 10, 30, 28, 16, 14, 2), 300,
          R_PEDIGREE,
          "Somebody has died and the whole shelf is being sold in one go. "
          "Thirty-four cards, nothing ordinary in it, and a long wait.",
@@ -2468,13 +3183,13 @@ PACKS = (
           ("the box is enormous. the cat sleeps in it now.", 5))),
 
     # ---- the other page: four things that are not on the ladder -------
-    Pack("bin", "The Returns Bin", 60, 8, (62, 38, 0, 0, 0), 70, R_COMMON,
+    Pack("bin", "The Returns Bin", 60, 8, (62, 38, 0, 0, 0, 0, 0), 70, R_COMMON,
          "Eight cards somebody else sent back. Ordinary cats, by the "
          "handful, and nothing above uncommon has ever been found in one.",
          (("it is exactly what it says it is", 4),
           ("six domestic shorthairs. I needed six domestic shorthairs.", 5)),
          shelf="special"),
-    Pack("swatch", "The Swatch Book", 450, 6, (26, 34, 24, 12, 4), 120,
+    Pack("swatch", "The Swatch Book", 450, 6, (26, 34, 22, 10, 4, 3, 1), 120,
          R_UNCOMMON,
          "Six cards chosen for their COLOUR. The house picks coats you "
          "have not seen before, wherever it still can.",
@@ -2482,14 +3197,14 @@ PACKS = (
           ("the only way I finished the Ragdoll page", 5),
           ("pricey for what it is, unless you need what it is", 4)),
          shelf="special", fresh_coats=True),
-    Pack("odd", "The Oddity Crate", 900, 4, (10, 26, 34, 22, 8), 150, R_RARE,
+    Pack("odd", "The Oddity Crate", 900, 4, (10, 26, 30, 18, 8, 7, 1), 150, R_RARE,
          "Four cards the sorters set aside and could not say why. Shinies "
          "turn up in here eight times as often as they do anywhere else.",
          (("two shinies out of nine crates. I am not complaining.", 5),
           ("nine crates.", 3),
           ("my snow Bengal came out of one of these", 5)),
          shelf="special", shiny_mult=8.0),
-    Pack("single", "The Single", 1800, 1, (0, 0, 0, 0, 1), 180, R_LEGEND,
+    Pack("single", "The Single", 1800, 1, (0, 0, 0, 0, 0, 9, 1), 180, R_LEGEND,
          "One card in a stiff sleeve, and it is a legend. Which legend is "
          "not something the shop is prepared to discuss beforehand.",
          (("expensive. certain. I have bought four.", 5),
@@ -2510,6 +3225,60 @@ SHIPPING = (
     ("track", "Tracked courier", 0.12, 0.60, "a van, and a number to watch"),
     ("cab", "Same-hour cab", 0.45, 0.33, "someone drives it over now"),
 )
+# ---------------------------------------------------------------------------
+# THINGS FOR THE FLAT
+#
+# The other half of the website: eight things that are not cards. Each
+# one is bought once, costs more than the last, turns up in a room where
+# you can see it, and makes every cat in the flat earn a little more -
+# which is the honest version of what they are for. A warm, fed, amused
+# cat earns its keep; that is the whole economy of this game stated as a
+# piece of furniture.
+#
+#   where   the room it appears in, so buying one changes the view
+#   gain    added to the income multiplier, which starts at 1.0
+# ---------------------------------------------------------------------------
+class Upgrade:
+    __slots__ = ("key", "name", "price", "gain", "where", "blurb")
+
+    def __init__(self, key, name, price, gain, where, blurb):
+        self.key = key
+        self.name = name
+        self.price = price
+        self.gain = gain
+        self.where = where
+        self.blurb = blurb
+
+
+UPGRADES = (
+    Upgrade("bowlmat", "A Proper Feeding Mat", 120, 0.04, "cats",
+            "Wipe-clean, slightly too large, and the bowls stop sliding "
+            "across the floor at six in the morning."),
+    Upgrade("fountain", "The Water Fountain", 420, 0.06, "cats",
+            "Running water, which they will drink from in preference to "
+            "the bowl you filled thirty seconds ago."),
+    Upgrade("rug", "A Thicker Rug", 1100, 0.07, "study",
+            "Wool, and deep enough to knead. The desk chair no longer "
+            "squeaks on the boards either."),
+    Upgrade("radcover", "A Radiator Shelf", 2600, 0.09, "hall",
+            "A plank and two brackets over the hall radiator, which is "
+            "all a cat has ever wanted from carpentry."),
+    Upgrade("perch", "The Window Catio", 6500, 0.11, "cats",
+            "A box of a balcony on the cat room window. They sit in it "
+            "and watch the street like a pair of magistrates."),
+    Upgrade("heatbed", "A Heated Bed", 15000, 0.13, "cats",
+            "Thermostatic, washable, and warmer than you are, which "
+            "settles a long-running argument about laps."),
+    Upgrade("gramo", "The Gramophone", 40000, 0.16, "study",
+            "Plays something slow in the corner. The whole flat sleeps "
+            "better, including you."),
+    Upgrade("skylight", "A Skylight", 95000, 0.20, "cats",
+            "Somebody comes and cuts a hole in the roof. The sun moves "
+            "across the floor all day and they follow it round."),
+)
+BY_UPGRADE = {u.key: u for u in UPGRADES}
+
+
 MAX_IN_TRANSIT = 4
 
 # The post will carry four parcels at a time, and no amount of money
@@ -2548,6 +3317,9 @@ def ship_time(pack, mode, qty=1):
 # ---------------------------------------------------------------------------
 # THE RUN
 # ---------------------------------------------------------------------------
+FIRST_STRAY = 330.0        # seconds of play before the first one comes
+STRAY_GAP = (520.0, 820.0)  # ... and how long between the ones after it
+
 SAVE_NAME = "catalogue.json"
 OFFLINE_CAP = 2 * 3600          # the most the cats will earn while away
 START_MONEY = 10.0              # exactly one Paper Sack, which is the point
@@ -2658,18 +3430,36 @@ class State:
         self.sound = True
         self.seen_end = False
         self.club = 0               # memberships bought, 0 to 3
+        self.things = set()         # furnishings bought for the flat
+        self.stray = None           # a cat on the mat, waiting to be let in
+        self.stray_t = FIRST_STRAY
+        self.strays = 0             # how many have been taken in
         self.area = "study"         # the room you were last standing in
         self.away = 0.0             # what the cats earned while you were out
 
     # -- the numbers --------------------------------------------------------
     @property
+    def comfort(self):
+        """What the flat adds to every cat in it. 1.0 is bare boards."""
+        return 1.0 + sum(BY_UPGRADE[k].gain for k in self.things
+                         if k in BY_UPGRADE)
+
+    @property
     def income(self):
-        return sum(BY_KEY[k].rate_at(c.level) * (SHINY_BONUS if c.shiny else 1)
-                   for k, c in self.cards.items())
+        raw = sum(BY_KEY[k].rate_at(c.level) * (SHINY_BONUS if c.shiny else 1)
+                  for k, c in self.cards.items())
+        return raw * self.comfort
 
     @property
     def owned(self):
-        return len(self.cards)
+        """Breeds from the CATALOGUE. The strays are counted on their own,
+        or thirty-two listed breeds and five cats off the street would
+        add up to a finished binder."""
+        return sum(1 for k in self.cards if BY_KEY[k].rarity != R_UNLISTED)
+
+    @property
+    def strays_owned(self):
+        return sum(1 for k in self.cards if BY_KEY[k].rarity == R_UNLISTED)
 
     @property
     def slots(self):
@@ -2678,7 +3468,8 @@ class State:
 
     @property
     def retired(self):
-        return sum(1 for c in self.cards.values() if c.maxed)
+        return sum(1 for k, c in self.cards.items()
+                   if c.maxed and BY_KEY[k].rarity != R_UNLISTED)
 
     @property
     def complete(self):
@@ -2745,6 +3536,52 @@ class State:
         self.orders.append(o)
         return o
 
+    def stray_tick(self, dt, rng):
+        """Is there a cat at the door? Returns its key the moment there is.
+
+        One at a time, and it does not leave: a cat you have not noticed
+        yet is still a cat on the mat when you next walk through the hall.
+        """
+        if self.stray:
+            return None
+        self.stray_t -= dt
+        if self.stray_t > 0:
+            return None
+        new = [b.key for b in SECRETS if b.key not in self.cards]
+        pool = new or [b.key for b in SECRETS if b.key in self.cards]
+        if not pool:
+            self.stray_t = STRAY_GAP[1]
+            return None
+        self.stray = rng.choice(pool)
+        return self.stray
+
+    def take_in(self, rng):
+        """Let it in. Returns (breed, kind, level) or None."""
+        key = self.stray
+        if key is None or key not in BY_KEY:
+            return None
+        b = BY_KEY[key]
+        card = self.cards.get(key)
+        if card is None:
+            self.cards[key] = Card()
+            out = (b, "new", 1)
+        else:
+            lv = card.add_dupe()
+            out = (b, "level" if lv else "dupe", card.level)
+        self.stray = None
+        self.stray_t = rng.uniform(*STRAY_GAP)
+        self.strays += 1
+        return out
+
+    def buy_thing(self, up):
+        """Buy a furnishing. They are one-offs, and they never come out."""
+        if up.key in self.things or up.price > self.money + 1e-6:
+            return False
+        self.money -= up.price
+        self.spent += up.price
+        self.things.add(up.key)
+        return True
+
     def join_club(self):
         """Buy the next membership, if there is one and it is affordable."""
         if self.club >= len(CLUB):
@@ -2774,7 +3611,7 @@ class State:
         if last:
             for r in range(pack.floor):
                 weights[r] = 0
-        pool = [(r, weights[r]) for r in range(5)
+        pool = [(r, weights[r]) for r in range(SOLD_RARITIES)
                 if r in live and weights[r] > 0]
         sub = False
         if not pool:
@@ -2846,6 +3683,10 @@ class State:
             "sound": self.sound,
             "seen_end": self.seen_end,
             "club": self.club,
+            "things": sorted(self.things),
+            "stray": self.stray,
+            "stray_t": round(self.stray_t, 1),
+            "strays": self.strays,
             "area": self.area,
             "stamp": time.time(),
         }
@@ -2883,6 +3724,11 @@ class State:
         s.sound = bool(d.get("sound", True))
         s.seen_end = bool(d.get("seen_end", False))
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
+        s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
+        st_key = d.get("stray")
+        s.stray = st_key if st_key in BY_KEY else None
+        s.stray_t = float(d.get("stray_t", FIRST_STRAY))
+        s.strays = int(d.get("strays", 0))
         s.area = d.get("area") if d.get("area") in AREAS else "study"
 
         # What happened while the game was shut. The cats went on earning,
@@ -3248,9 +4094,15 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
     grade = 4 if maxed else grade_of(level)
     # better paper as it goes: a stray comes on card, a retired breed
     # comes on something you would frame
-    stock = mix(PAPER, acc, 0.05 + 0.02 * grade)
-    if grade >= 3:
-        stock = mix(stock, LAMP, 0.05 + 0.05 * (grade - 3))
+    if breed.rarity == R_UNLISTED:
+        # Not printed on paper at all. The catalogue has no card for
+        # these, so the ones you end up with are black stock and silver
+        # ink, and they do not sit in the grid with the rest.
+        stock = mix(INK, acc, 0.10 + 0.02 * grade)
+    else:
+        stock = mix(PAPER, acc, 0.05 + 0.02 * grade)
+        if grade >= 3:
+            stock = mix(stock, LAMP, 0.05 + 0.05 * (grade - 3))
     panel(surf, rect, stock, None, radius=7)
     inner = rect.inflate(-10, -10)
     _card_frame(surf, rect, inner, acc, stock, grade, maxed)
@@ -3324,18 +4176,23 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
         pygame.draw.rect(surf, mix(stock, acc, 0.16), plate, border_radius=4)
         pygame.draw.rect(surf, mix(stock, acc, 0.42), plate, width=1,
                          border_radius=4)
+    # black stock needs silver ink; the paper colours vanish on it
+    dark = breed.rarity == R_UNLISTED
+    ink = mix(CREAM, acc, 0.3) if dark else mix(INK, acc, 0.22)
+    quiet = mix(CREAM, acc, 0.5) if dark else mix(INK, acc, 0.4)
+    faint = mix(CREAM, INK, 0.5) if dark else mix(INK, acc, 0.3)
     text(surf, breed.name, fit(breed.name, 17, inner.w - 6),
-         (rect.centerx, name_y + 8), mix(INK, acc, 0.22), center=True,
-         shadow=False)
+         (rect.centerx, name_y + 8), ink, center=True, shadow=False)
     hairline(surf, inner.x + 8, row_y - 3, inner.right - 8,
              mix(INK, acc, 0.5), 60)
     text(surf, rarity_name(breed.rarity), 11 if not compact else 9,
          (inner.x + 4, row_y + (2 if compact else 0)),
-         mix(INK, acc, 0.45), kind="mono", shadow=False,
+         mix(CREAM, acc, 0.5) if breed.rarity == R_UNLISTED
+         else mix(INK, acc, 0.45), kind="mono", shadow=False,
          max_w=inner.w - (56 if show_rate else 8))
     if show_rate and not compact:
         text(surf, rate(breed.rate_at(level)), 11,
-             (inner.right - 4, row_y + 6), mix(INK, acc, 0.3), right=True,
+             (inner.right - 4, row_y + 6), faint, right=True,
              kind="mono", shadow=False)
 
     if compact:
@@ -3346,15 +4203,23 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
         pygame.draw.rect(surf, mix(acc, INK, 0.35), ban, width=1,
                          border_radius=3)
         text(surf, "RETIRED", 11, (rect.centerx, sub_y + 6),
-             mix(INK, acc, 0.25), center=True, kind="mono", shadow=False)
+             mix(CREAM, acc, 0.4) if dark else mix(INK, acc, 0.25),
+             center=True, kind="mono", shadow=False)
     else:
-        if len(breed.coats) > 1 or shiny:
+        # The coat name needs room it does not have on a binder card:
+        # at 118 pixels wide there are fifty left after the dupe count,
+        # and "black and white" does not go in fifty whatever size it is
+        # shrunk to. Below that width the count wins - it is the one that
+        # changes - and the name is on the card when you open it.
+        if (len(breed.coats) > 1 or shiny) and inner.w >= 150:
             text(surf, coat_name(breed, variant, shiny, full=shiny), 11,
-                 (inner.x + 4, sub_y), mix(INK, LAMP if shiny else acc, 0.35),
+                 (inner.x + 4, sub_y),
+                 mix(CREAM, LAMP if shiny else acc, 0.45) if dark
+                 else mix(INK, LAMP if shiny else acc, 0.35),
                  kind="mono", shadow=False, max_w=inner.w - 58)
         if level < MAX_LEVEL:
             text(surf, f"{dupes} of {dupes_for(level)}", 11,
-                 (inner.right - 4, sub_y + 6), mix(INK, acc, 0.4),
+                 (inner.right - 4, sub_y + 6), quiet,
                  right=True, kind="mono", shadow=False)
 
     # the level, as ten pips along the foot of the card
@@ -3659,6 +4524,7 @@ BINDER_R = pygame.Rect(680, 352, 214, 92)
 HALL_FLOOR = 524
 DOOR_R = pygame.Rect(424, 104, 318, 462)
 MAT_R = pygame.Rect(410, 568, 346, 104)
+STRAY_AT = (892, 700)        # beside the mat, out of the way of the post
 
 # ---------------------------------------------------------------------------
 # THE CAT ROOM
@@ -3716,6 +4582,15 @@ ROOM_SPOTS = (
     ("floor", 1802, 732, 1, 134, "the floorboards"),
     ("post", TREE2_X - 58, 548, 1, 130, "the scratching post"),
     ("perch", 1872, 232, -1, 106, "the bookshelf"),
+    # Twelve residents and two patches of open floor meant a shadow
+    # could never prowl and a lap cat could never just sit: there was
+    # nowhere to do it. The room is two thousand pixels wide; it can
+    # spare some floor.
+    ("floor", 352, 742, 1, 136, "the middle of the room"),
+    ("floor", 1180, 736, -1, 134, "the boards by the door"),
+    ("floor", 1456, 744, 1, 132, "in front of the chair"),
+    ("chair", 1660, 604, -1, 130, "the arm of the chair"),
+    ("bed", 1116, 700, 1, 136, "the folded blanket"),
 )
 
 ACT_POSE = {"sleep": "curl", "loaf": "sit", "sit": "sit", "watch": "sit",
@@ -4101,6 +4976,15 @@ def _catroom(surf, state, t):
     _rug(surf, pygame.Rect(120, 626, 420, 150), mix(RUG, WOOD, 0.3))
     _rug(surf, pygame.Rect(760, 640, 500, 170), mix(RUG, EMBER, 0.12))
     _rug(surf, pygame.Rect(1560, 636, 420, 150), mix(RUG, WOOD, 0.22))
+    if "skylight" in state.things:
+        # a hole in the roof, and the square of sun it drops on the floor
+        sq = [(1040, 0), (1300, 0), (1420, CATS_FLOOR + 40),
+              (1080, CATS_FLOOR + 40)]
+        beam = pygame.Surface((CATS_W, H), pygame.SRCALPHA)
+        pygame.draw.polygon(beam, (*LAMP, 22), sq)
+        surf.blit(beam, (0, 0))
+        glow(surf, (1250, CATS_FLOOR + 120), 320, mix(LAMP, CREAM, 0.3),
+             0.16)
 
     # a string of warm bulbs the whole length of the room
     lastx = lasty = None
@@ -4176,10 +5060,33 @@ def _catroom(surf, state, t):
         pygame.draw.line(surf, shade(WOOD, 0.9), (x, bask.y + 24),
                          (x + 6, bask.bottom - 10), 2)
     mat = pygame.Rect(512, 700, 200, 34)
+    if "bowlmat" in state.things:       # wipe-clean, slightly too large
+        mat = pygame.Rect(484, 694, 258, 44)
+        pygame.draw.rect(surf, mix(PAPER, RUG, 0.4), mat, border_radius=8)
+        pygame.draw.rect(surf, mix(PAPER, WOOD, 0.3), mat.inflate(-10, -10),
+                         width=2, border_radius=6)
     pygame.draw.rect(surf, mix(WOOD_LO, EMBER, 0.12), mat, border_radius=6)
     for bx, col in ((540, (166, 126, 96)), (622, (138, 150, 164))):
         pygame.draw.ellipse(surf, mix(col, LAMP, 0.1), (bx, 702, 58, 24))
         pygame.draw.ellipse(surf, shade(col, 0.6), (bx + 7, 706, 44, 14))
+    if "fountain" in state.things:      # running water, endlessly
+        f = pygame.Rect(726, 686, 54, 50)
+        pygame.draw.rect(surf, mix(PAPER, (138, 150, 164), 0.5), f,
+                         border_radius=6)
+        pygame.draw.rect(surf, mix(PAPER, WOOD, 0.3), f, width=2,
+                         border_radius=6)
+        for i in range(4):
+            yy = f.y + 10 + ((t * 36 + i * 9) % 26)
+            pygame.draw.line(surf, (142, 178, 206), (f.centerx - 5, yy),
+                             (f.centerx + 5, yy + 3), 2)
+        pygame.draw.ellipse(surf, (120, 156, 188),
+                            (f.x + 6, f.bottom - 14, f.w - 12, 10))
+    if "heatbed" in state.things:       # warmer than you are
+        bed = pygame.Rect(1086, 672, 150, 62)
+        pygame.draw.ellipse(surf, mix(RUG, EMBER, 0.3), bed)
+        pygame.draw.ellipse(surf, mix(RUG, LAMP, 0.18), bed.inflate(-26, -22))
+        glow(surf, bed.center, 110, mix(LAMP, EMBER, 0.55),
+             0.12 + 0.02 * math.sin(t * 1.3))
     jig = math.sin(t * 2.3) * 3
     pygame.draw.circle(surf, mix(GOOD, PAPER, 0.3), (int(452 + jig), 726), 11)
     pygame.draw.circle(surf, shade(mix(GOOD, PAPER, 0.3), 0.7),
@@ -4187,6 +5094,19 @@ def _catroom(surf, state, t):
 
     # ---- the far half ----------------------------------------------------
     sill2 = _cat_window(surf, pygame.Rect(1212, 140, 170, 180), t, seed=9)
+    if "perch" in state.things:         # a box of a balcony on the window
+        cat_io = pygame.Rect(1192, 300, 210, 96)
+        pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.1), cat_io,
+                         border_radius=4)
+        pygame.draw.rect(surf, shade(WOOD, 0.8), cat_io, width=3,
+                         border_radius=4)
+        for i in range(7):
+            x = cat_io.x + 12 + i * 30
+            pygame.draw.line(surf, shade(WOOD, 0.9), (x, cat_io.y + 4),
+                             (x, cat_io.bottom - 4), 2)
+        pygame.draw.rect(surf, mix(RUG, LAMP, 0.1),
+                         (cat_io.x + 8, cat_io.bottom - 18, cat_io.w - 16,
+                          12), border_radius=4)
     rad = pygame.Rect(1222, 436, 150, 84)
     pygame.draw.rect(surf, mix(PAPER, WOOD, 0.55), rad, border_radius=4)
     for i in range(7):
@@ -4518,7 +5438,28 @@ def _hall(surf, state, t):
     glow(surf, (MAT_R.centerx, MAT_R.y - 10), 190, mix(LAMP, EMBER, 0.45),
          0.10 * flick)
 
+    if "radcover" in state.things:      # a shelf over the hall radiator
+        sh = pygame.Rect(112, 440, 224, 14)
+        pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.18), sh,
+                         border_radius=3)
+        pygame.draw.rect(surf, shade(WOOD, 0.8), (sh.x, sh.bottom - 4,
+                                                  sh.w, 4))
+        for bx in (sh.x + 16, sh.right - 22):
+            pygame.draw.line(surf, shade(WOOD, 0.75), (bx, sh.bottom),
+                             (bx, sh.bottom + 12), 3)
+        glow(surf, (sh.centerx, sh.bottom + 40), 150,
+             mix(LAMP, EMBER, 0.6), 0.09)
     _mat(surf, state.parcels, t)
+    if state.stray:
+        b = BY_KEY[state.stray]
+        img = cat_surface(b, "sit", 140, False, 1)
+        r = img.get_rect(midbottom=STRAY_AT)
+        sh = pygame.Surface((r.w, 14), pygame.SRCALPHA)
+        pygame.draw.ellipse(sh, (0, 0, 0, 90), (0, 0, r.w, 14))
+        surf.blit(sh, (r.x, STRAY_AT[1] - 8))
+        surf.blit(img, r)
+        glow(surf, (r.centerx, r.centery), 150, mix(LAMP, CREAM, 0.3),
+             0.09 + 0.03 * math.sin(t * 2.0))
     draw_cats(surf, state, "hall", t)
     # the near wall of the box, over whoever has got into it
     front = pygame.Rect(box.x, box.y + 22, box.w, box.h - 22)
@@ -4688,7 +5629,11 @@ def _laptop(surf, t, hot=False, unread=0):
              shadow=False)
 
 
-def _binder(surf, t, hot=False, owned=0, total=24):
+def _binder(surf, t, hot=False, owned=0, total=None):
+    # `total` used to default to 24, which was the number of breeds
+    # on the day this was written. The spine then went on saying
+    # 24 of 24 while the binder itself said 24 of 36.
+    total = len(BREEDS) if total is None else total
     r = BINDER_R
     pygame.draw.rect(surf, mix(RUG, WOOD, 0.35), r, border_radius=5)
     pygame.draw.rect(surf, mix(RUG, LAMP, 0.18 if hot else 0.08), r, width=2,
@@ -4741,6 +5686,25 @@ def _study(surf, state, t):
     _shelf(surf)
     _desk(surf)
     _floor(surf)
+    if "rug" in state.things:
+        _rug(surf, pygame.Rect(180, 580, 840, 200), mix(RUG, EMBER, 0.18))
+        _rug(surf, pygame.Rect(300, 616, 600, 130), mix(RUG, WOOD, 0.3))
+    if "gramo" in state.things:         # something slow, in the corner
+        g = pygame.Rect(1066, 470, 96, 78)
+        pygame.draw.rect(surf, mix(WOOD, RUG, 0.3), g, border_radius=4)
+        pygame.draw.ellipse(surf, shade(INK, 1.6), (g.x + 14, g.y + 10,
+                                                    68, 30))
+        pygame.draw.circle(surf, mix(TEA, CREAM, 0.2),
+                           (g.centerx, g.y + 25), 5)
+        horn = [(g.centerx + 8, g.y + 8), (g.right + 30, g.y - 54),
+                (g.right + 54, g.y - 30), (g.centerx + 26, g.y + 14)]
+        pygame.draw.polygon(surf, mix(LAMP, TEA, 0.45), horn)
+        pygame.draw.polygon(surf, shade(TEA, 0.6), horn, 2)
+        for i in range(3):
+            a = int(90 * (1 - ((t * 0.5 + i * 0.33) % 1.0)))
+            yy = g.y - 60 - ((t * 26 + i * 22) % 70)
+            text(surf, "~", 15, (g.right + 46 + i * 10, yy),
+                 mix(LAMP, CREAM, 0.3), alpha=a, shadow=False)
     _lamp(surf, t)
     _laptop(surf, t, unread=len(state.orders))
     _binder(surf, t, owned=state.owned)
@@ -4799,6 +5763,7 @@ HINTS = (
     "the cat room is wider than the window - keep walking",
     "every breed has its own temperament. click one and see",
     "the post lands in the hall - go and get it",
+    "the post is not the only thing that comes to the door",
     "click a cat. any cat",
     "the laptop is the only way to get cards",
     "the specials page sells four things the ladder does not",
@@ -5038,6 +6003,8 @@ class GameBase:
             self.go("binder")
         elif name == "mat":
             self.start_open()
+        elif name == "stray":
+            self.let_in()
         elif name == "go":
             self.go_area(val)
         elif name == "cat":
@@ -5056,6 +6023,15 @@ class GameBase:
             self.mode = int(val)
         elif name == "place":
             self.place_order()
+        elif name == "thing":
+            up = BY_UPGRADE[val]
+            if self.state.buy_thing(up):
+                self.beep("level")
+                self.shown_exact = self.state.money
+                self.toast(up.name + " is in",
+                           f"every cat earns {up.gain * 100:.0f}% more",
+                           GOOD, 9.0)
+                self.save()
         elif name == "club":
             if self.state.join_club():
                 self.shown_exact = self.state.money
@@ -5090,6 +6066,23 @@ class GameBase:
             self.state.sound = not self.state.sound
         elif name == "quit":
             pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    def let_in(self):
+        """Open the door. The one thing in this game that costs nothing."""
+        got = self.state.take_in(random.Random())
+        if got is None:
+            return
+        b, kind, level = got
+        self.beep("shiny" if kind == "new" else "new")
+        if kind == "new":
+            self.toast(f"{b.name} came in",
+                       "not in the catalogue, and never was",
+                       mix(LAMP, CREAM, 0.3), 14.0)
+        else:
+            self.toast(f"{b.name} is back",
+                       f"level {level} now" if kind == "level"
+                       else "and wants feeding", mix(LAMP, CREAM, 0.3), 9.0)
+        self.save()
 
     def pet(self, key):
         """Click a cat and it tells you who it is, what it is like, and
@@ -5261,6 +6254,13 @@ class GameBase:
                        EMBER, 7.0)
         self.full = len(st.orders) >= st.slots
 
+        came = st.stray_tick(dt, random.Random())
+        if came:
+            self.beep("bell")
+            self.toast("something is at the door",
+                       "it is sitting on the step, in the hall",
+                       mix(LAMP, CREAM, 0.3), 14.0)
+
         # The number that floats off a cat is the money that actually
         # arrived since the last one, not a plausible-looking figure.
         self.since_coin += st.income * dt
@@ -5376,8 +6376,12 @@ class GameBase:
                      (BINDER_R, "the binder", ("binder", None)))
         elif self.area == "hall":
             r = MAT_R.inflate(0, 72).move(0, -36)
-            spots = ((r, "open a parcel" if st.parcels else "nothing today",
-                      ("mat", None)),)
+            spots = [(r, "open a parcel" if st.parcels else "nothing today",
+                      ("mat", None))]
+            if st.stray:
+                img = cat_surface(BY_KEY[st.stray], "sit", 140, False, 1)
+                spots.append((img.get_rect(midbottom=STRAY_AT),
+                              "let it in", ("stray", None)))
         else:
             spots = ()
         for r, label, key in spots:
@@ -5428,9 +6432,11 @@ class GameBase:
              mix(CREAM, TEA, 0.38), kind="mono")
         text(s, rate_soft(st.income), 13, (r.right - 13, r.y + 26),
              mix(EMBER, TEA, 0.55), right=True, kind="mono")
-        text(s, f"{st.owned}/{len(BREEDS)} breeds   "
-                f"{st.retired} retired", 12, (r.x + 15, r.y + 48),
-             shade(MUTED, 0.9), kind="mono", shadow=False)
+        line = f"{st.owned}/{len(BREEDS)} breeds   {st.retired} retired"
+        if st.comfort > 1.001:
+            line += f"   flat +{int(round(st.comfort * 100 - 100))}%"
+        text(s, line, 12, (r.x + 15, r.y + 48), shade(MUTED, 0.9),
+             kind="mono", shadow=False)
 
         if self.scene == "room":
             x = W // 2 - sum(font(14, False, "mono").size(AREA_NAME[a])[0] + 34
@@ -5455,7 +6461,11 @@ class GameBase:
                 text(s, f"{len(self.room.res)} cats in here: "
                         + ", ".join(bits), 13, (W // 2, 58), TEA,
                      center=True, kind="mono", max_w=W - 440)
-            if st.parcels and self.area != "hall":
+            if st.stray and self.area != "hall":
+                text(s, "there is a cat at the front door", 13,
+                     (W // 2, 58 + (20 if self.area == "cats" else 0)),
+                     mix(LAMP, CREAM, 0.35), center=True, kind="mono")
+            elif st.parcels and self.area != "hall":
                 word = "parcel" if len(st.parcels) == 1 else "parcels"
                 text(s, f"{len(st.parcels)} {word} on the mat, in the hall",
                      13, (W // 2, 58 + (20 if self.area == "cats" else 0)),
@@ -5548,7 +6558,8 @@ class ShopMixin:
         # and the four odd ones are not rungs on the ladder anyway: they
         # are things you go looking for when you want a particular thing.
         tabs = (("catalogue", "CATALOGUE"), ("specials", "SPECIALS"),
-                ("orders", "ORDERS"), ("club", "THE CLUB"))
+                ("home", "FOR THE FLAT"), ("orders", "ORDERS"),
+                ("club", "THE CLUB"))
         tx = x
         for key, label in tabs:
             lab = label + (f" ({len(st.orders)})" if key == "orders"
@@ -5575,6 +6586,8 @@ class ShopMixin:
                            PAGE_R.bottom - (y + 102) - 8)
         if self.tab == "orders":
             self.draw_orders(s, body)
+        elif self.tab == "home":
+            self.draw_home(s, body)
         elif self.tab == "club":
             self.draw_club(s, body)
         elif self.product:
@@ -5665,7 +6678,7 @@ class ShopMixin:
              shadow=False)
         y += 20
         tot = sum(p.weights)
-        for r in range(5):
+        for r in range(SOLD_RARITIES):
             if not p.weights[r]:
                 continue
             c = rarity_colour(r)
@@ -5679,6 +6692,8 @@ class ShopMixin:
             text(s, f"{n} still in print", 12, (br.right + 56, y + 7),
                  DIM if n else shade(BAD, 0.9), kind="mono", shadow=False)
             y += 18
+        # seven tiers means up to seven rows above this line
+        y += 4
         text(s, f"the last card is {rarity_name(p.floor).lower()} or better",
              12, (right.x, y + 6), mix(TEA, CREAM, 0.1), kind="mono",
              shadow=False)
@@ -5784,6 +6799,44 @@ class ShopMixin:
             text(s, "that is everything the post will carry at once", 14,
                  (body.centerx, body.bottom - 30), shade(BAD, 1.0),
                  center=True, kind="mono")
+
+    # -- things for the flat ------------------------------------------------
+    def draw_home(self, s, body):
+        """Eight things that are not cards, in a column you work down."""
+        st = self.state
+        text(s, f"the flat is at {int(round(st.comfort * 100 - 100))}% "
+                f"over bare boards", 15, (body.x, body.y),
+             warm(EMBER, 0.2), kind="mono")
+        text(s, "Every one of these is bought once, turns up in a room, "
+                "and makes every cat in the flat earn a little more.", 13,
+             (body.x, body.y + 22), MUTED, kind="mono", max_w=body.w)
+        top = body.y + 52
+        rowh = (body.bottom - top) // 4
+        for i, u in enumerate(UPGRADES):
+            col, row = divmod(i, 4)
+            r = pygame.Rect(body.x + col * (body.w // 2 + 8),
+                            top + row * rowh, body.w // 2 - 16, rowh - 10)
+            have = u.key in st.things
+            panel(s, r, mix(SCREEN_HI, EMBER, 0.12 if have else 0.03),
+                  shade(EMBER, 0.7) if have else shade(SCREEN_HI, 1.4),
+                  radius=8, shadow=False)
+            text(s, u.name, 18, (r.x + 14, r.y + 8),
+                 warm(CREAM, 0.2) if have else CREAM, max_w=r.w - 120)
+            paragraph(s, u.blurb, 12, (r.x + 14, r.y + 30), MUTED,
+                      r.w - 130, 3, kind="mono")
+            text(s, f"+{u.gain * 100:.0f}%", 15, (r.right - 14, r.y + 14),
+                 GOOD if have else mix(TEA, CREAM, 0.2), right=True,
+                 kind="mono")
+            if have:
+                text(s, "IN THE FLAT", 12, (r.right - 14, r.bottom - 18),
+                     GOOD, right=True, kind="mono")
+            else:
+                text(s, money(u.price), 20, (r.right - 116, r.bottom - 32),
+                     warm(EMBER, 0.2), right=True)
+                self.buttons.append(Button(
+                    (r.right - 104, r.bottom - 42, 90, 30), "BUY",
+                    ("thing", u.key), "solid", 15, kind="mono",
+                    enabled=st.money >= u.price))
 
     # -- the club -----------------------------------------------------------
     def draw_club(self, s, body):
@@ -6003,8 +7056,11 @@ class BinderMixin:
         text(s, "THE BINDER", 26, (inner.x + 20, inner.y + 12),
              warm(CREAM, 0.2))
         shiny_n = sum(1 for c in st.cards.values() if c.shiny)
+        strays_n = st.strays_owned
         text(s, f"{st.owned} of {len(BREEDS)} breeds    "
-                f"{st.retired} retired"
+                + (f"{strays_n} stray{'s' if strays_n > 1 else ''}    "
+                   if strays_n else "")
+                + f"{st.retired} retired"
                 + (f"    {shiny_n} shiny" if shiny_n else "")
                 + f"    {rate_soft(st.income)}", 15,
              (inner.right - 20, inner.y + 22), TEA, right=True, kind="mono")
@@ -6019,13 +7075,28 @@ class BinderMixin:
         area = pygame.Rect(inner.x + 20, inner.y + 58, inner.w - 40, 500)
         cols, rows, gap, vgap = 8, 3, 12, 18
         per = cols * rows
-        pages = (len(BREEDS) + per - 1) // per
+        # The last page does not exist until one of them is standing on
+        # the mat. An empty page of question marks would say "there are
+        # five more of these", which is the one thing it must not say.
+        found = [b for b in SECRETS if b.key in st.cards]
+        pages = (len(BREEDS) + per - 1) // per + (1 if found else 0)
         self.page = int(clamp(self.page, 0, pages - 1))
+        secret_page = bool(found) and self.page == pages - 1
         cw = (area.w - (cols - 1) * gap) // cols
         ch = int(cw * 1.4)
         gx = area.centerx - (cols * cw + (cols - 1) * gap) // 2
         gy = area.centery - (rows * ch + (rows - 1) * vgap) // 2
-        shown = BREEDS[self.page * per:(self.page + 1) * per]
+        shown = found if secret_page \
+            else BREEDS[self.page * per:(self.page + 1) * per]
+        if secret_page:
+            text(s, "NOT IN THE CATALOGUE", 20, (inner.centerx, area.y + 10),
+                 mix(LAMP, CREAM, 0.35), center=True, kind="mono")
+            text(s, f"{len(found)} that turned up at the door, and were "
+                    f"let in", 13, (inner.centerx, area.y + 38), MUTED,
+                 center=True, kind="mono")
+            # a short row, centred, under its own heading
+            gx = area.centerx - (len(shown) * cw + (len(shown) - 1) * gap) // 2
+            gy = area.y + 86
         for i, b in enumerate(shown):
             r, c = divmod(i, cols)
             rect = pygame.Rect(gx + c * (cw + gap), gy + r * (ch + vgap),
@@ -6045,11 +7116,19 @@ class BinderMixin:
             r = pygame.Rect(inner.centerx - (pages * 90) // 2 + i * 90,
                             inner.bottom - 96, 80, 30)
             on = self.page == i
-            self.buttons.append(Button(r, f"page {i + 1}", ("page", i),
+            last = found and i == pages - 1
+            self.buttons.append(Button(r, "strays" if last else f"page {i + 1}",
+                                       ("page", i),
                                        "solid" if on else "plain", 14,
-                                       kind="mono"))
+                                       kind="mono",
+                                       colour=mix(LAMP, CREAM, 0.3) if last
+                                       else None))
         left = [b for b in BREEDS if b.key not in st.cards]
-        if st.complete:
+        if secret_page:
+            note = ("five of them have been seen in this city"
+                    if len(found) < len(SECRETS)
+                    else "all five, and not one of them was ordered")
+        elif st.complete:
             note = "every breed retired - the catalogue has nothing left"
         elif left:
             note = (f"{len(left)} still to find, the rarest of them a "
@@ -6187,6 +7266,8 @@ RULES = (
                  "will never send it again."),
     ("the post", "Four parcels at a time. The delivery club is the only "
                  "thing that raises it."),
+    ("the flat", "The website also sells furniture. Each piece turns up "
+                 "in a room and every cat in the place earns more."),
     ("the flat", "Three rooms: the hall where the post lands, the desk, "
                  "and the cat room. A and D, or click the names."),
     ("the cat room", "Twice as wide as the window. The ten you have taken "
@@ -6277,9 +7358,10 @@ class MenuMixin:
                 (f"{st.packs_opened}", "parcels opened"),
                 (f"{st.cards_pulled}", "cards pulled"),
                 (f"{sum(1 for c in st.cards.values() if c.shiny)}",
-                 "of them shiny"))
+                 "of them shiny"),
+                (f"{st.strays_owned}", "let in at the door"))
         for i, (big, small) in enumerate(rows):
-            x = r.centerx + (i - 1.5) * 150
+            x = r.centerx + (i - (len(rows) - 1) / 2) * 136
             text(s, big, 24, (x, r.y + 304), warm(EMBER, 0.2), center=True,
                  max_w=124)
             text(s, small, 12, (x, r.y + 336), MUTED, center=True,

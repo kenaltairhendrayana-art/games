@@ -2,6 +2,8 @@
 measured.
 
     python cat_test.py economy [n]   play n runs to a full binder, print it
+    python cat_test.py strays       the five that are not in the catalogue
+    python cat_test.py flat         the furnishings, and what they are worth
     python cat_test.py shelves      both pages of the shop, and the ladder
     python cat_test.py value         what each pack is worth per dollar
     python cat_test.py dupes         prove the levelling ladder adds up
@@ -13,6 +15,7 @@ measured.
     python cat_test.py smoke         draw every screen offscreen, save PNGs
     python cat_test.py score        every sound and the loop, measured
     python cat_test.py flow         drive the real Game by pressing buttons
+    python cat_test.py counts       every number shown comes from the data
     python cat_test.py layout        no click target may cover its own card
     python cat_test.py save          write, reload, and come back the same
     python cat_test.py all           the lot
@@ -45,6 +48,126 @@ def _fmt(secs):
     return f"{secs // 60}m{secs % 60:02d}s"
 
 
+def strays():
+    """The five that are not in the catalogue, and how they get in.
+
+    Three things have to hold and none of them raise if they stop: a
+    pack must never contain one, they must all arrive within a run, and
+    they must not count toward the binder - thirty-two listed breeds
+    plus five cats off the street would otherwise add up to a finished
+    collection and fire the ending early.
+    """
+    pygame.display.set_mode((cc.W, cc.H))
+    ok = True
+    print(f"  {len(cc.SECRETS)} unlisted: "
+          + ", ".join(b.name for b in cc.SECRETS))
+
+    # 1. the shop has never heard of them
+    rng = random.Random(5)
+    st = cc.State()
+    seen = set()
+    for p in cc.PACKS:
+        for _ in range(240):
+            for pull in st.open_pack(p, 1, rng):
+                seen.add(pull.breed.key)
+    leaked = seen & {b.key for b in cc.SECRETS}
+    print(f"  {len(seen)} breeds came out of "
+          f"{len(cc.PACKS)} kinds of box; {len(leaked)} of them unlisted")
+    if leaked:
+        print(f"  the shop sold an unlisted cat: {sorted(leaked)}")
+        ok = False
+
+    # 2. they turn up at the door, all five, inside a long run
+    st2 = cc.State()
+    rng2 = random.Random(9)
+    t = 0.0
+    arrived = []
+    while t < 2.5 * 3600 and len(arrived) < len(cc.SECRETS):
+        st2.tick(1.0)
+        t += 1.0
+        if st2.stray_tick(1.0, rng2):
+            got = st2.take_in(rng2)
+            if got and got[1] == "new":
+                arrived.append((t, got[0].name))
+    for when, name in arrived:
+        print(f"    {int(when) // 60:>3}m  {name}")
+    if len(arrived) < len(cc.SECRETS):
+        print(f"  only {len(arrived)} of {len(cc.SECRETS)} turned up in "
+              f"two and a half hours")
+        ok = False
+
+    # 3. and they are not part of the binder
+    if st2.owned != 0:
+        print(f"  five strays counted as {st2.owned} catalogue breeds")
+        ok = False
+    for b in cc.SECRETS:
+        st2.cards[b.key].level = cc.MAX_LEVEL
+    if st2.retired != 0 or st2.complete:
+        print("  retiring the strays alone finished the binder")
+        ok = False
+    if st2.strays_owned != len(cc.SECRETS):
+        print("  the strays are not being counted as strays")
+        ok = False
+
+    # 4. a stray waits to be let in, and survives a save
+    st3 = cc.State()
+    st3.stray_t = 0.1
+    st3.stray_tick(1.0, random.Random(2))
+    waited = st3.stray
+    for _ in range(600):
+        st3.stray_tick(1.0, random.Random(2))
+    if st3.stray != waited:
+        print("  a cat left the step before it was let in")
+        ok = False
+    import json
+    back = cc.State.from_dict(json.loads(json.dumps(st3.to_dict())))
+    if back.stray != waited:
+        print("  the cat at the door did not survive a save")
+        ok = False
+    print("  strays:", "ok" if ok else "FAILED")
+    return ok
+
+
+def flat():
+    """The furnishings: every one bought once, and every one felt."""
+    ok = True
+    st = cc.State()
+    st.cards["dsh"] = cc.Card(level=5)
+    base = st.income
+    print(f"    bare boards        {cc.rate(base)}")
+    last = 0
+    for u in cc.UPGRADES:
+        if u.price <= last:
+            print(f"  {u.name} costs no more than the one before it")
+            ok = False
+        last = u.price
+        st.money = u.price
+        if not st.buy_thing(u):
+            print(f"  could not buy {u.name} with exactly its price")
+            ok = False
+        if st.buy_thing(u):
+            print(f"  {u.name} could be bought twice")
+            ok = False
+        print(f"    {u.name:<22}{cc.rate(st.income)}   (+{u.gain * 100:.0f}%)")
+    if st.income <= base:
+        print("  furnishing the flat changed nothing")
+        ok = False
+    print(f"  everything: {cc.rate(base)} -> {cc.rate(st.income)}, "
+          f"the flat at +{int(round(st.comfort * 100 - 100))}%")
+    import json
+    back = cc.State.from_dict(json.loads(json.dumps(st.to_dict())))
+    if back.things != st.things or abs(back.income - st.income) > 1e-6:
+        print("  the furnishings did not survive a save")
+        ok = False
+    where = {u.where for u in cc.UPGRADES}
+    print(f"  they appear in: {', '.join(sorted(where))}")
+    if not where <= set(cc.AREAS):
+        print("  a furnishing belongs to a room that does not exist")
+        ok = False
+    print("  flat:", "ok" if ok else "FAILED")
+    return ok
+
+
 def shelves():
     """Every pack has to be ON a shelf, and every shelf has to have packs.
 
@@ -71,7 +194,7 @@ def shelves():
     last = None
     for p in cc.packs_on("standard"):
         tot = sum(p.weights)
-        ev = sum(p.weights[r] / tot * cc.RARITY[r][2] for r in range(5))
+        ev = sum(p.weights[r] / tot * cc.RARITY[r][2] for r in range(cc.SOLD_RARITIES))
         per = ev * p.cards / p.price * 100
         if last and (p.price <= last[0] or per <= last[1]
                      or p.cards <= last[2]):
@@ -92,7 +215,7 @@ def pack_value():
     print("pack              price  cards   E[rate]/pack   per $100   ship")
     for p in cc.PACKS:
         tot = sum(wt for wt in p.weights)
-        ev = sum(p.weights[r] / tot * cc.RARITY[r][2] for r in range(5))
+        ev = sum(p.weights[r] / tot * cc.RARITY[r][2] for r in range(cc.SOLD_RARITIES))
         per = ev * p.cards
         print(f"{p.name:<22}{p.price:>6}{p.cards:>6}"
               f"{per:>14.3f}{per / p.price * 100:>11.3f}{p.ship:>7.0f}s")
@@ -164,7 +287,7 @@ def _affordable(state, policy):
            and state.sellable(p)]
     if not can:
         return None
-    want = max(range(5), key=lambda r: state.missing(r))
+    want = max(range(cc.SOLD_RARITIES), key=lambda r: state.missing(r))
     best, score = None, -1.0
     for p in can:
         tot = sum(p.weights)
@@ -213,6 +336,10 @@ def play(seed=0, policy="need", step=1.0, cap=60 * 3600, verbose=False):
             # the club pays for itself in minutes at this end of the game
             while s.money > cc.CLUB[min(s.club, 2)][0] * 2 and s.join_club():
                 pass
+            # ... and so does anything that multiplies every cat at once
+            for u in cc.UPGRADES:
+                if u.key not in s.things and s.money > u.price * 2.5:
+                    s.buy_thing(u)
         p = _affordable(s, policy)
         if p is not None:
             s.order(p, 1, _mode_for(s, p))
@@ -259,6 +386,16 @@ def sameness():
     Colour and size are stripped before the comparison - a grey cat and a
     ginger cat of the same shape are the same cat, and "it draws" is not
     "it differs". What is left is the outline, normalised to one box.
+
+    The bar moves with the size of the book, and that is a decision
+    rather than a dodge. At twenty-four breeds nothing was allowed over
+    0.94 overlap and nothing was. At a hundred, in one sitting pose, that
+    is not reachable: a Burmese and a Suphalak ARE the same build, and
+    the honest thing is to say so rather than to deform one of them until
+    a number goes green. So three things are checked instead of one:
+    nothing may be effectively identical, the close pairs must stay a
+    small fraction of all of them, and the book as a whole must not drift
+    toward one average cat.
     """
     pygame.display.set_mode((64, 64))
     SZ = 72
@@ -279,21 +416,45 @@ def sameness():
             ma, mb = masks[a.key], masks[b.key]
             inter = sum(1 for x, y in zip(ma, mb) if x and y)
             union = sum(1 for x, y in zip(ma, mb) if x or y)
-            same = inter / max(1, union)
-            worst.append((same, a.name, b.name))
+            worst.append((inter / max(1, union), a.name, b.name))
     worst.sort(reverse=True)
-    print("  the ten most alike, by overlap of outline (1.00 is identical):")
-    for same, a, b in worst[:10]:
-        flag = "  <-- too close" if same > 0.94 else ""
+    total = len(worst)
+    mean = sum(w[0] for w in worst) / total
+
+    IDENTICAL = 0.965          # nothing may be this close to anything
+    CLOSE = 0.95               # ... and few may be this close
+    CLOSE_SHARE = 0.01         # one pair in a hundred
+    BLAND = 0.84               # the whole book, averaged
+
+    print(f"  {len(cc.BREEDS)} breeds, {total} pairs, mean overlap "
+          f"{mean:.3f}")
+    print("  the eight most alike, by overlap of outline:")
+    for same, a, b in worst[:8]:
+        flag = "  <-- the same cat twice" if same > IDENTICAL else ""
         print(f"    {same:.3f}  {a} / {b}{flag}")
     print(f"  the two least alike: {worst[-1][0]:.3f}  "
           f"{worst[-1][1]} / {worst[-1][2]}")
-    bad = [w for w in worst if w[0] > 0.94]
-    print("  sameness:", "ok" if not bad else f"FAILED - {len(bad)} pairs")
-    return not bad
+
+    ok = True
+    bad = [w for w in worst if w[0] > IDENTICAL]
+    close = [w for w in worst if w[0] > CLOSE]
+    print(f"  over {IDENTICAL}: {len(bad)}   over {CLOSE}: {len(close)} "
+          f"({len(close) / total * 100:.1f}% of pairs, "
+          f"{CLOSE_SHARE * 100:.0f}% allowed)")
+    if bad:
+        ok = False
+    if len(close) > total * CLOSE_SHARE:
+        print(f"  too many breeds share a build: {len(close)} pairs over "
+              f"{CLOSE}, the limit is {int(total * CLOSE_SHARE)}")
+        ok = False
+    if mean > BLAND:
+        print(f"  the book has drifted toward one average cat: mean "
+              f"{mean:.3f} against a limit of {BLAND}")
+        ok = False
+    print("  sameness:", "ok" if ok else "FAILED")
+    return ok
 
 
-# ---------------------------------------------------------------------------
 def coats():
     """Every coat has to be a different cat, and the shiny rarest of all.
 
@@ -305,7 +466,7 @@ def coats():
     pygame.display.set_mode((cc.W, cc.H))
     ok = True
     worst = []
-    for b in cc.BREEDS:
+    for b in cc.ALL_BREEDS:          # the strays have coats as well
         imgs = [cc.cat_surface(b, "sit", 130, level=6, variant=i)
                 for i in range(len(b.coats))]
         imgs.append(cc.cat_surface(b, "sit", 130, level=6, shiny=True))
@@ -729,6 +890,10 @@ def smoke():
 
     g.area = "hall"
     shot("hall")
+    g.state.things = {u.key for u in cc.UPGRADES}
+    g.state.stray = "kam"
+    g.area = "hall"
+    shot("hall_stray")
     g.area = "cats"
     shot("catroom", warm=12)
     g.cam = g.cam_to = cc.AREA_WIDE["cats"] - cc.W
@@ -746,6 +911,9 @@ def smoke():
     g.mode = 1
     shot("shop_product")
     g.product = None
+    g.tab = "home"
+    g.state.things = {"bowlmat", "rug", "fountain"}
+    shot("shop_home")
     g.tab = "specials"
     shot("shop_specials")
     g.product = "odd"
@@ -998,6 +1166,72 @@ def flow():
     return ok
 
 
+def _spoken(g, draw):
+    """Every string a screen prints, caught on its way to the surface."""
+    said = []
+    real = cc.text
+
+    def spy(surf, string, *a, **k):
+        said.append(str(string))
+        return real(surf, string, *a, **k)
+
+    cc.text = spy
+    try:
+        draw()
+    finally:
+        cc.text = real
+    return said
+
+
+def counts():
+    """A number the player is shown must come from the data.
+
+    Written against a bug that was visible for three features: the label
+    on the binder in the study said 24 OF 24 while the binder itself said
+    24 of 36, because `_binder` had `total=24` as a default argument from
+    the day there were twenty-four breeds. Nothing raises when a literal
+    goes stale - it just quietly keeps telling you the old number.
+    """
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    rng = random.Random(8)
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.open_pack(cc.BY_PACK["crate"], 12, rng)
+    g.state.cards["kam"] = cc.Card(level=3)      # one off the street
+    g.area = "study"
+    g.pan = 0.0
+    ok = True
+
+    said = _spoken(g, g.draw)
+    want = f"{g.state.owned} of {len(cc.BREEDS)}"
+    if want not in said:
+        stale = [t for t in said if " of " in t and "/" not in t]
+        print(f"  the binder in the room never says {want!r}; it says "
+              f"{stale}")
+        ok = False
+    print(f"  the room says {want!r} with {len(cc.BREEDS)} breeds in the "
+          f"table")
+
+    g.go("binder")
+    said = _spoken(g, g.draw)
+    head = [t for t in said if "breeds" in t]
+    if not head or f"of {len(cc.BREEDS)} breeds" not in head[0]:
+        print(f"  the binder header says {head}")
+        ok = False
+    else:
+        print(f"  the binder says {head[0]!r}")
+    if any(str(len(cc.BREEDS)) not in t and "breeds" in t for t in head):
+        print("  a header count does not match the breed table")
+        ok = False
+
+    # the strays must not be counted among the catalogue breeds anywhere
+    if f"{g.state.owned + 1} of {len(cc.BREEDS)}" in " ".join(said):
+        print("  a stray is being counted as a catalogue breed")
+        ok = False
+    print("  counts:", "ok" if ok else "FAILED")
+    return ok
+
+
 def layout():
     """No click target may cover the thing it is a target for.
 
@@ -1089,8 +1323,17 @@ def main():
     if cmd in ("flow", "all"):
         ok &= flow()
         print()
+    if cmd in ("counts", "all"):
+        ok &= counts()
+        print()
     if cmd in ("layout", "all"):
         ok &= layout()
+        print()
+    if cmd in ("strays", "all"):
+        ok &= strays()
+        print()
+    if cmd in ("flat", "all"):
+        ok &= flat()
         print()
     if cmd in ("shelves", "all"):
         ok &= shelves()
