@@ -4,6 +4,8 @@ measured.
     python cat_test.py economy [n]   play n runs to a full binder, print it
     python cat_test.py value         what each pack is worth per dollar
     python cat_test.py dupes         prove the levelling ladder adds up
+    python cat_test.py coats        every coat a different cat, and the odds
+    python cat_test.py numbers      the balance in the corner must sit still
     python cat_test.py behaviour    run the cat room and watch what it does
     python cat_test.py grades       prove every level changes the picture
     python cat_test.py sameness      every breed against every other breed
@@ -240,6 +242,141 @@ def sameness():
 
 
 # ---------------------------------------------------------------------------
+def coats():
+    """Every coat has to be a different cat, and the shiny rarest of all.
+
+    A recolour that comes out the same colour is the same failure as two
+    breeds sharing a silhouette: it draws, so nothing complains, and the
+    second collection is quietly empty. Measured the same way - the
+    portrait, scaled into one box, compared pixel for pixel.
+    """
+    pygame.display.set_mode((cc.W, cc.H))
+    ok = True
+    worst = []
+    for b in cc.BREEDS:
+        imgs = [cc.cat_surface(b, "sit", 130, level=6, variant=i)
+                for i in range(len(b.coats))]
+        imgs.append(cc.cat_surface(b, "sit", 130, level=6, shiny=True))
+        names = list(b.coats) + ["shiny"]
+        for i in range(len(imgs)):
+            for j in range(i + 1, len(imgs)):
+                d = _differs(imgs[i], imgs[j], (56, 56))
+                worst.append((d, b.name, names[i], names[j]))
+    worst.sort()
+    for d, nm, a, c in worst[:6]:
+        flag = "   <-- the same cat twice" if d < 0.05 else ""
+        print(f"    {d:.3f}  {nm}: {a} against {c}{flag}")
+        if d < 0.05:
+            ok = False
+    print(f"  {len(worst)} pairs of coats compared, the closest "
+          f"{worst[0][0]:.3f} apart")
+
+    # the odds, and that a shiny is permanent once it lands
+    rng = random.Random(7)
+    st = cc.State()
+    pulls = shiny = 0
+    for _ in range(600):
+        for p in st.open_pack(cc.BY_PACK["crate"], 1, rng):
+            pulls += 1
+            shiny += 1 if p.shiny else 0
+    rate = pulls / max(1, shiny)
+    print(f"  {pulls} cards pulled, {shiny} shiny - one in "
+          f"{rate:.0f} (the dial says one in {cc.SHINY_IN})")
+    if not 0.5 * cc.SHINY_IN < rate < 2.0 * cc.SHINY_IN:
+        print("  the shiny rate is not what the dial says")
+        ok = False
+    for k, c in st.cards.items():
+        if c.coats_seen(cc.BY_KEY[k]) < 1:
+            print(f"  {k} has a card but no coat recorded")
+            ok = False
+
+    # one in 150 has to survive being written to disk
+    import json
+    st.cards["dsh"].shiny = True
+    st.cards["dsh"].coat = 1 if len(cc.BY_KEY["dsh"].coats) > 1 else 0
+    st.cards["dsh"].saw(0)
+    back = cc.State.from_dict(json.loads(json.dumps(st.to_dict())))
+    a, c = st.cards["dsh"], back.cards["dsh"]
+    if (a.shiny, a.coat, a.seen) != (c.shiny, c.coat, c.seen):
+        print(f"  a shiny came back as {c.shiny}/{c.coat}/{c.seen}")
+        ok = False
+    if abs(back.income - st.income) > 0.001:
+        print("  the shiny bonus did not survive the save")
+        ok = False
+
+    # and an old save, from before any of this existed, still loads
+    old = {"v": 1, "money": 50.0, "cards": {"dsh": [3, 1, 7]},
+           "stamp": time.time()}
+    o = cc.State.from_dict(old)
+    if "dsh" not in o.cards or o.cards["dsh"].level != 3:
+        print("  a save from before coats existed no longer loads")
+        ok = False
+    print("  coats:", "ok" if ok else "FAILED")
+    return ok
+
+
+def numbers():
+    """The balance in the corner of the room must sit still.
+
+    Written against "it is going up rapidly and it is a little hard on
+    the eyes". A counter that restreams at sixty frames a second is the
+    loudest thing in a room that is meant to be quiet, and rounding it
+    by magnitude is not enough on its own - six thousand to the nearest
+    hundred still moves every two seconds once the cats are earning
+    fifty a second. The step is set by the INCOME, so this checks the
+    whole arc of the game rather than one point of it.
+    """
+    pygame.display.set_mode((cc.W, cc.H))
+    ok = True
+
+    def binder_for(target):
+        st = cc.State()
+        for b in cc.BREEDS:
+            for lv in range(1, cc.MAX_LEVEL + 1):
+                if st.income >= target:
+                    return st
+                st.cards[b.key] = cc.Card(level=lv)
+        return st
+
+    print("    income      step   new numbers a minute")
+    for target, start in ((0.05, 3.0), (1.0, 480.0), (4.0, 90.0),
+                          (12.0, 480.0), (56.0, 3000.0), (170.0, 40000.0)):
+        g = cc.Game(screen=pygame.display.get_surface())
+        g.state = binder_for(target)
+        g.state.money = start
+        inc = g.state.income
+        shown = []
+        for _ in range(60 * 60):
+            g.update(1 / 60)
+            shown.append(cc.money_soft(g.shown))
+        ch = sum(1 for a, b in zip(shown, shown[1:]) if a != b)
+        print(f"  {cc.rate_soft(inc):>9} {cc.quantum(inc):>9.0f}"
+              f"{ch:>19}")
+        if ch > 20:
+            print(f"  at {cc.rate_soft(inc)} the balance changes {ch} times "
+                  f"a minute, which is what it is not supposed to do")
+            ok = False
+        # it may lag behind the truth, but it must never claim
+        # more money than there is
+        if g.shown > g.state.money + 1e-6:
+            print(f"  the corner says {cc.money_soft(g.shown)}"
+                  f" but there is only {cc.money(g.state.money)}")
+            ok = False
+
+    # and the website still counts to the dollar, because that is where
+    # the decision is made
+    g = cc.Game(screen=pygame.display.get_surface())
+    g.state = cc.State()
+    g.state.money = 1234.56
+    g.update(1 / 60)
+    if cc.money(g.shown_exact) != "$1,235" and \
+            cc.money(g.shown_exact) != "$1,234":
+        print(f"  the shop would show {cc.money(g.shown_exact)}")
+        ok = False
+    print("  numbers:", "ok" if ok else "FAILED")
+    return ok
+
+
 def behaviour(minutes=20):
     """Run the cat room for an hour of cat-time and watch what happens.
 
@@ -304,6 +441,36 @@ def behaviour(minutes=20):
         ok = False
     print(f"  {len(spots_used)} of {len(cc.ROOM_SPOTS)} spots were used, "
           f"{len(every)} of {len(cc.ACT_WORD)} activities happened")
+
+    # The complaint this is written against was "the cats are not
+    # moving", with three cats in a room twice as wide as the window.
+    # They WERE moving; they were round the corner, and the ones in view
+    # had settled for fifty seconds. So: with a small collection and the
+    # camera where you come in, most of them have to be on screen and
+    # something has to be happening.
+    small = cc.State()
+    for k, lv in (("dsh", 2), ("ben", 1), ("per", 3)):
+        small.cards[k] = cc.Card(level=lv)
+    r2 = cc.CatRoom()
+    r2.update(0.1, small, cc.ROOM_CAP, 0.0)
+    on = busy = frames = 0
+    for _ in range(90 * 20):
+        r2.update(0.05, small, cc.ROOM_CAP, 0.0)
+        frames += 1
+        for r in r2.res:
+            if -60 <= r.x <= cc.W + 60:
+                on += 1
+            if r.state != "rest" or r.act == "prowl":
+                busy += 1
+    print(f"  three cats, 90 seconds, standing at the door: "
+          f"{on / frames:.2f} of 3 in view, {busy / frames:.2f} of 3 moving")
+    if on / frames < 1.5:
+        print("  most of the cats are round the corner where you cannot "
+              "see them")
+        ok = False
+    if busy / frames < 0.4:
+        print("  the room looks like a photograph of cats")
+        ok = False
 
     # and no two cats may end up standing in the same place
     seats = [r.spot for r in room.res if r.state == "rest"]
@@ -455,9 +622,9 @@ def smoke():
     shots = []
 
     def shot(name, warm=0.0):
-        if warm:
-            for _ in range(int(warm * 20)):
-                g.update(0.05)
+        for _ in range(max(1, int(warm * 20))):
+            g.update(0.05)
+        g.shown = g.shown_exact = g.state.money   # no stale corner
         g.draw()
         pygame.image.save(screen, f"cat_{name}.png")
         shots.append(name)
@@ -506,6 +673,11 @@ def smoke():
 
     g.go("binder")
     shot("binder")
+    # a shiny, and a breed with coats to show off in the detail panel
+    if "sia" in g.state.cards:
+        g.state.cards["sia"].shiny = True
+        g.state.cards["sia"].seen = 0b1011
+    shot("binder_shiny")
     g.pick = "sia"
     shot("binder_detail")
 
@@ -621,6 +793,8 @@ def flow():
     screen = pygame.display.set_mode((cc.W, cc.H))
     g = cc.Game(screen)
     g.state = cc.State()
+    g.area = "study"
+    g.room = cc.CatRoom()
     ok = True
 
     def tap(key):
@@ -815,6 +989,10 @@ def main():
     # presses PLACE ORDER on a real Game, and a real Game saves when you
     # do that - which is how a test harness quietly eats a save file.
     cc.save_state = lambda state: None
+    # ... and never READ it: a Game built here would otherwise start in
+    # whatever room the player left theirs in, which is how `flow` came
+    # to fail only when it was run after something else had been played.
+    cc.load_state = lambda: cc.State()
     ok = True
     if cmd in ("smoke", "all"):
         ok &= smoke()
@@ -836,6 +1014,12 @@ def main():
         print()
     if cmd in ("save", "all"):
         ok &= save_round_trip()
+        print()
+    if cmd in ("coats", "all"):
+        ok &= coats()
+        print()
+    if cmd in ("numbers", "all"):
+        ok &= numbers()
         print()
     if cmd in ("behaviour", "all"):
         ok &= behaviour(20)

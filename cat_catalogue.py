@@ -150,6 +150,60 @@ def money(v):
     return "$" + f"{v:.2f}"
 
 
+def quantum(income):
+    """How big a step the room's balance should move in.
+
+    Rounding by MAGNITUDE is not enough: a balance of six thousand
+    rounded to the nearest hundred still moves every two seconds when
+    the cats are earning fifty a second, which is the thing that was
+    hard to look at. So the step is set by the income instead - about
+    four seconds of earnings, snapped to a 1-2-5 ladder so the numbers
+    themselves stay tidy - and the display then changes at the same
+    gentle rate whatever point of the game you are at.
+    """
+    step = max(1.0, income * 4.0)
+    mag = 10.0 ** math.floor(math.log10(step))
+    for m in (1, 2, 5):
+        if step <= mag * m:
+            return mag * m
+    return mag * 10
+
+
+def money_soft(v):
+    """Money for the corner of the screen rather than for a checkout.
+
+    A balance printed to the dollar at sixty frames a second is a slot
+    machine: every digit moves, all the time, and the room stops being a
+    quiet room. Above a thousand this rounds to three characters, so the
+    number changes about once every twenty seconds and you can still see
+    at a glance whether an Estate Lot is in reach. Prices and totals on
+    the website keep using `money`, because that is where it matters to
+    the dollar.
+    """
+    if v >= 1_000_000:
+        return f"${v / 1_000_000:.1f}M"
+    if v >= 10_000:
+        return f"${v / 1000:.0f}k"
+    if v >= 1_000:
+        return f"${v / 1000:.1f}k"
+    if v >= 100:
+        return "$" + f"{int(v / 10) * 10:,}"   # to the nearest ten
+    return "$" + f"{int(v):,}"
+
+
+def rate_soft(v):
+    """The same for a rate: two significant figures and no twitching."""
+    if v >= 1000:
+        return f"{v / 1000:.1f}k/s"
+    if v >= 100:
+        return f"{v:.0f}/s"
+    if v >= 10:
+        return f"{v:.0f}/s"
+    if v >= 1:
+        return f"{v:.1f}/s"
+    return f"{v:.2f}/s"
+
+
 def rate(v):
     if v >= 100:
         return f"{v:,.0f}/s"
@@ -447,6 +501,140 @@ class Button:
 #   eye     "round" or "almond", and the colour, or ("odd", a, b)
 #   pat     the markings: see `_marks_*` below
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# COATS
+#
+# A breed is not one colour. Each one comes in two to four coats, and
+# which one turned up in the parcel is part of what you pulled: the card
+# keeps the coat it arrived in, and the binder remembers every coat of
+# that breed you have ever seen, which is a second collection inside the
+# first one.
+#
+# A coat is a straight substitution of three colours - the coat, its
+# markings and the belly - because the PATTERN belongs to the breed and
+# must survive the recolour: a silver Bengal is still rosetted, and a
+# chocolate Siamese is still pointed.
+#
+# And then there is the shiny. One card in a hundred and fifty comes out
+# of the pack in a colour the catalogue does not list and will not
+# explain, worth a quarter again in income and a permanent mark on the
+# card. It is the same joke Pokemon has been running since 1999, and it
+# works for the same reason: the odds are long enough that it is a story
+# and short enough that it happens.
+# ---------------------------------------------------------------------------
+COAT_FAMILY = {
+    "silver":    ((170, 172, 178), (104, 106, 114), (216, 218, 224)),
+    "red":       ((200, 140, 78), (144, 90, 46), (234, 208, 178)),
+    "black":     ((64, 60, 60), (40, 38, 40), (98, 94, 94)),
+    "blue":      ((124, 134, 148), (94, 104, 118), (168, 178, 192)),
+    "cream":     ((234, 216, 186), (206, 186, 152), (246, 236, 216)),
+    "lilac":     ((170, 154, 158), (128, 112, 118), (208, 196, 198)),
+    "chocolate": ((120, 86, 64), (74, 50, 36), (180, 148, 120)),
+    "white":     ((244, 240, 232), (222, 218, 210), (250, 248, 244)),
+    "charcoal":  ((86, 84, 88), (52, 50, 54), (126, 124, 128)),
+    # ivory has to be a long way from white or the two of them are the
+    # same cat with two names on it
+    "ivory":     ((226, 208, 170), (192, 172, 134), (242, 230, 204)),
+    "brown":     ((128, 100, 74), (78, 58, 42), (186, 162, 134)),
+    "grey":      ((134, 134, 132), (82, 82, 84), (192, 192, 190)),
+    "smoke":     ((98, 94, 100), (58, 56, 62), (152, 148, 154)),
+}
+SHINY_IN = 150               # one pack card in this many
+SHINY_BONUS = 1.25           # ... and it earns this much again
+
+
+# The shiny coats. Turning a coat round the colour wheel gave a cat that
+# was emerald or magenta, which is a different game: these are real cat
+# colours, every one of them something you could actually meet, and rare
+# enough that nobody would expect one in a paper sack. What marks a shiny
+# out is not that it is impossible - it is the sparkle, the gold frame,
+# and the fact that you have opened a hundred and fifty cards without
+# seeing one.
+SHINY_COATS = (
+    ("snow",         (246, 245, 243), (210, 214, 222), (252, 252, 251)),
+    ("silver smoke", (178, 180, 186), (88, 90, 98), (226, 228, 232)),
+    ("golden",       (218, 178, 104), (158, 116, 52), (242, 222, 180)),
+    ("cinnamon",     (184, 120, 76), (124, 70, 40), (222, 180, 140)),
+    ("fawn",         (212, 186, 154), (164, 132, 100), (238, 222, 200)),
+    ("chocolate",    (116, 80, 56), (72, 46, 30), (176, 144, 114)),
+    ("lavender",     (186, 172, 180), (134, 120, 132), (220, 210, 216)),
+    ("ebony",        (56, 54, 58), (34, 33, 36), (92, 90, 96)),
+    ("amber",        (202, 150, 76), (140, 92, 38), (232, 200, 152)),
+    ("blue cream",   (160, 164, 178), (208, 172, 138), (212, 214, 222)),
+)
+
+
+def _colour_gap(a, b):
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+_shiny_of = {}
+
+
+def shiny_coat(breed):
+    """Which rare colour THIS breed turns up in, and its name.
+
+    Fixed per breed, so a shiny Bengal is always the same shiny Bengal
+    and people can tell each other what to look for. Never a colour the
+    breed already comes in, or the rarest card in the game would look
+    like the second cheapest - and spread evenly across the ten, because
+    taking them in hash order gave five snows and five ebonies.
+    """
+    if not _shiny_of:
+        used = {row[0]: 0 for row in SHINY_COATS}
+        for i, b in enumerate(BREEDS):
+            # Eligibility is a question about COLOUR, not about names.
+            # Checking the names let a Maine Coon whose coats include
+            # "black" be given the shiny called "ebony", and the two of
+            # them were the same cat.
+            own = [coat_colours(b, k) for k in range(len(b.coats))]
+            best = None
+            for j, (name, c, m, bl) in enumerate(SHINY_COATS):
+                gap = min(_colour_gap(c, o[0]) + _colour_gap(m, o[1]) * 0.5
+                          for o in own)
+                # A breed with four coats of its own already covers most
+                # of the space, so the bar for "a different colour" has
+                # to be one a pixel comparison agrees with rather than
+                # one that leaves snow as the only answer for half the
+                # book. `cat_test.py coats` is the arbiter.
+                if gap < 72:
+                    continue
+                rank = (used[name], -int(gap // 40),
+                        (j - i * 3) % len(SHINY_COATS))
+                if best is None or rank < best[0]:
+                    best = (rank, name, (c, m, bl))
+            if best is None:                 # nothing clear: take the
+                far = max(                   # furthest away there is
+                    SHINY_COATS,
+                    key=lambda row: min(_colour_gap(row[1], o[0])
+                                        for o in own))
+                best = ((0, 0), far[0], (far[1], far[2], far[3]))
+            used[best[1]] += 1
+            _shiny_of[b.key] = (best[1], best[2])
+    return _shiny_of[breed.key]
+
+
+def coat_colours(breed, variant=0, shiny=False):
+    """The three colours this card is drawn in."""
+    P = breed.look
+    base = (P["coat"], P["mark"], P["belly"])
+    names = breed.coats
+    if 0 < variant < len(names):
+        fam = COAT_FAMILY.get(names[variant])
+        if fam:
+            base = fam
+    if shiny:
+        return shiny_coat(breed)[1]
+    return base
+
+
+def coat_name(breed, variant=0, shiny=False, full=False):
+    if shiny:
+        return "shiny " + shiny_coat(breed)[0] if full else "shiny"
+    names = breed.coats
+    return names[variant] if 0 <= variant < len(names) else names[0]
+
+
 # What a cat is LIKE, which is a different question from what it looks
 # like. Nine temperaments; every breed has one, and it decides what that
 # cat spends its day doing in the cat room, how fast it crosses the
@@ -508,10 +696,10 @@ TEMPERS = {
 
 class Breed:
     __slots__ = ("key", "name", "rarity", "origin", "note", "look", "temper",
-                 "habit")
+                 "habit", "coats")
 
     def __init__(self, key, name, rarity, origin, note, look, temper="lap",
-                 habit=""):
+                 habit="", coats=("as listed",)):
         self.key = key
         self.name = name
         self.rarity = rarity
@@ -520,6 +708,7 @@ class Breed:
         self.look = look
         self.temper = temper
         self.habit = habit
+        self.coats = coats          # [0] is the one the catalogue lists
 
     @property
     def temperament(self):
@@ -557,42 +746,48 @@ BREEDS = (
             pat="tabby", eye=(190, 166, 80), body=0.98, facew=1.02,
             ear=1.08, legs=1.06, faceh=1.02),
           "busy",
-          "Checks every room in order, then starts again."),
+          "Checks every room in order, then starts again.",
+          ("brown tabby", "silver", "red", "black")),
     Breed("dlh", "Domestic Longhair", R_COMMON, "everywhere",
           "A cloud that has learned where the warm spot is.",
           L(fluff=1.0, tail="plume", coat=(150, 118, 86), mark=(92, 64, 46),
             belly=(216, 196, 164), pat="tortie", body=1.04, facew=1.14,
             cheek=1.26, eye=(176, 150, 70), legs=0.78, faceh=0.92),
           "sleeper",
-          "Sheds on the one chair nobody is allowed to sit in."),
+          "Sheds on the one chair nobody is allowed to sit in.",
+          ("tortoiseshell", "cream", "blue", "red")),
     Breed("ash", "American Shorthair", R_COMMON, "the United States",
           "Built like a farm gate. Sleeps like one too.",
           L(coat=(150, 148, 142), mark=(84, 84, 82), belly=(206, 204, 198),
             pat="blotched", body=1.16, facew=1.14, cheek=1.2, legs=0.95,
             eye=(196, 174, 86), ear=0.92, fluff=0.2),
           "glutton",
-          "Hears a bowl from two rooms away."),
+          "Hears a bowl from two rooms away.",
+          ("silver tabby", "brown", "blue", "cream")),
     Breed("esh", "European Shorthair", R_COMMON, "the north of Europe",
           "Came in off a cold street and never mentioned it again.",
           L(coat=(126, 126, 124), mark=(70, 70, 72), belly=(190, 190, 188),
             pat="tabby", body=1.0, facew=1.0, faceh=1.0, cheek=1.02,
             eye=(156, 178, 110), ear=1.14, legs=1.0, fluff=0.52),
           "shadow",
-          "Sits just outside the lamplight, watching the lamp."),
+          "Sits just outside the lamplight, watching the lamp.",
+          ("grey tabby", "red", "silver", "black")),
     Breed("jbt", "Japanese Bobtail", R_COMMON, "Japan",
           "The tail is a pom-pom and the walk is all shoulders.",
           L(tail="pom", coat=(238, 226, 206), mark=(206, 128, 62),
             belly=(246, 238, 222), pat="bicolour", body=0.92, facew=0.94,
             legs=1.12, ear=1.1, eye=(196, 176, 92), fluff=0.22),
           "hunter",
-          "Carries the ball about and leaves it in the bowl."),
+          "Carries the ball about and leaves it in the bowl.",
+          ("calico", "red", "black", "cream")),
     Breed("mnx", "Manx", R_COMMON, "the Isle of Man",
           "No tail at all, and absolutely no opinion about it.",
           L(tail="none", coat=(196, 138, 76), mark=(142, 88, 44),
             belly=(230, 206, 176), pat="tabby", body=1.2, facew=1.12,
             cheek=1.16, legs=0.86, fluff=0.34, eye=(190, 160, 72)),
           "lap",
-          "Gets in the box. Always the box."),
+          "Gets in the box. Always the box.",
+          ("red", "black", "blue", "silver")),
 
     # -- UNCOMMON ----------------------------------------------------------
     Breed("bsh", "British Shorthair", R_UNCOMMON, "Britain",
@@ -602,14 +797,16 @@ BREEDS = (
             ear=0.84, legs=0.84, fluff=0.3, eye=(214, 150, 60),
             eyeshape="round"),
           "sleeper",
-          "Settles into a loaf and holds it like a job."),
+          "Settles into a loaf and holds it like a job.",
+          ("british blue", "lilac", "cream", "black")),
     Breed("rbl", "Russian Blue", R_UNCOMMON, "Arkhangelsk",
           "Silver at the tips, so it looks lit even when it is not.",
           L(coat=(126, 142, 156), mark=(154, 170, 184), belly=(150, 166, 180),
             pat="smoke", body=0.86, facew=0.92, cheek=0.84, ear=1.24,
             legs=1.16, fluff=0.54, eye=(126, 188, 136), eyeshape="round"),
           "shadow",
-          "Behind the curtain, eyes only, for an hour."),
+          "Behind the curtain, eyes only, for an hour.",
+          ("archangel blue", "silver")),
     Breed("sia", "Siamese", R_UNCOMMON, "Thailand",
           "Will tell you about the door at some length.",
           L(coat=(224, 206, 178), mark=(72, 54, 50), belly=(236, 222, 198),
@@ -617,7 +814,8 @@ BREEDS = (
             ear=1.3, legs=1.14, fluff=0.14, eye=(104, 164, 212),
             eyeshape="almond"),
           "lap",
-          "Follows you room to room, narrating the journey."),
+          "Follows you room to room, narrating the journey.",
+          ("seal point", "chocolate", "blue", "lilac")),
     Breed("mcn", "Maine Coon", R_UNCOMMON, "Maine",
           "Takes up two cushions and considers that modest.",
           L(size=1.22, body=1.3, facew=1.1, cheek=1.12, ear=1.22, tuft=1.0,
@@ -625,7 +823,8 @@ BREEDS = (
             mark=(86, 58, 40), belly=(214, 192, 158), pat="blotched",
             eye=(188, 158, 72)),
           "glutton",
-          "Eats, then sits by the bowl in case of seconds."),
+          "Eats, then sits by the bowl in case of seconds.",
+          ("brown tabby", "silver", "black", "red")),
     Breed("rag", "Ragdoll", R_UNCOMMON, "California",
           "Picked up, goes completely liquid. Every time.",
           L(size=1.16, body=1.22, facew=1.06, cheek=0.98, ear=0.96,
@@ -634,7 +833,8 @@ BREEDS = (
             belly=(242, 234, 218), pat="point", eye=(118, 160, 214),
             eyeshape="round"),
           "lap",
-          "Goes completely liquid wherever it is picked up."),
+          "Goes completely liquid wherever it is picked up.",
+          ("blue point", "chocolate", "lilac", "cream")),
     Breed("sfd", "Scottish Fold", R_UNCOMMON, "Perthshire",
           "Ears folded flat, like it is listening to the floor.",
           L(fold=1.0, ear=0.7, body=1.12, facew=1.2, faceh=0.94, cheek=1.24,
@@ -642,7 +842,8 @@ BREEDS = (
             belly=(198, 190, 180), pat="tabby", eye=(206, 160, 76),
             eyeshape="round"),
           "sleeper",
-          "Sleeps on its back with its feet in the air."),
+          "Sleeps on its back with its feet in the air.",
+          ("grey tabby", "blue", "cream", "red")),
 
     # -- RARE --------------------------------------------------------------
     Breed("nfc", "Norwegian Forest", R_RARE, "Norway",
@@ -652,7 +853,8 @@ BREEDS = (
             mark=(238, 232, 220), belly=(240, 234, 222), pat="bicolour",
             eye=(150, 184, 110)),
           "climber",
-          "Takes the high shelf and surveys the floor."),
+          "Takes the high shelf and surveys the floor.",
+          ("black and white", "red", "silver", "charcoal")),
     Breed("ben", "Bengal", R_RARE, "a laboratory in Yuba City",
           "Spotted like something far less comfortable.",
           L(size=1.06, body=1.1, facew=0.98, cheek=0.94, ear=0.9, legs=1.08,
@@ -660,7 +862,8 @@ BREEDS = (
             belly=(232, 208, 164), pat="spotted", eye=(142, 188, 128),
             eyeshape="almond"),
           "hunter",
-          "Has opinions about the ball, and acts on them."),
+          "Has opinions about the ball, and acts on them.",
+          ("golden rosette", "silver", "charcoal")),
     Breed("aby", "Abyssinian", R_RARE, "the Nile, allegedly",
           "Ticked coat, so it changes colour as it turns.",
           L(size=0.98, body=1.0, facew=0.92, faceh=1.0, cheek=0.94,
@@ -668,7 +871,8 @@ BREEDS = (
             mark=(96, 56, 34), belly=(206, 152, 104), pat="ticked",
             eye=(206, 164, 70), eyeshape="almond"),
           "climber",
-          "Is on top of the thing you just put down."),
+          "Is on top of the thing you just put down.",
+          ("ruddy", "red", "blue", "silver")),
     Breed("per", "Persian", R_RARE, "Isfahan",
           "The face of a cat who has just been told something.",
           L(size=1.1, body=1.26, facew=1.3, faceh=0.92, cheek=1.34, ear=0.66,
@@ -676,7 +880,8 @@ BREEDS = (
             coat=(232, 212, 176), mark=(206, 180, 140), belly=(242, 228, 202),
             pat="smoke", eye=(216, 142, 64), eyeshape="round"),
           "sleeper",
-          "Picked the warmest square foot and stayed in it."),
+          "Picked the warmest square foot and stayed in it.",
+          ("cream", "white", "blue", "chocolate")),
     Breed("sph", "Sphynx", R_RARE, "Toronto",
           "Warm to the touch, which is the entire argument for it.",
           L(size=1.0, body=0.84, facew=0.94, faceh=1.06, cheek=0.72,
@@ -684,7 +889,8 @@ BREEDS = (
             mark=(176, 128, 118), belly=(220, 180, 168), pat="solid",
             eye=(198, 190, 110), eyeshape="almond", nose=(190, 134, 130)),
           "warmth",
-          "On the radiator, under a blanket, against a lamp."),
+          "On the radiator, under a blanket, against a lamp.",
+          ("bare pink", "blue", "black", "ivory")),
 
     # -- PEDIGREE ----------------------------------------------------------
     Breed("sav", "Savannah", R_PEDIGREE, "a serval and a nerve",
@@ -694,7 +900,8 @@ BREEDS = (
             mark=(44, 38, 34), belly=(234, 212, 168), pat="spotted",
             eye=(188, 180, 96), eyeshape="almond"),
           "climber",
-          "Can reach the top of the bookcase, flat-footed."),
+          "Can reach the top of the bookcase, flat-footed.",
+          ("golden spotted", "silver", "charcoal")),
     Breed("tan", "Turkish Angora", R_PEDIGREE, "Ankara",
           "Silk, mostly. Sheds it generously onto dark clothing.",
           L(size=1.04, body=0.9, facew=0.9, faceh=1.06, cheek=0.82, ear=1.2,
@@ -702,7 +909,8 @@ BREEDS = (
             mark=(226, 214, 196), belly=(250, 244, 232), pat="solid",
             eye=(116, 170, 216), eyeshape="almond"),
           "groomer",
-          "Washes one paw for ten minutes, then the other."),
+          "Washes one paw for ten minutes, then the other.",
+          ("white", "ivory", "blue")),
     Breed("bir", "Birman", R_PEDIGREE, "a temple, by legend",
           "White gloves on all four feet, and it knows.",
           L(size=1.1, body=1.16, facew=1.0, faceh=1.06, cheek=0.96,
@@ -710,7 +918,8 @@ BREEDS = (
             coat=(234, 220, 196), mark=(96, 72, 70), belly=(244, 234, 216),
             pat="gloves", eye=(112, 156, 212), eyeshape="round"),
           "groomer",
-          "Keeps the white gloves white. It takes work."),
+          "Keeps the white gloves white. It takes work.",
+          ("seal point", "blue", "chocolate", "lilac")),
     Breed("dvx", "Devon Rex", R_PEDIGREE, "a tin mine in Devon",
           "A pixie in a second-hand jumper, two sizes too big.",
           L(size=0.88, body=0.82, facew=1.06, faceh=0.86, cheek=1.1, ear=1.56,
@@ -718,7 +927,8 @@ BREEDS = (
             mark=(104, 86, 80), belly=(196, 178, 168), pat="smoke",
             eye=(176, 188, 120), eyeshape="round"),
           "busy",
-          "Into the toy basket, out of it, into it again."),
+          "Into the toy basket, out of it, into it again.",
+          ("mouse grey", "black", "cream", "white")),
 
     # -- LEGEND ------------------------------------------------------------
     Breed("kma", "Khao Manee", R_LEGEND, "Siam, kept by kings",
@@ -728,7 +938,8 @@ BREEDS = (
             mark=(232, 226, 216), belly=(252, 248, 240), pat="solid",
             eye=("odd", (112, 168, 220), (222, 176, 72)), eyeshape="almond"),
           "groomer",
-          "Sits in the window like something on display."),
+          "Sits in the window like something on display.",
+          ("diamond white", "ivory")),
     Breed("lyk", "Lykoi", R_LEGEND, "a feral litter in Tennessee",
           "Half-coated, so it comes with its own moonlight.",
           L(size=1.0, body=1.06, facew=1.06, faceh=0.96, cheek=1.04,
@@ -736,7 +947,8 @@ BREEDS = (
             mark=(206, 200, 192), belly=(96, 92, 92), pat="roan",
             eye=(214, 170, 76), eyeshape="almond"),
           "shadow",
-          "Works the edges of the room at a trot."),
+          "Works the edges of the room at a trot.",
+          ("roan", "charcoal", "silver")),
     Breed("sok", "Sokoke", R_LEGEND, "the Arabuko forest",
           "The rarest coat in the book, and it was never bred for.",
           L(size=1.0, body=0.80, facew=0.88, faceh=1.02, cheek=0.78,
@@ -744,7 +956,8 @@ BREEDS = (
             mark=(74, 54, 40), belly=(206, 176, 136), pat="blotched",
             eye=(178, 182, 108), eyeshape="almond"),
           "hunter",
-          "Patrols. Stops. Patrols the other way."),
+          "Patrols. Stops. Patrols the other way.",
+          ("brown blotched", "silver", "chocolate")),
 )
 
 BY_KEY = {b.key: b for b in BREEDS}
@@ -1649,80 +1862,104 @@ def _face(surf, P, w, h, hb, shut, pose="sit", shine=0.0):
         surf.blit(s, (0, 0))
 
 
-def _collar(surf, P, w, h, hb, pose, level, acc):
+def _collar(surf, P, w, h, hb, pose, level, acc, head_prims=()):
     """A collar at level 4, a tag at 7, and a bell when it retires.
 
-    Worn rather than grown, so it is drawn on top of the finished cat
-    and takes the card's rarity colour - which is the one thread tying
-    the animal to the paper it comes on.
+    Drawn as a RING and not as an arc across the chest. A strap that
+    stops at the edge of the neck is a bib: it reads as something lying
+    on the cat rather than something fastened round it. So the whole
+    ellipse is drawn - the far side of it as well as the near side - and
+    then the head and cheeks are erased out of it, which is what puts
+    the back of the band behind the neck where it belongs.
+
+    The erase is a mask blitted with BLEND_RGBA_MIN: white everywhere
+    except the head, which is transparent, so the minimum of the two
+    alphas leaves the collar showing only where the head is not.
     """
     if level < COLLAR_AT:
         return
     # Leather first, rarity second. Taking the rarity colour straight
     # gave the uncommon breeds a green strap, which reads as a fish.
     col = mix(RUG, acc, 0.30)
-    lip = mix(col, CREAM, 0.42)         # the light along the top of it
-    if pose == "stand":
-        br = pygame.Rect(hb.x + hb.w * 0.04, hb.bottom - hb.h * 0.22,
-                         hb.w * 0.82, hb.h * 0.56)
-        tk = max(4, round(h * 0.05))
-        pygame.draw.arc(surf, shade(col, 0.45), br.inflate(2, 2), 3.9, 5.7,
-                        tk + 2)
-        pygame.draw.arc(surf, col, br, 3.92, 5.68, tk)
-        if level >= TAG_AT:
-            r = max(3, round(h * 0.040))
-            tx, ty = br.centerx + br.w * 0.1, br.bottom - r * 0.4
-            face = (mix(LAMP, EMBER, 0.35) if level >= BELL_AT
-                    else mix(TEA, LAMP, 0.4))
-            pygame.draw.circle(surf, face, (round(tx), round(ty)), r)
-            pygame.draw.circle(surf, shade(EMBER, 0.6), (round(tx),
-                                                         round(ty)), r, 1)
-        return
+    lip = mix(col, CREAM, 0.42)
+    band = pygame.Surface((w, h), pygame.SRCALPHA)
+
     if pose == "curl":
         bw = hb.w * 1.02
         br = pygame.Rect(hb.centerx - bw * 0.42, hb.bottom - hb.h * 0.26,
                          bw, hb.h * 0.55)
         tk = max(4, round(h * 0.05))
-        pygame.draw.arc(surf, shade(col, 0.45), br.inflate(2, 2), 3.88, 5.62,
+        pygame.draw.arc(band, shade(col, 0.45), br.inflate(2, 2), 3.88, 5.62,
                         tk + 2)
-        pygame.draw.arc(surf, col, br, 3.9, 5.6, tk)
+        pygame.draw.arc(band, col, br, 3.9, 5.6, tk)
+        surf.blit(band, (0, 0))
         return
-    # Low enough to be on the neck and not across the mouth, and
-    # narrower than the skull, or it reads as a moustache.
-    # A strap round a neck: wider than the part you can see, so its ends
-    # pass behind the jowls instead of stopping in mid air, and drawn
-    # across a shallow arc rather than a deep one.
-    bw = hb.w * 1.02
-    bh = h * 0.13
-    cy = hb.bottom + h * 0.052
-    br = pygame.Rect(hb.centerx - bw * 0.5, cy - bh * 0.5, bw, bh)
-    thick = max(5, round(h * 0.055))
-    pygame.draw.arc(surf, shade(col, 0.45), br.inflate(3, 3), 3.84, 5.60,
-                    thick + 3)
-    pygame.draw.arc(surf, col, br, 3.86, 5.58, thick)
-    pygame.draw.arc(surf, lip, br.inflate(0, -max(2, thick - 2)), 3.98, 5.46,
-                    max(2, thick // 3))
-    bx = hb.centerx - bw * 0.20       # a brass buckle, off to one side
-    by = cy + bh * 0.12
+
+    # ONLY the near half of the ring is drawn - the far half is behind
+    # the neck, and drawing it anyway left a complete circle lying on top
+    # of the fur like a saucer. The ends of the arc sit at the widest
+    # part of the ellipse, which is exactly where a strap goes out of
+    # sight. Which half is "near" depends on which way the cat is facing:
+    # head on it is the lower half, side on it is the half toward you.
+    if pose == "stand":
+        # a neck seen from the side is a cylinder end-on, so its collar
+        # is a tall narrow ellipse and not a flat one
+        cx = hb.x + hb.w * 0.10
+        cy = hb.bottom - hb.h * 0.10
+        bw, bh = hb.w * 0.46, hb.h * 1.05
+        tk = max(4, round(h * 0.044))
+        lo, hi = 1.62, 4.66
+        tag_at = (cx - bw * 0.16, cy + bh * 0.46)
+    else:
+        cx = hb.centerx
+        cy = hb.bottom + h * 0.014
+        bw, bh = hb.w * 0.80, h * 0.150
+        tk = max(5, round(h * 0.050))
+        lo, hi = 3.12, TAU
+        tag_at = (cx, cy + bh * 0.5 + tk * 0.3)
+
+    br = pygame.Rect(round(cx - bw * 0.5), round(cy - bh * 0.5),
+                     round(bw), round(bh))
+    pygame.draw.arc(band, shade(col, 0.42), br.inflate(3, 3), lo - 0.02,
+                    hi, tk + 3)
+    pygame.draw.arc(band, col, br, lo, hi, tk)
+    pygame.draw.arc(band, lip, br.inflate(0, -max(2, tk - 2)),
+                    lo + 0.38, hi - 0.28, max(2, tk // 3))
+
+    # take the head out of it: that is the whole trick
+    if head_prims:
+        mask = pygame.Surface((w, h), pygame.SRCALPHA)
+        mask.fill((255, 255, 255, 255))
+        _paint(mask, head_prims, (0, 0, 0, 0))
+        band.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    surf.blit(band, (0, 0))
+
+    # the buckle sits on the near side, off to one side of the throat
+    bx = cx - bw * (0.26 if pose != "stand" else 0.34)
+    by = cy + bh * (0.30 if pose != "stand" else 0.10)
     pygame.draw.rect(surf, mix(LAMP, TEA, 0.4),
                      (round(bx), round(by), max(4, round(h * 0.035)),
                       max(4, round(h * 0.030))), border_radius=2)
+
     if level >= TAG_AT:
-        tx, ty = hb.centerx, cy + bh * 0.48 + thick * 0.4
+        tx, ty = tag_at
         r = max(4, round(h * 0.036))
+        pygame.draw.line(surf, shade(col, 0.6), (round(tx), round(ty - r)),
+                         (round(tx), round(ty)), 2)
         if level >= BELL_AT:
-            pygame.draw.circle(surf, mix(LAMP, EMBER, 0.35), (round(tx),
-                                                              round(ty)), r)
-            pygame.draw.circle(surf, shade(EMBER, 0.65), (round(tx),
-                                                          round(ty)), r, 1)
-            pygame.draw.line(surf, shade(EMBER, 0.5), (tx - r * 0.6, ty + r * 0.3),
+            pygame.draw.circle(surf, mix(LAMP, EMBER, 0.35),
+                               (round(tx), round(ty)), r)
+            pygame.draw.circle(surf, shade(EMBER, 0.65),
+                               (round(tx), round(ty)), r, 1)
+            pygame.draw.line(surf, shade(EMBER, 0.5),
+                             (tx - r * 0.6, ty + r * 0.3),
                              (tx + r * 0.6, ty + r * 0.3), 2)
             pygame.draw.circle(surf, mix(CREAM, LAMP, 0.4),
                                (round(tx - r * 0.3), round(ty - r * 0.35)),
                                max(1, r // 3))
         else:
-            pygame.draw.circle(surf, mix(TEA, LAMP, 0.4), (round(tx),
-                                                           round(ty)), r)
+            pygame.draw.circle(surf, mix(TEA, LAMP, 0.4),
+                               (round(tx), round(ty)), r)
             pygame.draw.circle(surf, shade(TEA, 0.6), (round(tx), round(ty)),
                                r, 1)
 
@@ -1732,15 +1969,20 @@ _cats = {}
 CAT_RATIO = 0.95          # a sitting cat is this much wider than it is tall
 
 
-def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
-    """A cat at a level, built once and cached. The room animates by
-    blitting this; nothing below here knows what a card is."""
+def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
+                variant=0, shiny=False):
+    """A cat at a level in a coat, built once and cached."""
     level = int(clamp(level, 1, MAX_LEVEL))
-    key = (breed.key, pose, int(height), shut, level)
+    key = (breed.key, pose, int(height), shut, level, variant, bool(shiny))
     got = _cats.get(key)
     if got is not None:
         return got
-    P = groom(breed.look, level)
+    look = breed.look
+    if variant or shiny:
+        coat, mark, belly = coat_colours(breed, variant, shiny)
+        look = dict(look)
+        look["coat"], look["mark"], look["belly"] = coat, mark, belly
+    P = groom(look, level)
     shine = (level - 1) / (MAX_LEVEL - 1)
     h = max(24, int(height * P["size"]))
     if pose == "curl":
@@ -1754,10 +1996,12 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
     sil = pygame.Surface((w, h), pygame.SRCALPHA)
 
+    head_prims = []
     if pose == "curl":
         prims = _shapes_curl(P, w, h)
         hb = _head_box_curl(P, w, h)
-        prims = prims + [("ellipse", hb)]
+        head_prims = [("ellipse", hb)]
+        prims = prims + head_prims
         ear = hb.h * 0.52 * P["ear"]
         for sx, lean in ((-1, -0.22), (1, 0.16)):   # both ears, both up
             bx = hb.centerx + sx * hb.w * 0.30
@@ -1771,10 +2015,12 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
                     (bx + hb.w * 0.08 + lean * hb.w, by - ear),
                     (bx + hb.w * 0.26, by + ear * 0.10)]))
     elif pose == "stand":
-        prims = _shapes_stand(P, w, h) + _shapes_head_stand(P, w, h)
+        head_prims = _shapes_head_stand(P, w, h)
+        prims = _shapes_stand(P, w, h) + head_prims
         hb = _head_box_stand(P, w, h)
     else:
-        prims = _shapes_sit(P, w, h) + _shapes_head(P, w, h)
+        head_prims = _shapes_head(P, w, h)
+        prims = _shapes_sit(P, w, h) + head_prims
         hb = _head_box(P, w, h)
 
     _paint(surf, prims, P["coat"])
@@ -1872,11 +2118,27 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1):
         bb.blit(sil, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
         surf.blit(bb, (0, 0))
 
+    if shiny:
+        sp = pygame.Surface((w, h), pygame.SRCALPHA)
+        rng = random.Random(breed.key + "shiny")
+        for _ in range(9):
+            a = rng.uniform(0, TAU)
+            rr = rng.uniform(0.3, 0.52)
+            px = w * (0.5 + math.cos(a) * rr)
+            py = h * (0.5 + math.sin(a) * rr * 0.9)
+            k = rng.uniform(0.5, 1.0)
+            r0 = max(2, int(h * 0.028 * k))
+            pygame.draw.line(sp, (*CREAM, 210), (px - r0, py), (px + r0, py), 2)
+            pygame.draw.line(sp, (*CREAM, 210), (px, py - r0), (px, py + r0), 2)
+            pygame.draw.circle(sp, (*mix(CREAM, LAMP, 0.4), 150),
+                               (round(px), round(py)), max(1, r0 // 3))
+        surf.blit(sp, (0, 0))
     if pose == "stand":
         _face_side(surf, P, w, h, hb, shut, shine)
     else:
         _face(surf, P, w, h, hb, shut or pose == "curl", pose, shine)
-    _collar(surf, P, w, h, hb, pose, level, rarity_colour(breed.rarity))
+    _collar(surf, P, w, h, hb, pose, level, rarity_colour(breed.rarity),
+            head_prims)
     _cats[key] = surf
     return surf
 
@@ -1900,13 +2162,30 @@ CARDS_TO_MAX = DUPES_TO_MAX + 1                               # with the first
 
 
 class Card:
-    """One breed in your binder: what level it is and how far into the next."""
-    __slots__ = ("level", "dupes", "pulled")
+    """One breed in your binder: its level, its coat, and what it has seen.
 
-    def __init__(self, level=1, dupes=0, pulled=1):
+    `coat` is the one this card is drawn in - the coat it arrived in, or
+    the shiny that replaced it. `seen` is a bitmask of every coat of this
+    breed that has ever come out of a parcel, which is the second
+    collection: a breed can be finished at level 10 and still be missing
+    a colour.
+    """
+    __slots__ = ("level", "dupes", "pulled", "coat", "seen", "shiny")
+
+    def __init__(self, level=1, dupes=0, pulled=1, coat=0, seen=None,
+                 shiny=False):
         self.level = level
         self.dupes = dupes
         self.pulled = pulled
+        self.coat = coat
+        self.seen = (1 << coat) if seen is None else seen
+        self.shiny = shiny
+
+    def saw(self, variant):
+        self.seen |= 1 << variant
+
+    def coats_seen(self, breed):
+        return sum(1 for i in range(len(breed.coats)) if self.seen >> i & 1)
 
     @property
     def maxed(self):
@@ -2095,6 +2374,14 @@ class Order:
         return 3, "on your street"
 
 
+def roll_coat(breed, rng):
+    """Which coat came in the parcel. The listed one turns up as often as
+    all the others put together, so a breed still looks like itself."""
+    if len(breed.coats) < 2:
+        return 0
+    return 0 if rng.random() < 0.5 else rng.randrange(1, len(breed.coats))
+
+
 class Pull:
     """One card out of one parcel, and what it did to the binder.
 
@@ -2103,14 +2390,19 @@ class Pull:
     a copy of something already retired - which the shop only sends by
     accident, and only at the very end.
     """
-    __slots__ = ("breed", "kind", "level", "before", "sub")
+    __slots__ = ("breed", "kind", "level", "before", "sub", "coat", "shiny",
+                 "new_coat")
 
-    def __init__(self, breed, kind, level, before, sub=False):
+    def __init__(self, breed, kind, level, before, sub=False, coat=0,
+                 shiny=False, new_coat=False):
         self.breed = breed
         self.kind = kind
         self.level = level
         self.before = before
         self.sub = sub
+        self.coat = coat
+        self.shiny = shiny
+        self.new_coat = new_coat
 
 
 class State:
@@ -2126,6 +2418,7 @@ class State:
         self.spent = 0.0
         self.packs_opened = 0
         self.cards_pulled = 0
+        self.shinies = 0
         self.played = 0.0
         self.first_run = True
         self.music = True
@@ -2138,7 +2431,8 @@ class State:
     # -- the numbers --------------------------------------------------------
     @property
     def income(self):
-        return sum(BY_KEY[k].rate_at(c.level) for k, c in self.cards.items())
+        return sum(BY_KEY[k].rate_at(c.level) * (SHINY_BONUS if c.shiny else 1)
+                   for k, c in self.cards.items())
 
     @property
     def owned(self):
@@ -2273,16 +2567,27 @@ class State:
                 b, sub = self.roll(pack, rng, last=(i == pack.cards - 1))
                 if b is None:
                     break
+                coat = roll_coat(b, rng)
+                shiny = rng.randrange(SHINY_IN) == 0
                 card = self.cards.get(b.key)
                 if card is None:
-                    self.cards[b.key] = Card()
-                    out.append(Pull(b, "new", 1, 0, sub))
+                    card = Card(coat=coat, shiny=shiny)
+                    self.cards[b.key] = card
+                    out.append(Pull(b, "new", 1, 0, sub, coat, shiny, True))
                 else:
+                    fresh = not (card.seen >> coat & 1)
+                    card.saw(coat)
+                    first_shiny = shiny and not card.shiny
+                    if first_shiny:
+                        card.shiny = True     # it keeps the better coat
+                        card.coat = coat
                     before = card.level
                     lv = card.add_dupe()
                     out.append(Pull(b, "level" if lv else "dupe", card.level,
-                                    before, sub))
+                                    before, sub, coat, first_shiny, fresh))
                 self.cards_pulled += 1
+                if shiny:
+                    self.shinies += 1
             self.packs_opened += 1
         return out
 
@@ -2291,7 +2596,8 @@ class State:
         return {
             "v": 1,
             "money": round(self.money, 4),
-            "cards": {k: [c.level, c.dupes, c.pulled]
+            "cards": {k: [c.level, c.dupes, c.pulled, c.coat, c.seen,
+                          int(c.shiny)]
                       for k, c in self.cards.items()},
             "orders": [[o.num, o.pack, o.qty, round(o.left, 2), o.paid, o.mode]
                        for o in self.orders],
@@ -2301,6 +2607,7 @@ class State:
             "spent": round(self.spent, 3),
             "packs_opened": self.packs_opened,
             "cards_pulled": self.cards_pulled,
+            "shinies": self.shinies,
             "played": round(self.played, 1),
             "music": self.music,
             "sound": self.sound,
@@ -2317,8 +2624,13 @@ class State:
         s.money = float(d.get("money", START_MONEY))
         for k, v in (d.get("cards") or {}).items():
             if k in BY_KEY:
+                coat = int(v[3]) if len(v) > 3 else 0
+                coat = int(clamp(coat, 0, len(BY_KEY[k].coats) - 1))
+                seen = int(v[4]) if len(v) > 4 else (1 << coat)
                 s.cards[k] = Card(int(clamp(int(v[0]), 1, MAX_LEVEL)),
-                                  max(0, int(v[1])), max(1, int(v[2])))
+                                  max(0, int(v[1])), max(1, int(v[2])),
+                                  coat, seen,
+                                  bool(v[5]) if len(v) > 5 else False)
         for row in (d.get("orders") or []):
             if row[1] in BY_PACK:
                 s.orders.append(Order(int(row[0]), row[1], int(row[2]),
@@ -2332,6 +2644,7 @@ class State:
         s.spent = float(d.get("spent", 0))
         s.packs_opened = int(d.get("packs_opened", 0))
         s.cards_pulled = int(d.get("cards_pulled", 0))
+        s.shinies = int(d.get("shinies", 0))
         s.played = float(d.get("played", 0))
         s.music = bool(d.get("music", True))
         s.sound = bool(d.get("sound", True))
@@ -2489,6 +2802,18 @@ def _build_sound(name):
         for f in (392.0, 523.25, 659.25, 783.99):
             out += _note(f, 0.17, "soft", 0.5, 0.02, 0.6)
         return _to_sound(out, 0.5)
+    if name == "shiny":                 # a chime that keeps going up
+        out = []
+        for f in (659.25, 987.77, 1318.5, 1760.0, 2093.0):
+            out += _note(f, 0.20, "bell", 0.42, 0.01, 0.9)
+        tail = _note(1318.5, 1.6, "bell", 0.5)
+        for i, v in enumerate(tail):
+            j = int(0.5 * RATE) + i
+            if j < len(out):
+                out[j] += v
+            else:
+                out.append(v)
+        return _to_sound(out, 0.6)
     if name == "legend":
         base = _note(523.25, 1.5, "bell", 0.5)
         for f, d in ((659.25, 0.12), (783.99, 0.24), (1046.5, 0.36)):
@@ -2683,9 +3008,10 @@ def card_cat_height(rect):
 
 
 def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
-              show_rate=True, shut=False):
+              show_rate=True, shut=False, variant=0, shiny=False):
     rect = pygame.Rect(rect)
-    acc = rarity_colour(breed.rarity)
+    acc = mix(rarity_colour(breed.rarity), LAMP, 0.45) if shiny \
+        else rarity_colour(breed.rarity)
     grade = 4 if maxed else grade_of(level)
     # better paper as it goes: a stray comes on card, a retired breed
     # comes on something you would frame
@@ -2725,7 +3051,8 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
                              win.w * 0.76, win.h * 0.22))
     # never taller than the window it has to sit in, or the ears go
     img = cat_surface(breed, "sit",
-                      min(card_cat_height(rect), win.h - 5), shut, level)
+                      min(card_cat_height(rect), win.h - 5), shut, level,
+                      variant, shiny)
     surf.blit(img, img.get_rect(midbottom=(win.centerx, win.bottom - 4)))
     surf.set_clip(old)
     pygame.draw.rect(surf, mix(acc, INK if grade < 3 else LAMP,
@@ -2736,6 +3063,14 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
     # the foot say the same thing, but counting ten dots is not reading,
     # and this is the one part of the card that moves on EVERY level and
     # not only at a grade.
+    if shiny:                       # the one the catalogue cannot explain
+        pygame.draw.rect(surf, mix(LAMP, CREAM, 0.35), rect, width=3,
+                         border_radius=7)
+        chip = pygame.Rect(0, 0, min(64, rect.w - 26), 17)
+        chip.midtop = (rect.centerx, win.bottom - 20)
+        pygame.draw.rect(surf, mix(LAMP, acc, 0.3), chip, border_radius=4)
+        text(surf, "SHINY", 11, chip.center, mix(INK, acc, 0.1), center=True,
+             kind="mono", bold=True, shadow=False)
     if rect.w >= 92:
         cw = int(clamp(rect.w * 0.21, 22, 32))
         chip = pygame.Rect(win.x + 4, win.y + 4, cw, int(cw * 0.64))
@@ -2763,7 +3098,8 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
              mix(INK, acc, 0.5), 60)
     text(surf, rarity_name(breed.rarity), 11 if not compact else 9,
          (inner.x + 4, row_y + (2 if compact else 0)),
-         mix(INK, acc, 0.45), kind="mono", shadow=False)
+         mix(INK, acc, 0.45), kind="mono", shadow=False,
+         max_w=inner.w - (56 if show_rate else 8))
     if show_rate and not compact:
         text(surf, rate(breed.rate_at(level)), 11,
              (inner.right - 4, row_y + 6), mix(INK, acc, 0.3), right=True,
@@ -2778,10 +3114,15 @@ def draw_card(surf, rect, breed, level=1, dupes=0, maxed=False, lit=1.0,
                          border_radius=3)
         text(surf, "RETIRED", 11, (rect.centerx, sub_y + 6),
              mix(INK, acc, 0.25), center=True, kind="mono", shadow=False)
-    elif level < MAX_LEVEL:
-        text(surf, f"{dupes} of {dupes_for(level)}", 11,
-             (rect.centerx, sub_y + 6), mix(INK, acc, 0.4), center=True,
-             kind="mono", shadow=False)
+    else:
+        if len(breed.coats) > 1 or shiny:
+            text(surf, coat_name(breed, variant, shiny, full=shiny), 11,
+                 (inner.x + 4, sub_y), mix(INK, LAMP if shiny else acc, 0.35),
+                 kind="mono", shadow=False, max_w=inner.w - 58)
+        if level < MAX_LEVEL:
+            text(surf, f"{dupes} of {dupes_for(level)}", 11,
+                 (inner.right - 4, sub_y + 6), mix(INK, acc, 0.4),
+                 right=True, kind="mono", shadow=False)
 
     # the level, as ten pips along the foot of the card
     pw = (inner.w - 8) / MAX_LEVEL
@@ -3065,11 +3406,13 @@ ACT_WORD = {"sleep": "asleep", "loaf": "loafing", "sit": "sitting",
 class Resident:
     """One cat living in the cat room, and what it is up to."""
     __slots__ = ("breed", "level", "spot", "act", "timer", "x", "y",
-                 "state", "phase", "face", "home", "seed")
+                 "state", "phase", "face", "home", "seed", "coat", "shiny")
 
-    def __init__(self, breed, level, spot, seed):
+    def __init__(self, breed, level, spot, seed, coat=0, shiny=False):
         self.breed = breed
         self.level = level
+        self.coat = coat
+        self.shiny = shiny
         self.spot = spot
         self.act = "loaf"
         self.timer = 2.0 + seed % 7
@@ -3111,23 +3454,31 @@ class CatRoom:
         self.keys = ()
         self.rng = random.Random(11)
         self.toy_t = 0.0
+        self.view = 0.0        # where the camera is, so cats can prefer it
 
     def sync(self, state, cap):
         """Rebuild the residents when the set of cats in here changes."""
         want = tuple(b.key for b in room_cats(state)[:cap])
         if want == self.keys:
-            for r in self.res:                 # levels can still move
+            for r in self.res:                 # levels and coats move
                 card = state.cards.get(r.breed.key)
                 if card:
-                    r.level = card.level
+                    r.level, r.coat, r.shiny = (card.level, card.coat,
+                                                card.shiny)
             return
         taken = set()
         res = []
         for i, k in enumerate(want):
             b = BY_KEY[k]
             spot = self._pick_spot(b, None, taken)
+            if i < 4 and ROOM_SPOTS[spot][1] > W - 60:
+                near = [j for j in range(len(ROOM_SPOTS))
+                        if j not in taken and ROOM_SPOTS[j][1] < W - 60]
+                if near:
+                    spot = self.rng.choice(near)
             taken.add(spot)
-            r = Resident(b, state.cards[k].level, spot, i * 37 + 5)
+            c = state.cards[k]
+            r = Resident(b, c.level, spot, i * 37 + 5, c.coat, c.shiny)
             r.act = self.rng.choice(SPOT_ACTS[ROOM_SPOTS[spot][0]])
             res.append(r)
         self.res = res
@@ -3135,7 +3486,13 @@ class CatRoom:
 
     # -- choosing what to do next ------------------------------------------
     def _pick_spot(self, breed, act, taken):
-        """A spot this cat would like, free, and able to host the act."""
+        """A spot this cat would like, free, and able to host the act.
+
+        Weighted toward the part of the room you are standing in. Without
+        that, a room twice as wide as the window with three cats in it is
+        an empty room with three cats round the corner, which is exactly
+        what it looked like.
+        """
         T = breed.temperament
         pool = []
         for i, (kind, x, y, face, size, name) in enumerate(ROOM_SPOTS):
@@ -3144,6 +3501,8 @@ class CatRoom:
             if act is not None and act not in SPOT_ACTS[kind]:
                 continue
             weight = 3.0 if kind in T["likes"] else 1.0
+            if self.view - 80 <= x <= self.view + W + 80:
+                weight *= 3.5 if T is TEMPERS["lap"] else 2.2
             pool.append((i, weight))
         if not pool:
             return self.rng.randrange(len(ROOM_SPOTS))
@@ -3175,7 +3534,7 @@ class CatRoom:
                 break
         spot = self._pick_spot(r.breed, act, taken)
         lo, hi = T["stay"]
-        r.timer = self.rng.uniform(lo, hi)
+        r.timer = self.rng.uniform(lo, hi) * 0.55
         r.act = act
         if spot == r.spot:
             r.state = "rest"
@@ -3186,7 +3545,9 @@ class CatRoom:
         r.state = "down" if r.y < CAT_WALK_Y - 24 else "walk"
 
     # -- time ---------------------------------------------------------------
-    def update(self, dt, state, cap):
+    def update(self, dt, state, cap, view=None):
+        if view is not None:
+            self.view = view
         self.sync(state, cap)
         self.toy_t += dt
         for r in self.res:
@@ -3246,7 +3607,8 @@ class CatRoom:
 
     # -- drawing ------------------------------------------------------------
     def rect_of(self, r):
-        img = cat_surface(r.breed, r.pose, r.size, level=r.level)
+        img = cat_surface(r.breed, r.pose, r.size, level=r.level,
+                          variant=r.coat, shiny=r.shiny)
         return img.get_rect(midbottom=(round(r.x), round(r.y)))
 
     def draw(self, surf, t):
@@ -3255,12 +3617,18 @@ class CatRoom:
 
     def _draw_one(self, surf, r, t):
         ph = t * 1.4 + r.seed
-        shut = r.act in ("sleep",) or (math.sin(t * 0.7 + r.seed) > 0.985)
-        img = cat_surface(r.breed, r.pose, r.size, shut, r.level)
+        # A blink is one frame in thirty and a breath was one and a bit
+        # pixels; at this size neither of them read as a living thing, so
+        # the resting animations are two or three times what a cat
+        # actually does.
+        shut = r.act == "sleep" or (math.sin(t * 0.9 + r.seed) > 0.955)
+        img = cat_surface(r.breed, r.pose, r.size, shut, r.level,
+                          r.coat, r.shiny)
         iw, ih = img.get_size()
         dy = 0.0
         sx = 1.0
-        sy = 1.0 + 0.012 * math.sin(ph)
+        sy = 1.0 + (0.030 if r.act == "sleep" else 0.018) * \
+            math.sin(ph * (0.6 if r.act == "sleep" else 1.0))
         if r.state in ("walk", "down", "up") or r.act == "prowl":
             dy = -abs(math.sin(t * 7.0 + r.seed)) * ih * 0.035
             sy = 1.0 + 0.02 * math.sin(t * 14.0 + r.seed)
@@ -3273,6 +3641,14 @@ class CatRoom:
         elif r.act == "scratch":
             sy = 1.0 + 0.055 * abs(math.sin(t * 4.4 + r.seed))
             dy = -ih * 0.02 * abs(math.sin(t * 4.4 + r.seed))
+        if r.state == "rest" and r.act in ("loaf", "sit", "watch"):
+            # every so often it looks round the room
+            look = math.sin(t * 0.21 + r.seed * 1.7)
+            if look > 0.72:
+                r.face = -ROOM_SPOTS[r.spot][3]
+            elif look < -0.72:
+                r.face = ROOM_SPOTS[r.spot][3]
+            dy += math.sin(t * 0.8 + r.seed) * ih * 0.012
         if abs(sy - 1.0) > 0.001 or abs(sx - 1.0) > 0.001:
             img = pygame.transform.smoothscale(
                 img, (max(2, int(iw * sx)), max(2, int(ih * sy))))
@@ -3603,14 +3979,30 @@ def cats_in(state, area):
     return out
 
 
-def cat_level(state, b):
+def cat_look(state, b):
+    """(level, coat, shiny) for a breed, as its card in the binder says.
+
+    The rooms used to draw every cat in the colour the catalogue lists,
+    so a shiny you had pulled was shiny on its card and ordinary on the
+    windowsill. One lookup, used everywhere a cat is drawn outside a
+    card, keeps the two in step.
+    """
     card = state.cards.get(b.key)
-    return card.level if card else 1
+    if card is None:
+        return 1, 0, False
+    return card.level, card.coat, card.shiny
 
 
-def cat_rect(b, spot, level=1):
+def cat_level(state, b):
+    return cat_look(state, b)[0]
+
+
+def cat_rect(b, spot, look=(1, 0, False)):
     _, x, y, pose, hgt = spot
-    img = cat_surface(b, pose, hgt, level=level)
+    if isinstance(look, int):
+        look = (look, 0, False)
+    lv, coat, shiny = look
+    img = cat_surface(b, pose, hgt, level=lv, variant=coat, shiny=shiny)
     return img.get_rect(midbottom=(x, y))
 
 
@@ -3618,7 +4010,8 @@ def draw_cats(surf, state, area, t):
     for i, (b, spot) in enumerate(cats_in(state, area)):
         _, x, y, pose, hgt = spot
         blink = math.sin(t * 0.7 + i * 2.1) > 0.985
-        img = cat_surface(b, pose, hgt, blink, cat_level(state, b))
+        lv, coat, shiny = cat_look(state, b)
+        img = cat_surface(b, pose, hgt, blink, lv, coat, shiny)
         breathe = 1.0 + 0.012 * math.sin(t * 1.3 + i)
         iw, ih = img.get_size()
         img = pygame.transform.smoothscale(img, (iw, max(2, int(ih * breathe))))
@@ -4133,6 +4526,15 @@ class GameBase:
         self.autosave = 0.0
         self.coin_timer = 0.0
         self.since_coin = 0.0
+        # The balance the SCREEN shows, which is not the balance the game
+        # holds. Two things make a counter hard to look at: it restreams
+        # sixty times a second, and in a proportional face every digit
+        # that changes shifts the ones beside it. So this one steps once
+        # a second and is drawn in a monospace, and the number sits still
+        # between steps instead of boiling.
+        self.shown = self.state.money        # stepped, for the room
+        self.shown_exact = self.state.money  # to the dollar, for the shop
+        self.shown_t = 0.0
         self.hint = 0.0
         self.hint_i = 0
         self.full = False
@@ -4330,6 +4732,8 @@ class GameBase:
             self.place_order()
         elif name == "club":
             if self.state.join_club():
+                self.shown_exact = self.state.money
+                self.shown = self.state.money
                 self.beep("level")
                 self.toast("welcome to " + CLUB[self.state.club - 1][1],
                            f"the post will carry {self.state.slots} parcels now",
@@ -4376,7 +4780,7 @@ class GameBase:
                     return
         for b, spot in cats_in(self.state, self.area):
             if b.key == key:
-                r = cat_rect(b, spot, card.level)
+                r = cat_rect(b, spot, cat_look(self.state, b))
                 self.floats.append(Float(r.centerx, r.y - 6,
                                          f"{b.name}, level {card.level}",
                                          warm(CREAM, 0.1)))
@@ -4395,7 +4799,8 @@ class GameBase:
         acc = rarity_colour(b.rarity)
         panel(s, r, mix(DEEP, acc, 0.10), shade(acc, 0.7), radius=10,
               alpha=int(238 * a))
-        img = cat_surface(b, "sit", 74, False, res.level)
+        img = cat_surface(b, "sit", 74, False, res.level, res.coat,
+                          res.shiny)
         s.blit(img, img.get_rect(midbottom=(r.x + 52, r.bottom - 8)))
         text(s, b.name, 22, (r.x + 98, r.y + 10), warm(CREAM, 0.2),
              alpha=int(255 * a))
@@ -4415,6 +4820,9 @@ class GameBase:
         o = self.state.order(pack, self.qty, self.mode)
         if o is None:
             return
+        self.shown_exact = self.state.money  # spending shows at once
+        q = quantum(self.state.income)
+        self.shown = math.floor(self.state.money / q) * q
         self.beep("coin")
         self.toast(f"order #{o.num} placed",
                    f"{self.qty} x {pack.name} - "
@@ -4453,11 +4861,22 @@ class GameBase:
         p = self.pulls[self.flipped]
         self.flipped += 1
         self.beep("flip", 0.8)
-        if p.kind == "new":
+        if p.shiny:
+            self.beep("shiny")
+            self.toast(f"a shiny {p.breed.name}",
+                       f"{shiny_coat(p.breed)[0]} - one card in {SHINY_IN}, "
+                       f"and it earns a quarter again",
+                       mix(LAMP, CREAM, 0.3), 12.0)
+        elif p.kind == "new":
             self.beep("legend" if p.breed.rarity >= R_PEDIGREE else "new")
             self.toast(f"{p.breed.name} is new",
                        f"{rarity_name(p.breed.rarity).lower()} - "
                        f"{rate(p.breed.base_rate)} to start",
+                       rarity_colour(p.breed.rarity), 6.0)
+        elif p.new_coat and len(p.breed.coats) > 1:
+            self.beep("level")
+            self.toast(f"{p.breed.name} in {coat_name(p.breed, p.coat)}",
+                       "a coat of theirs you had not seen",
                        rarity_colour(p.breed.rarity), 6.0)
         elif p.kind == "level":
             self.beep("level")
@@ -4490,9 +4909,16 @@ class GameBase:
     # -- time ---------------------------------------------------------------
     def update(self, dt):
         self.t += dt
+        self.shown_t -= dt
+        if self.shown_t <= 0:
+            self.shown_t = 0.9
+            self.shown_exact = self.state.money
+            q = quantum(self.state.income)
+            self.shown = math.floor(self.state.money / q) * q
         self.pan = max(0.0, self.pan - dt * 3.1)
         self.cam += (self.cam_to - self.cam) * min(1.0, dt * 7.0)
-        self.room.update(dt, self.state, ROOM_CAP)
+        self.room.update(dt, self.state, ROOM_CAP,
+                         self.cam if self.area == "cats" else None)
         if self.focus_t > 0:
             self.focus_t = max(0.0, self.focus_t - dt)
         st = self.state
@@ -4508,16 +4934,19 @@ class GameBase:
         # The number that floats off a cat is the money that actually
         # arrived since the last one, not a plausible-looking figure.
         self.since_coin += st.income * dt
+        # One every few seconds, not one every half second: the point of
+        # them is to show that the cats are earning, not to keep score.
         self.coin_timer -= dt
         if self.coin_timer <= 0 and st.income > 0 and self.scene == "room":
-            self.coin_timer = clamp(2.2 - st.income * 0.02, 0.45, 2.2)
+            self.coin_timer = random.uniform(3.4, 7.0)
             here = cats_in(st, self.area)
             if here:
                 b, spot = random.choice(here)
-                r = cat_rect(b, spot, cat_level(st, b))
+                r = cat_rect(b, spot, cat_look(st, b))
                 self.floats.append(Float(r.centerx + random.uniform(-14, 14),
                                          r.y - 10,
-                                         "+" + money(self.since_coin), LAMP))
+                                         "+" + money_soft(self.since_coin),
+                                         mix(LAMP, TEA, 0.35)))
                 self.since_coin = 0.0
         for f in list(self.floats):
             f.life -= dt
@@ -4569,9 +4998,9 @@ class GameBase:
 
     def draw_floats(self, s):
         for f in self.floats:
-            a = int(255 * clamp(f.life / 1.6, 0, 1))
-            text(s, f.text, 15, (f.x, f.y), f.colour, center=True,
-                 kind="mono", alpha=a)
+            a = int(190 * clamp(f.life / 1.6, 0, 1))
+            text(s, f.text, 13, (f.x, f.y), f.colour, center=True,
+                 kind="mono", alpha=a, shadow=False)
 
     def draw_toasts(self, s):
         y = H - 24
@@ -4629,7 +5058,7 @@ class GameBase:
                 text(s, label, 15, (r.centerx, r.y - 12), warm(CREAM, 0.2),
                      center=True, kind="mono")
         for b, spot in cats_in(st, self.area):
-            r = cat_rect(b, spot, cat_level(st, b))
+            r = cat_rect(b, spot, cat_look(st, b))
             self.buttons.append(Button(r, "", ("cat", b.key), "hit"))
             if r.collidepoint(mouse):
                 card = st.cards[b.key]
@@ -4663,14 +5092,15 @@ class GameBase:
 
     def draw_hud(self, s):
         st = self.state
-        r = pygame.Rect(22, 18, 272, 78)
-        panel(s, r, mix(DEEP, INK, 0.2), shade(TEA, 0.4), radius=10, alpha=228)
-        text(s, money(st.money), 36, (r.x + 16, r.y + 10), warm(CREAM, 0.25))
-        text(s, rate(st.income), 16, (r.right - 14, r.y + 28), EMBER,
-             right=True, kind="mono")
+        r = pygame.Rect(22, 18, 250, 72)
+        panel(s, r, mix(DEEP, INK, 0.3), shade(TEA, 0.3), radius=10, alpha=206)
+        text(s, money_soft(self.shown), 29, (r.x + 15, r.y + 11),
+             mix(CREAM, TEA, 0.38), kind="mono")
+        text(s, rate_soft(st.income), 13, (r.right - 13, r.y + 26),
+             mix(EMBER, TEA, 0.55), right=True, kind="mono")
         text(s, f"{st.owned}/{len(BREEDS)} breeds   "
-                f"{st.retired} retired", 13, (r.x + 16, r.y + 54), MUTED,
-             kind="mono", shadow=False)
+                f"{st.retired} retired", 12, (r.x + 15, r.y + 48),
+             shade(MUTED, 0.9), kind="mono", shadow=False)
 
         if self.scene == "room":
             x = W // 2 - sum(font(14, False, "mono").size(AREA_NAME[a])[0] + 34
@@ -4777,8 +5207,8 @@ class ShopMixin:
         text(s, "MEOWRDER", 30, (x, y), warm(EMBER, 0.25))
         text(s, "cards, by post, since 1998", 13, (x + 186, y + 16), DIM,
              kind="mono", left=True, shadow=False)
-        text(s, money(st.money), 26, (PAGE_R.right - 18, y + 14), warm(CREAM, 0.2),
-             right=True)
+        text(s, money(self.shown_exact), 24, (PAGE_R.right - 18, y + 14),
+             mix(CREAM, TEA, 0.3), right=True, kind="mono")
         text(s, f"{len(st.orders)}/{st.slots} parcels in the post", 12,
              (PAGE_R.right - 18, y + 36), MUTED if not self.full else BAD,
              right=True, kind="mono", shadow=False)
@@ -5123,17 +5553,30 @@ class OpenMixin:
                 if i == self.flipped - 1:
                     pop = 1.0 + 0.06 * max(0.0, math.sin(self.t * 9) * 0.4)
                 rr = r.inflate(int(r.w * (pop - 1)), int(r.h * (pop - 1)))
-                if p.breed.rarity >= R_RARE:
+                if p.shiny:
+                    glow(s, rr.center, int(rr.w * 1.25),
+                         mix(LAMP, CREAM, 0.25),
+                         0.30 + 0.08 * math.sin(self.t * 4))
+                elif p.breed.rarity >= R_RARE:
                     glow(s, rr.center, int(rr.w * 0.9),
                          rarity_colour(p.breed.rarity), 0.22)
                 draw_card(s, rr, p.breed, p.level,
                           card.dupes if card else 0,
-                          maxed=bool(card and card.maxed))
+                          maxed=bool(card and card.maxed),
+                          variant=p.coat, shiny=p.shiny or
+                          bool(card and card.shiny and p.coat == card.coat))
                 word, col = KIND_WORDS[p.kind]
                 if p.kind == "dupe" and card and card.maxed:
                     word, col = KIND_WORDS["maxed"]
+                if p.shiny:
+                    word, col = "SHINY", mix(LAMP, CREAM, 0.3)
+                elif p.new_coat and p.kind != "new" and len(p.breed.coats) > 1:
+                    word, col = "NEW COAT", GOOD
                 lab = word
-                if p.kind == "level":
+                if p.shiny or (p.new_coat and p.kind != "new"
+                               and len(p.breed.coats) > 1):
+                    pass
+                elif p.kind == "level":
                     lab = f"LEVEL {p.level}"
                 elif p.kind == "dupe" and card and not card.maxed:
                     lab = f"+1  {card.dupes}/{dupes_for(card.level)}"
@@ -5158,9 +5601,16 @@ class OpenMixin:
         else:
             news = sum(1 for p in self.pulls if p.kind == "new")
             ups = sum(1 for p in self.pulls if p.kind == "level")
+            shn = sum(1 for p in self.pulls if p.shiny)
+            coats = sum(1 for p in self.pulls
+                        if p.new_coat and p.kind != "new")
             bits = []
+            if shn:
+                bits.append(f"{shn} SHINY")
             if news:
                 bits.append(f"{news} new")
+            if coats:
+                bits.append(f"{coats} new coat{'s' if coats > 1 else ''}")
             if ups:
                 bits.append(f"{ups} level{'s' if ups > 1 else ''}")
             bits.append(f"{len(self.pulls)} cards")
@@ -5199,8 +5649,11 @@ class BinderMixin:
 
         text(s, "THE BINDER", 26, (inner.x + 20, inner.y + 12),
              warm(CREAM, 0.2))
+        shiny_n = sum(1 for c in st.cards.values() if c.shiny)
         text(s, f"{st.owned} of {len(BREEDS)} breeds    "
-                f"{st.retired} retired    {rate(st.income)}", 15,
+                f"{st.retired} retired"
+                + (f"    {shiny_n} shiny" if shiny_n else "")
+                + f"    {rate_soft(st.income)}", 15,
              (inner.right - 20, inner.y + 22), TEA, right=True, kind="mono")
         hairline(s, inner.x + 20, inner.y + 46, inner.right - 20, TEA, 60)
 
@@ -5218,7 +5671,8 @@ class BinderMixin:
                                cw, ch)
             card = st.cards.get(b.key)
             if card:
-                draw_card(s, rect, b, card.level, card.dupes, card.maxed)
+                draw_card(s, rect, b, card.level, card.dupes, card.maxed,
+                          variant=card.coat, shiny=card.shiny)
             else:
                 draw_unknown(s, rect, b)
             self.buttons.append(Button(rect, "", ("pick", b.key), "hit"))
@@ -5263,7 +5717,8 @@ class BinderMixin:
         glow(s, (r.x + 150, r.centery), 220, acc, 0.14)
         cr = pygame.Rect(r.x + 36, r.centery - 160, 212, 296)
         if card:
-            draw_card(s, cr, b, card.level, card.dupes, card.maxed)
+            draw_card(s, cr, b, card.level, card.dupes, card.maxed,
+                      variant=card.coat, shiny=card.shiny)
         else:
             draw_unknown(s, cr, b)
 
@@ -5301,6 +5756,37 @@ class BinderMixin:
                      (x + 200, y + 94), DIM, kind="mono", shadow=False)
             text(s, f"{card.pulled} copies pulled", 13, (x, y + 118), DIM,
                  kind="mono", shadow=False)
+            if len(b.coats) > 1:
+                text(s, f"COATS  {card.coats_seen(b)} of {len(b.coats)}", 12,
+                     (x, y + 146), TEA, kind="mono", shadow=False)
+                sx = x + 120
+                for i, cname in enumerate(b.coats):
+                    got = card.seen >> i & 1
+                    col = coat_colours(b, i)[0]
+                    sw = pygame.Rect(sx, y + 142, 20, 20)
+                    pygame.draw.rect(s, col if got else shade(DEEP, 1.4), sw,
+                                     border_radius=4)
+                    pygame.draw.rect(s, mix(col, INK, 0.4) if got
+                                     else shade(TEA, 0.4), sw, width=1,
+                                     border_radius=4)
+                    if i == card.coat and not card.shiny:
+                        pygame.draw.rect(s, warm(CREAM, 0.1),
+                                         sw.inflate(6, 6), width=1,
+                                         border_radius=5)
+                    sx += 26
+                if card.shiny:
+                    sw = pygame.Rect(sx + 6, y + 142, 20, 20)
+                    pygame.draw.rect(s, shiny_coat(b)[1][0], sw,
+                                     border_radius=4)
+                    pygame.draw.rect(s, warm(CREAM, 0.1), sw.inflate(6, 6),
+                                     width=1, border_radius=5)
+                    text(s, coat_name(b, card.coat, True, full=True), 11,
+                         (sw.right + 8, sw.centery), mix(LAMP, CREAM, 0.3),
+                         left=True, kind="mono", shadow=False)
+                else:
+                    text(s, coat_name(b, card.coat), 11,
+                         (x + 120, y + 168), MUTED, kind="mono",
+                         shadow=False)
         else:
             text(s, "NOT IN THE BINDER", 24, (x, y), shade(TEA, 0.8))
             text(s, f"{rarity_name(b.rarity).lower()} - look in a pack that "
@@ -5327,6 +5813,8 @@ RULES = (
                    "six to 4, and so on by twos."),
     ("every level", "Better paper, a brighter frame, and a cat in better "
                     "condition. A collar at 4, a tag at 7, a bell at 10."),
+    ("coats", "Every breed comes in two to four. The binder remembers "
+              "each one you have seen, and one card in 150 is a shiny."),
     ("level 10", "The breed retires. The shop takes it off the page and "
                  "will never send it again."),
     ("the post", "Four parcels at a time. The delivery club is the only "
@@ -5420,7 +5908,8 @@ class MenuMixin:
         rows = ((f"{clock_str(st.played)}", "at the desk"),
                 (f"{st.packs_opened}", "parcels opened"),
                 (f"{st.cards_pulled}", "cards pulled"),
-                (money(st.spent), "spent on the post"))
+                (f"{sum(1 for c in st.cards.values() if c.shiny)}",
+                 "of them shiny"))
         for i, (big, small) in enumerate(rows):
             x = r.centerx + (i - 1.5) * 150
             text(s, big, 24, (x, r.y + 304), warm(EMBER, 0.2), center=True,
