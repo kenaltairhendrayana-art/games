@@ -1580,6 +1580,32 @@ def convention():
     # itself, which is how it broke the first time the week moved.
     on = next(cc.DAY * d + 60 for d in range(14)
               if cc.convention_open(cc.DAY * d + 60))
+
+    def saturday_with(key):
+        """A moment at a convention that this table is standing at."""
+        for d in range(400):
+            t = cc.DAY * d + 60
+            if not cc.convention_open(t):
+                continue
+            week = cc.day_of(t) // 7
+            if key in {cc.STALLS[i][0] for i in cc.stalls_on(week)}:
+                return t
+        raise AssertionError(f"{key} is never out")
+
+    print(f"  {len(cc.STALLS)} tables, {cc.STALLS_OUT} of them out a week")
+    seen = set()
+    for wk in range(40):
+        seen |= set(cc.stalls_on(wk))
+    if len(seen) != len(cc.STALLS):
+        missing = [cc.STALLS[i][1] for i in range(len(cc.STALLS))
+                   if i not in seen]
+        print(f"  never comes out in forty weeks: {missing}")
+        ok = False
+    for wk in range(20):
+        got = cc.stalls_on(wk)
+        if len(set(got)) != cc.STALLS_OUT:
+            print(f"  week {wk} puts out {got}")
+            ok = False
     off = next(cc.DAY * d + 60 for d in range(14)
                if not cc.convention_open(cc.DAY * d + 60))
     print(f"  day one is a {cc.DAY_NAMES[cc.weekday_of(0)]}; the first "
@@ -1715,7 +1741,7 @@ def convention():
     for key, title, who, pack_key, game, blurb in cc.STALLS:
         g = cc.Game(screen)
         g.state = cc.State()
-        g.state.played = on
+        g.state.played = saturday_with(key)
         g.state.money = 500000
         g.go_area("conv")
         g.state.conv_refresh()
@@ -1752,10 +1778,12 @@ def convention():
             ok = False
 
     # -- losing ----------------------------------------------------------
-    for key, want_pack in (("queue", False), ("fake", False), ("scalp", True)):
+    for key, want_pack in (("queue", False), ("fake", False),
+                           ("scalp", True), ("auction", False),
+                           ("quiz", False)):
         g = cc.Game(screen)
         g.state = cc.State()
-        g.state.played = on
+        g.state.played = saturday_with(key)
         g.state.money = 500000
         g.go_area("conv")
         g.state.conv_refresh()
@@ -1777,7 +1805,7 @@ def convention():
     # the scalper's two prices, which is the whole game at his table
     g = cc.Game(screen)
     g.state = cc.State()
-    g.state.played = on
+    g.state.played = saturday_with("scalp")
     g.state.money = 500000
     g.go_area("conv")
     g.state.conv_refresh()
@@ -1796,6 +1824,25 @@ def convention():
         print(f"  a 30% offer that lands should cost ${face:,.0f}")
         ok = False
 
+    # a table that is not standing today cannot be played at all
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.played = on
+    g.state.money = 10 ** 7
+    g.go_area("conv")
+    g.state.conv_refresh()
+    out_today = {cc.STALLS[i][0] for i in cc.stalls_on(g.state.week)}
+    for key, *_ in cc.STALLS:
+        if key in out_today:
+            continue
+        g.press(("stall", key))
+        if g.scene == "mini":
+            print(f"  {key} is not out today and was played anyway")
+            ok = False
+            g.mini = None
+            g.go("room")
+    print(f"  the tables not out today cannot be played")
+
     # -- and none of it is on the website --------------------------------
     g = cc.Game(screen)
     g.state = cc.State()
@@ -1811,7 +1858,7 @@ def convention():
         print(f"  the shop is selling {sorted(bad)}")
         ok = False
     else:
-        print("    the shop sells none of the three")
+        print(f"    the shop sells none of the {len(cc.CONV_PACKS)}")
 
     print("  convention:", "ok" if ok else "FAILED")
     return ok
@@ -1828,6 +1875,15 @@ def _play_mini(g, win):
             lo, hi = m.band_rect()
             m.pos = (lo + hi) * 0.5 if win else 0.0
             g.press(("mini", "stop"))
+        elif m.kind == "quiz":
+            g.press(("mini", m.right if win
+                     else (m.right + 1) % len(m.opts)))
+        elif m.kind == "auction":
+            if win:
+                m.rival = 0.0           # the room gives up at once
+                g.press(("mini", "raise"))
+            else:
+                g.press(("mini", "pass"))
         elif m.kind == "fake":
             i = m.real_index()
             g.press(("mini", i if win else (i + 1) % len(m.cards)))
@@ -2873,6 +2929,176 @@ def swaps():
     return ok
 
 
+
+def auctions():
+    """The lots that run on the clock whether anybody is watching.
+
+    This is the only thing in the game that spends money without the
+    player pressing anything at the moment it happens: you bid, you walk
+    away, and some time later the hammer falls and the money goes. So
+    what matters is that it only ever goes when you were actually the
+    high bidder, that it never goes twice, and that a lot cannot sit
+    there for ever.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    rng = random.Random(11)
+
+    st = cc.State()
+    st.money = 10 ** 7
+    st.run_auctions(0.1, rng)
+    print(f"  {len(st.bids)} lots running, of {cc.LOTS_LIVE}")
+    if len(st.bids) != cc.LOTS_LIVE:
+        print("  the board does not fill itself")
+        ok = False
+    for a in st.bids:
+        if a.price <= 0 or a.ends <= st.played:
+            print(f"  {a.words()} opens at {a.price} ending in "
+                  f"{a.ends - st.played:.0f}s")
+            ok = False
+        if a.mine:
+            print(f"  {a.words()} starts out already yours")
+            ok = False
+
+    # -- a lot you never bid on costs nothing ----------------------------
+    quiet = cc.State()
+    quiet.money = 10 ** 7
+    before = quiet.money
+    for _ in range(9000):
+        quiet.played += 0.1
+        quiet.tick(0.1)
+    if quiet.money > before:             # income is zero with no cards
+        print("  money appeared from nowhere")
+        ok = False
+    if quiet.money < before:
+        print(f"  {cc.money(before - quiet.money)} went on lots that were "
+              f"never bid on")
+        ok = False
+    if quiet.won_bids:
+        print(f"  won {quiet.won_bids} lots without bidding on any")
+        ok = False
+    print("  nine hundred seconds of not bidding costs nothing")
+
+    # -- bidding, being outbid, and winning ------------------------------
+    st2 = cc.State()
+    st2.money = 10 ** 7
+    st2.run_auctions(0.1, rng)
+    a = st2.bids[0]
+    opened = a.price
+    if not st2.bid_on(a):
+        print("  the first bid was refused")
+        ok = False
+    if not a.mine or a.price != opened:
+        print("  the opening bid moved the price")
+        ok = False
+    if st2.bid_on(a):
+        print("  you can outbid yourself")
+        ok = False
+    money_before = st2.money
+    # drive it to the hammer, re-bidding whenever the room goes past you
+    rebids = 0
+    for _ in range(9000):
+        st2.played += 0.1
+        st2.tick(0.1)
+        if a not in st2.bids:
+            break
+        if not a.mine and st2.bid_on(a):
+            rebids += 1
+    paid = money_before - st2.money
+    print(f"  opened at {cc.money(opened)}, outbid {rebids} times, "
+          f"hammer at {cc.money(a.price)}, paid {cc.money(paid)}")
+    if a in st2.bids:
+        print("  the lot never closed")
+        ok = False
+    if abs(paid - a.price) > 0.01:
+        print(f"  paid {cc.money(paid)} for a lot that closed at "
+              f"{cc.money(a.price)}")
+        ok = False
+    if st2.won_bids != 1:
+        print(f"  won_bids says {st2.won_bids}")
+        ok = False
+
+    # -- and losing one costs nothing at all -----------------------------
+    st3 = cc.State()
+    st3.money = 10 ** 7
+    st3.run_auctions(0.1, rng)
+    b = st3.bids[0]
+    st3.bid_on(b)
+    b.mine = False                       # somebody goes past and you let it
+    held = st3.money
+    for _ in range(9000):
+        st3.played += 0.1
+        st3.tick(0.1)
+        if b not in st3.bids:
+            break
+    if st3.money != held:
+        print(f"  a lot you were outbid on still cost "
+              f"{cc.money(held - st3.money)}")
+        ok = False
+    print("  being outbid at the close costs nothing")
+
+    # -- you cannot bid money you have not got ---------------------------
+    poor = cc.State()
+    poor.run_auctions(0.1, rng)
+    poor.money = 0.0
+    if any(poor.bid_on(x) for x in poor.bids):
+        print("  bid with no money")
+        ok = False
+    # ... and a hammer you cannot cover simply passes you by
+    broke = cc.State()
+    broke.money = 10 ** 7
+    broke.run_auctions(0.1, rng)
+    c = broke.bids[0]
+    broke.bid_on(c)
+    broke.money = c.price - 1
+    for _ in range(9000):
+        broke.played += 0.1
+        broke.tick(0.1)
+        if c not in broke.bids:
+            break
+    if broke.money < 0:
+        print("  the hammer took money that was not there")
+        ok = False
+    if broke.won_bids:
+        print("  won a lot it could not pay for")
+        ok = False
+    print("  a hammer you cannot cover passes you by")
+
+    # -- it survives being put down --------------------------------------
+    rt = cc.State.from_dict(st2.to_dict())
+    if len(rt.bids) != len(st2.bids):
+        print("  the lots did not survive being saved")
+        ok = False
+    for x, y in zip(rt.bids, st2.bids):
+        if x.to_row() != y.to_row():
+            print("  a lot came back different")
+            ok = False
+            break
+
+    # -- and the page works ----------------------------------------------
+    g = cc.Game(screen)
+    g.state = st
+    g.go("shop")
+    g.press(("site", "purrbay"))
+    g.press(("bay", "bid"))
+    g.draw()
+    keys = {b.key for b in g.buttons}
+    if not any(isinstance(k, tuple) and k[0] == "bid" for k in keys):
+        print("  nothing on the auctions page can be bid on")
+        ok = False
+    if ("bay", "buy") not in keys:
+        print("  no way back to the listings")
+        ok = False
+    g.press(("bay", "buy"))
+    g.draw()
+    if ("bay", "bid") not in {b.key for b in g.buttons}:
+        print("  no way to the auctions from the listings")
+        ok = False
+
+    print("  auctions:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -2948,6 +3174,9 @@ def main():
         print()
     if cmd in ("merch", "all"):
         ok &= merch()
+        print()
+    if cmd in ("auctions", "all"):
+        ok &= auctions()
         print()
     if cmd in ("swaps", "all"):
         ok &= swaps()

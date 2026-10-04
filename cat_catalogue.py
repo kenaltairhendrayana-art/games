@@ -2408,6 +2408,22 @@ KITTENS = (
             pat="blotched", eye=(188, 180, 108), eyeshape="almond"),
           "hunter", "Hears the tin opening from two rooms away.",
           ("toast", "silver", "charcoal")),
+    Breed("under", "The Understudy", R_ARCHIVE, "the second-best negative",
+          "Photographed on the same afternoon and never printed.",
+          L(size=0.82, body=1.22, facew=1.04, faceh=1.06, cheek=1.00,
+            ear=1.40, legs=0.64, fluff=0.28, tail="whip",
+            coat=(206, 196, 178), mark=(142, 132, 114), belly=(238, 234, 226),
+            pat="ticked", eye=(180, 170, 104), eyeshape="almond"),
+          "shadow", "Sits just out of the light, watching the lit part.",
+          ("negative grey", "red", "blue")),
+    Breed("photo", "The One In The Photograph", R_LEGEND, "a framed picture",
+          "Somebody kept the photograph. Nobody kept the cat's name.",
+          L(size=0.96, body=0.86, facew=1.16, faceh=0.92, cheek=1.24,
+            ear=0.72, legs=1.20, fluff=0.94, tail="pom",
+            coat=(230, 218, 198), mark=(168, 150, 124), belly=(246, 242, 234),
+            pat="bicolour", eye=(138, 178, 198), eyeshape="round"),
+          "groomer", "Sits where a photograph would have been taken from.",
+          ("sepia cream", "charcoal", "blue")),
     Breed("first", "The First Litter", R_FOUNDATION, "the beginning of a line",
           "Every cat in the catalogue goes back to one of these.",
           L(size=0.86, body=1.18, facew=1.12, faceh=1.06, cheek=1.10,
@@ -4364,6 +4380,21 @@ CONV_PACKS = (
          (("the only place a foundation card is a sure thing", 5),
           ("they check you know what you are looking at first", 4)),
          shelf="convention", expo=0.055),
+    Pack("lotA", "The Auction Lot", 0, 18, (0, 4, 18, 14, 22, 18, 14, 6,
+                                             3, 1), 0, R_CHAMPION,
+         "Eighteen cards knocked down to you in front of a room full of "
+         "people who wanted them. The auctioneer does not care either "
+         "way; everybody else does.",
+         (("worth it for the look on his face", 5),
+          ("paid over the odds in front of witnesses", 3)),
+         shelf="convention", expo=0.06),
+    Pack("quiz", "The Quizmaster's Shelf", 0, 12, (0, 0, 14, 16, 24, 22,
+                                                   14, 6, 3, 1), 0, R_LEGEND,
+         "Twelve cards off the shelf behind the quiz table, handed over "
+         "by somebody who plainly expected to keep them.",
+         (("he did not think anybody would get three", 5),
+          ("i have never been so pleased about a cat", 5)),
+         shelf="convention", expo=0.05),
     Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 18, 24, 18, 18, 8, 4, 2),
          0, R_PEDIGREE,
          "Fifteen cards from a man by the fire door who will not say where "
@@ -4392,7 +4423,25 @@ STALLS = (
      "scalp", "haggle",
      "He has what you want and he knows it. Whatever you talk him down "
      "to is what you pay - and he walks if you waste his afternoon."),
+    ("auction", "THE AUCTION", "an auctioneer who has done this before",
+     "lotA", "auction",
+     "Eighteen cards on the block and a room full of people who want "
+     "them. Raise until the rest stop, and not one bid further."),
+    ("quiz", "THE QUIZ TABLE", "a man who wrote the book",
+     "quiz", "quiz",
+     "Three questions about the catalogue. He has the shelf behind him "
+     "and no intention of parting with any of it."),
 )
+
+# Three tables fit in the hall and there are five of them, so each
+# convention is a different three. Seeded off the week, so it is the same
+# three all day and a different three next Saturday.
+STALLS_OUT = 3
+
+
+def stalls_on(week):
+    rng = random.Random(week * 2749 + 11)
+    return tuple(sorted(rng.sample(range(len(STALLS)), STALLS_OUT)))
 
 # Shipping. The cheap one is slow and the fast one is a luxury, which is
 # the only decision the shop ever asks you to make.
@@ -4883,6 +4932,112 @@ def roll_swaps(state, rng):
     return out
 
 
+# ---------------------------------------------------------------------------
+# THE ONLINE AUCTIONS
+#
+# The other half of the resale site, and the only thing in the game that
+# happens while you are not looking at it.
+#
+# The auction at the convention is a room: you raise, the room answers,
+# and it is over inside a minute. This is the opposite. You put a number
+# on something and then go and do something else, and other people bid
+# against you in your absence. Coming back to find you have been outbid
+# by four hundred pounds with ninety seconds left is the entire feeling
+# being sold here.
+#
+# Nothing is held in escrow. The money leaves when the hammer falls, and
+# if it is not there when it falls, somebody else gets it and the whole
+# thing was for nothing.
+# ---------------------------------------------------------------------------
+BIDDERS = (
+    ("sleeve_and_toploader", 0.9),
+    ("Margaret (collects tabbies)", 0.7),
+    ("NO LOWBALLERS", 1.25),
+    ("a dealer, obviously", 1.1),
+    ("quietbidder44", 0.8),
+)
+LOTS_LIVE = 4              # how many are running at once
+BID_STEP = 0.08            # each raise is this much of the starting price
+
+
+class Auction:
+    """One lot, running against the clock."""
+    __slots__ = ("kind", "key", "level", "coat", "shiny", "qty", "price",
+                 "start", "ends", "mine", "who", "heat")
+
+    def __init__(self, kind, key, price, ends, level=1, coat=0, shiny=False,
+                 qty=1, mine=False, who=0, heat=0.5, start=None):
+        self.kind = kind
+        self.key = key
+        self.price = price
+        self.start = price if start is None else start
+        self.ends = ends            # the moment of play it closes at
+        self.level = level
+        self.coat = coat
+        self.shiny = shiny
+        self.qty = qty
+        self.mine = mine            # whether the high bid is yours
+        self.who = who              # who holds it if it is not
+        self.heat = heat            # how badly the room wants this one
+
+    def to_row(self):
+        return [self.kind, self.key, round(self.price, 2), round(self.ends, 2),
+                self.level, self.coat, int(self.shiny), self.qty,
+                int(self.mine), self.who, round(self.heat, 3),
+                round(self.start, 2)]
+
+    @staticmethod
+    def from_row(r):
+        try:
+            a = Auction(r[0], r[1], float(r[2]), float(r[3]), int(r[4]),
+                        int(r[5]), bool(r[6]), int(r[7]), bool(r[8]),
+                        int(r[9]), float(r[10]), float(r[11]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        if a.kind == "card" and a.key not in BY_KEY:
+            return None
+        if a.kind == "pack" and a.key not in BY_PACK:
+            return None
+        return a
+
+    @property
+    def step(self):
+        return max(1.0, round(self.start * BID_STEP))
+
+    def left(self, played):
+        return max(0.0, self.ends - played)
+
+    def words(self):
+        if self.kind == "pack":
+            pk = BY_PACK[self.key]
+            return pk.name + (f" x{self.qty}" if self.qty > 1 else "")
+        return f"{BY_KEY[self.key].name}, level {self.level}"
+
+
+def roll_auction(state, rng, played):
+    """One lot, priced off what it is and ending in a few minutes."""
+    sellable = [b for b in state.book if b.rarity != R_UNLISTED]
+    if not sellable:
+        return None
+    if rng.random() < 0.28:
+        pool = [pk for pk in PACKS if pk.price and pk.key not in NEVER_STOCKED]
+        pk = rng.choice(pool)
+        qty = rng.choice((1, 1, 2))
+        worth = pack_worth(pk) * qty
+        return Auction("pack", pk.key, round(worth * rng.uniform(0.25, 0.5)),
+                       played + rng.uniform(100, 280), qty=qty,
+                       heat=rng.uniform(0.3, 1.0))
+    missing = [b for b in sellable if b.key not in state.cards]
+    b = rng.choice(missing if (missing and rng.random() < 0.6) else sellable)
+    level = min(MAX_LEVEL, 1 + int(rng.random() ** 2.2 * MAX_LEVEL))
+    shiny = rng.random() < 0.07
+    worth = card_worth(b, level, shiny)
+    return Auction("card", b.key, round(worth * rng.uniform(0.25, 0.5)),
+                   played + rng.uniform(100, 280), level=level,
+                   coat=rng.randrange(len(coat_colours(b))), shiny=shiny,
+                   heat=rng.uniform(0.3, 1.0))
+
+
 MAX_IN_TRANSIT = 4
 
 # The post will carry four parcels at a time, and no amount of money
@@ -5096,6 +5251,9 @@ class State:
         self.told = set()           # ... and the ones announced to you
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
+        self.bids = []              # auctions running on the resale site
+        self.won_lots = []          # what closed in your favour this tick
+        self.won_bids = 0
         self.swaps = []             # what is on the swap board today
         self.swaps_day = -1
         self.swapped = 0            # how many deals you have done
@@ -5282,6 +5440,7 @@ class State:
         return n
 
     def tick(self, dt):
+        self.won_lots = self.run_auctions(dt)
         nxt = self.due()
         if nxt is not None:
             self.out.add(nxt.key)
@@ -5327,6 +5486,91 @@ class State:
         self.lots_day = day
         self.lots = roll_lots(self, rng or random.Random(day * 7919 + 13))
         return True
+
+    # -- the auctions ---------------------------------------------------
+    def run_auctions(self, dt, rng=None):
+        """Keep the board full, let the room bid, and drop the hammer.
+
+        Returns whatever was won, so the game can say so. This is the one
+        thing in here that happens whether or not anybody is looking at
+        the page it happens on.
+        """
+        rng = rng or random
+        won = []
+        while len(self.bids) < LOTS_LIVE:
+            a = roll_auction(self, rng, self.played)
+            if a is None:
+                break
+            self.bids.append(a)
+        for a in list(self.bids):
+            if self.played >= a.ends:
+                self.bids.remove(a)
+                if a.mine:
+                    got = self.take_auction(a, rng)
+                    if got is not None:
+                        won.append((a, got))
+                continue
+            # somebody else goes again, less often the dearer it gets
+            over = a.price / max(1.0, a.start)
+            chance = a.heat * 0.055 * dt / max(1.0, over ** 1.7)
+            if rng.random() < chance:
+                a.price += a.step
+                a.mine = False
+                a.who = rng.randrange(len(BIDDERS))
+        return won
+
+    def bid_on(self, a):
+        """Put your hand up. The money does not move until it closes."""
+        if a.mine or a.ends <= self.played:
+            return False
+        nxt = a.price + a.step if a.price > a.start else a.price
+        if self.money + 1e-6 < nxt:
+            return False
+        a.price = nxt
+        a.mine = True
+        return True
+
+    def take_auction(self, a, rng=None):
+        """The hammer falls and the money leaves - if it is there."""
+        if self.money + 1e-6 < a.price:
+            return None
+        if a.kind == "pack" and len(self.orders) >= self.slots:
+            return None
+        self.money -= a.price
+        self.spent += a.price
+        self.won_bids += 1
+        if a.kind == "pack":
+            pack = BY_PACK[a.key]
+            o = Order(self.next_num, pack.key, a.qty,
+                      resale_ship(pack, a.qty), a.price, POST)
+            self.next_num += 1
+            self.orders.append(o)
+            return o
+        b = BY_KEY[a.key]
+        card = self.cards.get(a.key)
+        if card is None:
+            card = Card(level=a.level, coat=a.coat, shiny=a.shiny)
+            card.saw(a.coat)
+            self.cards[a.key] = card
+            self.cards_pulled += 1
+            if a.shiny:
+                self.shinies += 1
+            return Pull(b, "new", card.level, 0, False, a.coat, a.shiny, True)
+        before = card.level
+        card.saw(a.coat)
+        first_shiny = a.shiny and not card.shiny
+        if first_shiny:
+            card.shiny = True
+            card.coat = a.coat
+            self.shinies += 1
+        if a.level > card.level:
+            card.level = a.level
+            card.dupes = 0
+        else:
+            card.add_dupe()
+        self.cards_pulled += 1
+        return Pull(b, "level" if card.level > before else "dupe",
+                    card.level, before, False, a.coat, first_shiny, False)
 
     # -- the swap board ------------------------------------------------
     def refresh_swaps(self, rng=None):
@@ -5631,6 +5875,8 @@ class State:
             "told": sorted(self.told),
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
+            "bids": [a.to_row() for a in self.bids],
+            "won_bids": self.won_bids,
             "swaps": [w.to_row() for w in self.swaps],
             "swaps_day": self.swaps_day,
             "swapped": self.swapped,
@@ -5693,6 +5939,10 @@ class State:
         s.out.add("cat")
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
+        s.bids = [x for x in (Auction.from_row(r)
+                              for r in (d.get("bids") or ()))
+                  if x is not None]
+        s.won_bids = int(d.get("won_bids", 0))
         s.swaps = [x for x in (Swap.from_row(r)
                                for r in (d.get("swaps") or ()))
                    if x is not None]
@@ -8528,20 +8778,78 @@ CONV_FLOOR = 520
 STALL_X = (212, 576, 940)         # where the three tables stand
 
 
+# The people in the hall. Everything about one of them comes out of its
+# seed, so the same person is the same person every frame and no two
+# standing next to each other are the same shape. It is four hundred
+# rounded rectangles either way; the difference is whether it reads as a
+# crowd or as one man printed four hundred times.
+SKINS = ((236, 198, 166), (214, 172, 138), (182, 138, 104),
+         (146, 104, 76), (104, 74, 56), (72, 50, 40))
+HAIRS = ((38, 32, 30), (70, 48, 34), (124, 86, 52), (176, 142, 92),
+         (196, 198, 202), (142, 60, 44))
+
+
 def _person(surf, x, y, h, col, t, seed, skin=0.55):
     """One of the four hundred people who want the same cards you do."""
+    rng = random.Random(int(seed * 1000) & 0xFFFF)
     sway = math.sin(t * 1.1 + seed) * 2
     bob = math.sin(t * 1.7 + seed * 2) * 2
-    w = h * 0.46
-    body = pygame.Rect(x - w / 2 + sway, y - h * 0.72 + bob, w, h * 0.72)
+    build = rng.uniform(0.38, 0.56)          # how broad across the shoulders
+    coat = rng.uniform(0.62, 0.86)           # and how far down the coat goes
+    w = h * build
+    hx = x + sway * 1.2
+    hy = y - h * (coat + 0.10) + bob
+    hr = max(2, round(h * rng.uniform(0.13, 0.17)))
+
+    body = pygame.Rect(x - w / 2 + sway, y - h * coat + bob, w, h * coat)
     pygame.draw.rect(surf, col, body, border_radius=int(w * 0.34))
-    head = (x + sway * 1.2, y - h * 0.82 + bob)
-    pygame.draw.circle(surf, mix(col, (226, 190, 160), skin),
-                       (round(head[0]), round(head[1])), round(h * 0.15))
-    if h >= 46:
-        pygame.draw.ellipse(surf, shade(col, 0.72),
-                            (head[0] - h * 0.16, head[1] - h * 0.19,
-                             h * 0.32, h * 0.2))
+    if h >= 54 and rng.random() < 0.45:      # a coat that hangs open
+        pygame.draw.line(surf, shade(col, 0.82), (body.centerx, body.y + 6),
+                         (body.centerx, body.bottom - 4), 2)
+    if h >= 54 and rng.random() < 0.3:       # somebody carrying a bag
+        bag = pygame.Rect(body.right - 4, body.centery, h * 0.16, h * 0.20)
+        pygame.draw.rect(surf, shade(col, 0.76), bag, border_radius=3)
+        pygame.draw.line(surf, shade(col, 0.7), (body.centerx, body.y + 4),
+                         (bag.centerx, bag.y), 2)
+
+    tone = SKINS[rng.randrange(len(SKINS))] if skin > 0.3 else col
+    face = mix(col, tone, clamp(skin, 0.0, 1.0))
+    pygame.draw.circle(surf, face, (round(hx), round(hy)), hr)
+    if h < 40:
+        return                               # too far off to have a haircut
+
+    hair = mix(col, HAIRS[rng.randrange(len(HAIRS))], 0.72)
+    style = rng.randrange(5)
+    if style == 0:                           # cropped
+        pygame.draw.ellipse(surf, hair, (hx - hr, hy - hr * 1.12,
+                                         hr * 2, hr * 1.25))
+    elif style == 1:                         # long, down past the jaw
+        pygame.draw.ellipse(surf, hair, (hx - hr * 1.12, hy - hr * 1.1,
+                                         hr * 2.24, hr * 2.5))
+        pygame.draw.circle(surf, face, (round(hx), round(hy + hr * 0.18)),
+                           round(hr * 0.86))
+    elif style == 2:                         # tied up
+        pygame.draw.ellipse(surf, hair, (hx - hr, hy - hr * 1.1,
+                                         hr * 2, hr * 1.2))
+        pygame.draw.circle(surf, hair, (round(hx - hr * 0.1),
+                                        round(hy - hr * 1.5)),
+                           round(hr * 0.56))
+    elif style == 3:                         # a woolly hat
+        pygame.draw.ellipse(surf, mix(col, LAMP, 0.25),
+                            (hx - hr * 1.1, hy - hr * 1.5,
+                             hr * 2.2, hr * 1.7))
+        pygame.draw.rect(surf, mix(col, CREAM, 0.3),
+                         (hx - hr * 1.1, hy - hr * 0.5, hr * 2.2, hr * 0.42),
+                         border_radius=2)
+    elif style == 4:                         # a cap, peak forward
+        pygame.draw.ellipse(surf, hair, (hx - hr, hy - hr * 1.1,
+                                         hr * 2, hr * 1.1))
+        pygame.draw.ellipse(surf, mix(col, INK, 0.2),
+                            (hx - hr * 1.6, hy - hr * 0.86,
+                             hr * 2.1, hr * 0.5))
+    if h >= 70 and rng.random() < 0.22:      # and a few with a beard
+        pygame.draw.ellipse(surf, hair, (hx - hr * 0.72, hy + hr * 0.1,
+                                         hr * 1.44, hr * 1.2))
 
 
 def _crowd(surf, t):
@@ -8645,9 +8953,9 @@ def _convention(surf, state, t):
         pygame.draw.rect(haze, (*mix(WOOD, EMBER, 0.2), a), (0, i, W, 3))
     surf.blit(haze, (0, 150))
 
-    for key, title, who, pack_key, game, blurb in STALLS:
-        i = ("queue", "fake", "scalp").index(key)
-        _stall(surf, STALL_X[i], title, who, t, key in state.conv_done)
+    for slot, which in enumerate(stalls_on(state.week)):
+        key, title, who, pack_key, game, blurb = STALLS[which]
+        _stall(surf, STALL_X[slot], title, who, t, key in state.conv_done)
     _crowd(surf, t)
 
     # the doors home, on the right
@@ -8793,6 +9101,7 @@ class GameBase:
         # the website
         self.tab = "catalogue"
         self.site = "meowrder"
+        self.bay = "buy"            # which half of the resale site
         self.product = None
         self.qty = 1
         self.mode = 0
@@ -9019,6 +9328,11 @@ class GameBase:
             self.buy_lot(val)
         elif name == "swap":
             self.do_swap(val)
+        elif name == "bay":
+            self.bay = val
+            self.beep("page")
+        elif name == "bid":
+            self.place_bid(val)
         elif name == "news":
             if val == "skip":
                 self.end_news()
@@ -9076,6 +9390,8 @@ class GameBase:
         st.conv_refresh()
         if st.conv_played(key) or not st.convention():
             return
+        if key not in {STALLS[i][0] for i in stalls_on(st.week)}:
+            return                      # that one is not out this week
         stall = next(x for x in STALLS if x[0] == key)
         self.mini = Mini(stall[4], key, random.Random(), st)
         self.beep("page")
@@ -9117,6 +9433,40 @@ class GameBase:
                 m.lost = True
                 m.done = True
                 self.beep("flip")
+        elif m.kind == "auction" and what in ("raise", "pass"):
+            if what == "pass":
+                m.lost = True
+                m.done = True
+                self.beep("flip")
+                return
+            m.bid += AUCTION_STEP
+            # the room thins out as the price climbs, and the chance of
+            # somebody going again falls with it
+            if random.random() < m.rival ** (1 + m.stage * 0.9):
+                m.stage += 1
+                m.said = random.choice((
+                    "a hand goes up at the back",
+                    "the woman in the anorak again",
+                    "somebody by the door, without looking up",
+                    "the man who bought the last three lots"))
+                self.beep("page")
+            else:
+                m.won = 1
+                m.done = True
+                self.beep("coin")
+        elif m.kind == "quiz" and isinstance(what, int):
+            if what == m.right:
+                m.won += 1
+                m.stage += 1
+                self.beep("coin")
+                if m.stage >= m.rounds:
+                    m.done = True
+                else:
+                    m.set_question(random.Random(), self.state)
+            else:
+                m.lost = True
+                m.done = True
+                self.beep("flip")
         elif m.kind == "haggle" and what in ("up", "down", "offer"):
             if what == "up":
                 m.guess = int(clamp(m.guess + 5, 5, 95))
@@ -9149,6 +9499,26 @@ class GameBase:
         pack = BY_PACK[stall[3]]
         st = self.state
         won = m.done and not m.lost and m.won >= m.rounds
+        if m.kind == "auction":
+            price = AUCTION_FLOOR + m.bid
+            if won and st.money >= price:
+                st.money -= price
+                st.spent += price
+                st.conv_take(m.stall, pack)
+                self.beep("shiny")
+                self.toast("knocked down to you",
+                           f"{money(price)} - and a room full of people who "
+                           f"wanted it", mix(LAMP, CREAM, 0.3), 10.0)
+            elif won:
+                st.conv_take(m.stall, None)
+                self.toast("you could not cover the bid",
+                           f"it went for {money(price)}", BAD, 8.0)
+            else:
+                st.conv_take(m.stall, None)
+                self.toast("somebody else got it",
+                           "you stopped bidding and they did not", TEA, 8.0)
+            self.save()
+            return
         if m.kind == "haggle":
             # he sells either way; the game is only ever what it costs you
             price = pack.price * SCALP_MULT * ((m.guess / 100.0) if won
@@ -9178,6 +9548,14 @@ class GameBase:
             self.toast("that is the lot", "the table is cleared out until "
                                           "next week", TEA, 8.0)
         self.save()
+
+    def place_bid(self, i):
+        st = self.state
+        if not 0 <= i < len(st.bids):
+            return
+        a = st.bids[i]
+        if st.bid_on(a):
+            self.beep("coin")
 
     def do_swap(self, i):
         st = self.state
@@ -9461,6 +9839,18 @@ class GameBase:
         st = self.state
         before = st.income
         landed = st.tick(dt)
+        for a, got in st.won_lots:
+            self.beep("shiny")
+            if a.kind == "pack":
+                self.toast("you won the auction",
+                           f"{a.words()} for {money(a.price)} - "
+                           f"{clock_str(got.left)} in the post",
+                           mix(LAMP, CREAM, 0.3), 12.0)
+            else:
+                self.toast(f"{got.breed.name} is yours",
+                           f"won at {money(a.price)}"
+                           + (" - that is a new one" if got.kind == "new"
+                              else ""), mix(LAMP, CREAM, 0.3), 12.0)
         # Read AFTER the clock has run. The flag is set inside State.tick
         # now, so checking it earlier in this method put the announcement
         # one frame behind the thing it announces - invisible at sixty a
@@ -9604,8 +9994,10 @@ class GameBase:
         mouse = pygame.mouse.get_pos()
         if self.area == "conv":
             spots = []
-            for i, (key, title, who, pk, game, blurb) in enumerate(STALLS):
-                r = pygame.Rect(STALL_X[i] - 150, CONV_FLOOR - 60, 300, 162)
+            for slot, which in enumerate(stalls_on(st.week)):
+                key, title, who, pk, game, blurb = STALLS[which]
+                r = pygame.Rect(STALL_X[slot] - 150, CONV_FLOOR - 60,
+                                300, 162)
                 done = st.conv_played(key)
                 spots.append((r, "played this one" if done else "have a go",
                               ("stall", key)))
@@ -10242,22 +10634,110 @@ class ShopMixin:
                 "cards they will meet you for - that is what you are paying "
                 "the extra for.", 12, (x, y + 60), MUTED, kind="mono",
              max_w=PAGE_R.w - 220)
-        left = until_midnight(st.played)
-        text(s, f"stock changes in {clock_str(left)}", 12,
-             (PAGE_R.right - 18, y + 60), TEA, right=True, kind="mono",
-             shadow=False)
+        if self.bay == "buy":
+            text(s, f"stock changes in "
+                    f"{clock_str(until_midnight(st.played))}", 12,
+                 (PAGE_R.right - 18, y + 60), TEA, right=True, kind="mono",
+                 shadow=False)
         self.buttons.append(Button((PAGE_R.right - 190, y + 78, 180, 26),
                                    "< back to the room", ("scene", "room"),
                                    "link", 15, kind="mono", colour=TEA))
+        tx = x
+        for key, label in (("buy", "BUY IT NOW"), ("bid", "AUCTIONS")):
+            lab = label + (f" ({sum(1 for a in st.bids if a.mine)})"
+                           if key == "bid" and any(a.mine for a in st.bids)
+                           else "")
+            wdt = font(15, False, "mono").size(lab)[0] + 18
+            r = pygame.Rect(tx, y + 80, wdt, 26)
+            on = self.bay == key
+            if on:
+                pygame.draw.rect(s, mix(SCREEN_HI, EMBER, 0.2), r,
+                                 border_radius=6)
+                text(s, lab, 15, r.center, warm(CREAM, 0.2), center=True,
+                     kind="mono", shadow=False)
+            self.buttons.append(Button(r, lab, ("bay", key),
+                                       "hit" if on else "link", 15,
+                                       kind="mono",
+                                       colour=CREAM if on else TEA))
+            tx += wdt + 6
+        if self.bay == "bid":
+            self.draw_bids(s, pygame.Rect(PAGE_R.x + 18, y + 118,
+                                          PAGE_R.w - 36,
+                                          PAGE_R.bottom - (y + 118) - 8))
+            return
 
-        body = pygame.Rect(PAGE_R.x + 18, y + 112, PAGE_R.w - 36,
-                           PAGE_R.bottom - (y + 112) - 8)
+        body = pygame.Rect(PAGE_R.x + 18, y + 118, PAGE_R.w - 36,
+                           PAGE_R.bottom - (y + 118) - 8)
         cols, rows = 3, 2
         gw, gh = body.w // cols, body.h // rows
         for i, lot in enumerate(st.lots[:cols * rows]):
             r = pygame.Rect(body.x + (i % cols) * gw, body.y + (i // cols) * gh,
                             gw - 14, gh - 14)
             self._lot_tile(s, r, lot, i)
+
+    def draw_bids(self, s, body):
+        """What is running, what it stands at, and how long you have."""
+        st = self.state
+        if not st.bids:
+            text(s, "nothing under the hammer", 20,
+                 (body.centerx, body.y + 40), MUTED, center=True,
+                 kind="mono")
+            return
+        rowh = body.h // max(1, len(st.bids))
+        for i, a in enumerate(st.bids):
+            r = pygame.Rect(body.x, body.y + i * rowh, body.w - 8, rowh - 8)
+            self._bid_row(s, r, a, i)
+
+    def _bid_row(self, s, r, a, i):
+        st = self.state
+        left = a.left(st.played)
+        soon = left < 45
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.12 if a.mine else 0.03),
+              shade(GOOD, 0.8) if a.mine else
+              shade(BAD, 0.7) if soon else shade(SCREEN_HI, 1.4),
+              radius=8, shadow=False)
+        pic = pygame.Rect(r.x + 10, r.y + 8, 74, r.h - 16)
+        if a.kind == "card":
+            draw_card(s, pic, BY_KEY[a.key], a.level, variant=a.coat,
+                      shiny=a.shiny, show_rate=False)
+        else:
+            draw_pack_art(s, pic, BY_PACK[a.key])
+        tx = pic.right + 14
+        text(s, a.words(), 18, (tx, r.y + 10), CREAM, max_w=300)
+        sub_line = (f"{BY_PACK[a.key].cards * a.qty} cards, in the post"
+                    if a.kind == "pack" else
+                    coat_name(BY_KEY[a.key], a.coat, a.shiny, full=a.shiny))
+        text(s, sub_line, 12, (tx, r.y + 34),
+             mix(LAMP, CREAM, 0.3) if a.shiny else MUTED, kind="mono",
+             max_w=300)
+        if a.mine:
+            who, col = "you are the high bidder", GOOD
+        elif a.price <= a.start:
+            who, col = "no bids yet", MUTED
+        else:
+            who, col = f"{BIDDERS[a.who][0]} is ahead of you", BAD
+        text(s, who, 12, (tx, r.y + 54), col, kind="mono", max_w=320)
+
+        mx = r.x + 470
+        text(s, "STANDS AT", 11, (mx, r.y + 10), MUTED, kind="mono")
+        text(s, money(a.price), 24, (mx, r.y + 26),
+             warm(EMBER, 0.2) if not a.mine else GOOD)
+        text(s, f"closes in {clock_str(left)}", 13, (mx, r.y + 58),
+             BAD if soon else TEA, kind="mono")
+
+        nxt = a.price + a.step if a.price > a.start else a.price
+        if a.mine:
+            text(s, "nothing to do but wait", 12, (r.right - 24, r.centery),
+                 GOOD, right=True, kind="mono")
+        else:
+            can = st.money >= nxt
+            text(s, f"bid {money(nxt)}", 13,
+                 (r.right - 24, r.centery - 26),
+                 mix(TEA, CREAM, 0.2) if can else BAD, right=True,
+                 kind="mono")
+            self.buttons.append(Button(
+                (r.right - 150, r.centery - 10, 130, 36), "BID",
+                ("bid", i), "solid", 16, kind="mono", enabled=can))
 
     def _lot_tile(self, s, r, lot, i):
         st = self.state
@@ -11190,13 +11670,14 @@ class Mini:
     """The state of whichever game is being played."""
     __slots__ = ("kind", "stall", "stage", "rounds", "won", "lost", "t",
                  "pos", "dir", "band", "cards", "pick", "secret", "guess",
-                 "tries", "said", "done", "spare")
+                 "tries", "said", "done", "spare", "bid", "rival",
+                 "ask", "opts", "right")
 
     def __init__(self, kind, stall, rng, state):
         self.kind = kind
         self.stall = stall
         self.stage = 0
-        self.rounds = 3 if kind == "queue" else 2 if kind == "fake" else 1
+        self.rounds = {"queue": 3, "fake": 2, "quiz": 3}.get(kind, 1)
         self.won = 0
         self.lost = False
         self.done = False
@@ -11212,8 +11693,17 @@ class Mini:
         self.tries = 5
         self.secret = rng.randrange(20, 81)
         self.guess = 50
+        # the auction: what it stands at, and how deep the room is
+        self.bid = 0
+        self.rival = rng.uniform(0.55, 0.85)
+        # the quiz: a question, four answers and which one is right
+        self.ask = ""
+        self.opts = []
+        self.right = 0
         if kind == "fake":
             self.deal_fakes(rng, state)
+        elif kind == "quiz":
+            self.set_question(rng, state)
 
     # -- spot the fake --------------------------------------------------
     def deal_fakes(self, rng, state):
@@ -11226,6 +11716,44 @@ class Mini:
             self.cards.append({"breed": b, "tell": tell})
         rng.shuffle(self.cards)
         self.pick = -1
+
+    # -- the quiz --------------------------------------------------------
+    def set_question(self, rng, state):
+        """One question about the catalogue, with four cats under it.
+
+        The answer is in the binder, which is the point: this is the one
+        table that pays out for having read the thing you have spent the
+        whole game filling in.
+        """
+        pool = [b for b in BREEDS if b.rarity >= R_RARE]
+        four = rng.sample(pool, 4)
+        pick = rng.randrange(3)
+        if pick == 0:
+            self.ask = "Which of these is the rarest?"
+            best = max(four, key=lambda b: b.rarity)
+            self.right = four.index(best)
+            if sum(1 for b in four if b.rarity == best.rarity) > 1:
+                self.ask = "Which of these earns the most at level one?"
+                best = max(four, key=lambda b: b.base_rate)
+                self.right = four.index(best)
+        elif pick == 1:
+            self.ask = "Which of these is the most ordinary?"
+            worst = min(four, key=lambda b: b.rarity)
+            self.right = four.index(worst)
+            if sum(1 for b in four if b.rarity == worst.rarity) > 1:
+                self.ask = "Which of these earns the least at level one?"
+                worst = min(four, key=lambda b: b.base_rate)
+                self.right = four.index(worst)
+        else:
+            want = rng.choice(four)
+            self.ask = f"Which of these is {a_rarity(want.rarity)}?"
+            same = [b for b in four if b.rarity == want.rarity]
+            if len(same) > 1:
+                four = rng.sample([b for b in pool
+                                   if b.rarity != want.rarity], 3) + [want]
+                rng.shuffle(four)
+            self.right = four.index(want)
+        self.opts = four
 
     def real_index(self):
         return next(i for i, c in enumerate(self.cards) if c["tell"] is None)
@@ -11247,7 +11775,11 @@ class Mini:
 
 
 MINI_TITLE = {"queue": "GET TO THE TABLE", "fake": "WHICH ONE IS REAL",
-              "haggle": "TALK HIM DOWN"}
+              "haggle": "TALK HIM DOWN", "auction": "BID FOR IT",
+              "quiz": "THREE QUESTIONS"}
+
+AUCTION_STEP = 1200        # what one raise costs
+AUCTION_FLOOR = 2400       # where the bidding opens
 
 
 # ---------------------------------------------------------------------------
@@ -11416,12 +11948,22 @@ class MenuMixin:
             self._mini_queue(s, m, r)
         elif m.kind == "fake":
             self._mini_fake(s, m, r)
+        elif m.kind == "auction":
+            self._mini_auction(s, m, r)
+        elif m.kind == "quiz":
+            self._mini_quiz(s, m, r)
         else:
             self._mini_haggle(s, m, r)
 
         if m.done:
             won = not m.lost and m.won >= m.rounds
-            if m.kind == "haggle":
+            if m.kind == "auction":
+                word = ("going, going, gone" if won
+                        else "somebody else wanted it more")
+            elif m.kind == "quiz":
+                word = ("three out of three" if won
+                        else "he looks almost sorry")
+            elif m.kind == "haggle":
                 word = ("he shakes on it" if won
                         else "he will not come down")
             else:
@@ -11493,6 +12035,67 @@ class MenuMixin:
                  (r.centerx, r.y + 408), GOOD, center=True, kind="mono")
         text(s, f"round {min(m.stage + 1, m.rounds)} of {m.rounds}", 14,
              (r.centerx, r.y + 390), TEA, center=True, kind="mono")
+
+    def _mini_auction(self, s, m, r):
+        """The room bids against you. Every raise is money you will pay
+        if nobody goes again, so the game is knowing when it has
+        stopped."""
+        price = AUCTION_FLOOR + m.bid
+        text(s, "the lot stands at", 14, (r.centerx, r.y + 150), TEA,
+             center=True, kind="mono")
+        can = self.state.money >= price
+        text(s, money(price), 54, (r.centerx, r.y + 196),
+             warm(CREAM, 0.2) if can else BAD, center=True)
+        if not m.done:
+            text(s, (f"{m.stage} other" + ("" if m.stage == 1 else "s")
+                     + " still bidding") if m.stage else
+                 "nobody has gone against you yet", 14,
+                 (r.centerx, r.y + 250), MUTED, center=True, kind="mono")
+        if m.said and not m.done:
+            text(s, m.said, 16, (r.centerx, r.y + 282), EMBER, center=True,
+                 kind="mono")
+        if not can:
+            text(s, "more than you have", 13, (r.centerx, r.y + 312), BAD,
+                 center=True, kind="mono")
+        if not m.done:
+            text(s, "raise again and the room may go with you - stop and "
+                    "somebody else takes it", 13, (r.centerx, r.y + 344),
+                 MUTED, center=True, kind="mono")
+        if not m.done:
+            self.buttons.append(Button((r.centerx - 230, r.bottom - 112, 210,
+                                        52), f"RAISE {money(AUCTION_STEP)}",
+                                       ("mini", "raise"), "solid", 18,
+                                       kind="mono"))
+            self.buttons.append(Button((r.centerx + 20, r.bottom - 112, 210,
+                                        52), "LET IT GO", ("mini", "pass"),
+                                       "plain", 18, kind="mono"))
+
+    def _mini_quiz(self, s, m, r):
+        """Three questions whose answers are all in the binder."""
+        text(s, m.ask, 22, (r.centerx, r.y + 132), warm(CREAM, 0.2),
+             center=True, max_w=r.w - 80)
+        cw, gap = 150, 22
+        gx = r.centerx - (4 * cw + 3 * gap) // 2
+        for i, b in enumerate(m.opts):
+            rect = pygame.Rect(gx + i * (cw + gap), r.y + 170, cw, 206)
+            known = b.key in self.state.cards
+            if known:
+                card = self.state.cards[b.key]
+                draw_card(s, rect, b, card.level, card.dupes,
+                          card.maxed, variant=card.coat, shiny=card.shiny)
+            else:
+                draw_unknown(s, rect, b)
+                text(s, b.name, fit(b.name, 15, cw - 16),
+                     (rect.centerx, rect.bottom - 30), TEA, center=True)
+            self.buttons.append(Button(rect, "", ("mini", i), "hit"))
+            if rect.collidepoint(pygame.mouse.get_pos()) and not m.done:
+                pygame.draw.rect(s, warm(CREAM, 0.1), rect.inflate(8, 8),
+                                 width=2, border_radius=9)
+        text(s, f"question {min(m.stage + 1, m.rounds)} of {m.rounds}"
+                f"    {m.won} right", 14, (r.centerx, r.y + 390), TEA,
+             center=True, kind="mono")
+        text(s, "one wrong and he keeps the shelf", 13,
+             (r.centerx, r.y + 412), MUTED, center=True, kind="mono")
 
     def _mini_haggle(self, s, m, r):
         """He has a number in his head. You have five goes at it, and
