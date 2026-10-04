@@ -102,16 +102,18 @@ RARITY = (
     ("COMMON",    (171, 152, 126), 0.016),
     ("UNCOMMON",  (126, 171, 131), 0.055),
     ("RARE",      (116, 150, 208), 0.15),
+    ("EXOTIC",    (124, 232, 236), 0.25),
     ("PEDIGREE",  (184, 132, 208), 0.40),
     ("CHAMPION",  (204, 74, 92),   0.63),
     ("LEGEND",    (240, 178, 86),  1.00),
+    ("HEIRLOOM",  (172, 236, 88),  1.35),
     ("FOUNDATION", (72, 214, 170), 1.80),
     ("UNLISTED",  (206, 214, 228), 0.85),
     ("CONVENTION", (238, 70, 174),  1.50),
 )
-(R_COMMON, R_UNCOMMON, R_RARE, R_PEDIGREE, R_CHAMPION, R_LEGEND,
- R_FOUNDATION, R_UNLISTED, R_EXPO) = range(9)
-SOLD_RARITIES = 7          # the catalogue stocks the first seven of them
+(R_COMMON, R_UNCOMMON, R_RARE, R_EXOTIC, R_PEDIGREE, R_CHAMPION, R_LEGEND,
+ R_HEIRLOOM, R_FOUNDATION, R_UNLISTED, R_EXPO) = range(11)
+SOLD_RARITIES = 9          # the catalogue stocks the first nine of them
 
 MAX_LEVEL = 10
 
@@ -1665,8 +1667,155 @@ def _build_more():
     return tuple(out)
 
 
+# ---------------------------------------------------------------------------
+# THE TWO NEW TIERS, AND THE CATS IN THEM
+#
+# EXOTIC and HEIRLOOM were added to the ladder with nothing standing on
+# them, which is not a balance problem but a crash: `roll` picks a tier
+# by weight and then picks a breed out of it, and an empty tier is an
+# empty list to choose from. These are the cats that live there, plus
+# four more spread across the rungs that were already busy.
+# ---------------------------------------------------------------------------
+NEW_BREEDS = (
+    # -- EXOTIC: the ones that look like they got out of somewhere ------
+    Breed("chau", "Chausie", R_EXOTIC, "the reed beds of the Nile",
+          "Half again as long as it has any need to be.",
+          L(size=1.18, body=1.26, facew=0.94, faceh=1.06, cheek=0.88,
+            ear=1.28, legs=1.30, fluff=0.08, tail="plain",
+            coat=(150, 118, 76), mark=(92, 68, 40), belly=(210, 186, 150),
+            pat="ticked", eye=(206, 184, 86), eyeshape="almond"),
+          "hunter", "Covers the whole flat at a trot, twice an hour.",
+          ("grizzled tabby", "black", "silver")),
+    Breed("cara", "Caracat", R_EXOTIC, "a dry hillside",
+          "The ears have tufts on them and it knows exactly how that looks.",
+          L(size=1.14, body=0.96, facew=1.00, faceh=1.04, cheek=0.94,
+            ear=1.46, tuft=1.0, legs=1.18, fluff=0.14, tail="plain",
+            coat=(198, 142, 92), mark=(146, 96, 54), belly=(234, 210, 180),
+            pat="solid", eye=(188, 196, 96), eyeshape="almond"),
+          "climber", "Sits somewhere high with the tufts up, listening.",
+          ("sand", "charcoal", "blue")),
+    Breed("serv", "Serval Cross", R_EXOTIC, "two generations off the wild",
+          "Legs like a deer and no sense of scale at all.",
+          L(size=1.26, body=0.90, facew=0.90, faceh=1.12, cheek=0.84,
+            ear=1.40, legs=1.44, fluff=0.06, tail="bob",
+            coat=(214, 176, 100), mark=(70, 58, 46), belly=(242, 228, 202),
+            pat="spotted", eye=(198, 182, 92), eyeshape="almond"),
+          "busy", "Clears the kitchen counter from a standing start.",
+          ("golden spotted", "silver", "charcoal")),
+    Breed("jcrl", "Jungle Curl", R_EXOTIC, "a hybrid programme in Nevada",
+          "The ears go backwards, which takes some getting used to.",
+          L(size=1.04, body=1.06, facew=1.06, faceh=0.98, cheek=1.10,
+            ear=1.16, earcurl=1.0, legs=0.98, fluff=0.58, tail="plume",
+            coat=(120, 100, 88), mark=(68, 56, 50), belly=(196, 180, 166),
+            pat="blotched", eye=(150, 190, 128), eyeshape="round"),
+          "shadow", "Watches from the doorway with its ears turned round.",
+          ("smoke tabby", "charcoal", "chocolate")),
+    Breed("dlnx", "Desert Lynx", R_EXOTIC, "the scrub at the edge of town",
+          "Short at the back, tufted at the top, and entirely unbothered.",
+          L(size=1.10, body=1.08, facew=1.12, faceh=0.94, cheek=1.18,
+            ear=1.22, tuft=0.8, legs=0.86, fluff=0.36, tail="none",
+            coat=(176, 150, 116), mark=(112, 92, 68), belly=(226, 212, 190),
+            pat="blotched", eye=(176, 190, 104), eyeshape="round"),
+          "warmth", "Finds the one square of sun and stays in it.",
+          ("desert tabby", "silver", "fawn")),
+    Breed("soko", "Sokoke", R_EXOTIC, "a forest on the Kenyan coast",
+          "Marked like bark, and about as easy to spot against it.",
+          L(size=0.98, body=1.12, facew=0.96, faceh=1.00, cheek=0.92,
+            ear=1.10, legs=1.14, fluff=0.04, tail="whip",
+            coat=(162, 128, 92), mark=(94, 68, 44), belly=(214, 192, 164),
+            pat="blotched", eye=(170, 182, 104), eyeshape="almond"),
+          "hunter", "Is somewhere in the room. You will find it eventually.",
+          ("bark tabby", "brown", "cinnamon")),
+    Breed("pbsp", "Punjabi Spotted", R_EXOTIC, "a village outside Amritsar",
+          "Spotted twice over, which is more than anybody asked for.",
+          L(size=1.00, body=1.00, facew=1.08, faceh=1.00, cheek=1.06,
+            ear=0.92, legs=1.00, fluff=0.72, tail="plume",
+            coat=(206, 182, 136), mark=(118, 92, 62), belly=(238, 226, 206),
+            pat="spotted", eye=(142, 184, 140), eyeshape="round"),
+          "groomer", "Washes one spot at a time, in order.",
+          ("wheat spotted", "golden", "ivory")),
+    Breed("mach", "Machbagral", R_EXOTIC, "a river delta",
+          "Will get into water on purpose, which nobody can explain.",
+          L(size=1.06, body=1.18, facew=1.14, faceh=0.92, cheek=1.24,
+            ear=0.84, legs=0.80, fluff=0.20, tail="kink",
+            coat=(132, 128, 120), mark=(78, 76, 72), belly=(190, 188, 182),
+            pat="ticked", eye=(150, 178, 190), eyeshape="round"),
+          "glutton", "Drinks from the tap. Will not drink from the bowl.",
+          ("river grey", "red", "ivory")),
+
+    # -- HEIRLOOM: cards somebody kept -----------------------------------
+    Breed("gran", "The Grandmother's Persian", R_HEIRLOOM, "a card in a drawer",
+          "Printed in 1961 and kept flat ever since.",
+          L(size=1.20, body=1.08, facew=1.26, faceh=0.86, cheek=1.30,
+            ear=0.70, flat=1.0, legs=0.72, fluff=0.96, tail="plume",
+            coat=(232, 222, 206), mark=(192, 178, 158), belly=(248, 244, 238),
+            pat="smoke", eye=(206, 160, 96), eyeshape="round"),
+          "sleeper", "Occupies the middle of the bed and will not be moved.",
+          ("antique cream", "blue", "chocolate")),
+    Breed("blue12", "The Nineteen-Twelve Blue", R_HEIRLOOM, "the first catalogue",
+          "The oldest card anybody has a photograph of.",
+          L(size=1.06, body=1.02, facew=1.10, faceh=0.98, cheek=1.12,
+            ear=0.90, legs=0.92, fluff=0.42, tail="plain",
+            coat=(132, 142, 158), mark=(92, 102, 118), belly=(198, 206, 218),
+            pat="solid", eye=(214, 178, 94), eyeshape="round"),
+          "lap", "Sits upright beside you like it is being photographed.",
+          ("old blue", "silver", "charcoal")),
+    Breed("rose", "The Rosette Winner", R_HEIRLOOM, "a show in 1974",
+          "Won everything there was to win and then retired to a cushion.",
+          L(size=1.12, body=0.94, facew=1.04, faceh=1.08, cheek=1.00,
+            ear=1.08, legs=1.06, fluff=0.80, tail="plume",
+            coat=(198, 164, 104), mark=(120, 88, 48), belly=(240, 224, 194),
+            pat="tabbywhite", eye=(176, 194, 110), eyeshape="almond",
+            collar=(206, 170, 84)),
+          "groomer", "Poses. There is no other word for it.",
+          ("rosette gold", "red", "cream")),
+    Breed("last", "The Last Of The Line", R_HEIRLOOM, "a breeder who stopped",
+          "There will not be any more of these.",
+          L(size=0.92, body=1.14, facew=0.98, faceh=1.10, cheek=0.94,
+            ear=1.26, legs=0.88, fluff=0.26, tail="kink",
+            coat=(84, 78, 88), mark=(50, 46, 54), belly=(140, 134, 146),
+            pat="roan", eye=(168, 206, 164), eyeshape="almond"),
+          "shadow", "Keeps to itself, and keeps an eye on everything.",
+          ("ash", "red", "ivory")),
+
+    # -- and four on rungs that were already busy ------------------------
+    Breed("shed", "Shed Cat", R_COMMON, "the bottom of somebody's garden",
+          "Lives in a shed. Considers the shed a career.",
+          L(size=1.02, body=1.16, facew=1.06, faceh=0.96, cheek=1.14,
+            ear=0.96, legs=0.84, fluff=0.30, tail="bob",
+            coat=(138, 126, 110), mark=(88, 80, 70), belly=(198, 190, 178),
+            pat="tabby", eye=(160, 178, 112), eyeshape="round"),
+          "sleeper", "Sleeps on whatever was last put down.",
+          ("dust tabby", "silver", "blue")),
+    Breed("harb", "Harbour Tabby", R_UNCOMMON, "the end of a pier",
+          "Fed by eleven boats and loyal to none of them.",
+          L(size=1.08, body=1.04, facew=0.98, faceh=1.04, cheek=0.96,
+            ear=1.24, legs=1.08, fluff=0.16, tail="whip",
+            coat=(118, 122, 128), mark=(72, 76, 82), belly=(186, 190, 196),
+            pat="tabbywhite", eye=(142, 176, 186), eyeshape="almond"),
+          "busy", "Patrols. There is no other word for that either.",
+          ("harbour grey", "black and white", "silver")),
+    Breed("shad", "Silver Shaded", R_CHAMPION, "a breeder in Surrey",
+          "Tipped with black, so it changes colour when it moves.",
+          L(size=1.04, body=0.98, facew=1.14, faceh=0.94, cheek=1.16,
+            ear=0.86, legs=0.90, fluff=0.88, tail="plume",
+            coat=(236, 234, 230), mark=(126, 124, 128), belly=(250, 249, 247),
+            pat="smoke", eye=(132, 186, 140), eyeshape="round"),
+          "groomer", "Washes in the light where it shows best.",
+          ("silver shaded", "golden", "blue")),
+    Breed("sire", "The Champion's Sire", R_LEGEND, "the line behind the line",
+          "Never shown. Every winner for a decade goes back to it.",
+          L(size=1.16, body=1.10, facew=1.16, faceh=0.96, cheek=1.22,
+            ear=1.02, legs=0.96, fluff=0.52, tail="plain",
+            coat=(108, 92, 80), mark=(62, 52, 44), belly=(176, 162, 146),
+            pat="solid", eye=(212, 184, 92), eyeshape="almond"),
+          "lap", "Sits in the best chair as though it were always his.",
+          ("seal brown", "black", "chocolate")),
+)
+
+
 # The book, in tier order, which is the order the binder reads in.
-BREEDS = tuple(sorted(BREEDS + _build_more(),
+BREEDS = tuple(sorted(BREEDS + _build_more() + NEW_BREEDS,
                       key=lambda b: (b.rarity, b.name)))
 
 
@@ -1802,7 +1951,185 @@ EXPO_BREEDS = (
           ("ginger and white", "black and white", "grey and white")),
 )
 
-ALL_BREEDS = BREEDS + SECRETS + EXPO_BREEDS
+# ---------------------------------------------------------------------------
+# THE KITTEN SERIES
+#
+# The second collection. It does not exist until the first one is
+# finished - the company announces it the day you own all hundred - and
+# then the website grows a page it did not have, with three products on
+# it that take you back to an empty binder.
+#
+# They are kittens, so they share a build: big head, big ears, short
+# legs, not much cat. That is the problem with a themed set and the
+# reason this one is twelve and not thirty. Everything that CAN vary
+# inside "kitten" is pushed as far as it goes - seven kinds of tail,
+# fluff from nothing to a dandelion, ears from folded to enormous - and
+# the pairwise check in cat_test.py is what says whether it worked.
+# ---------------------------------------------------------------------------
+KITTENS = (
+    Breed("sock", "The Sock Thief", R_COMMON, "under the bed, with it",
+          "Has one. Will not be giving it back.",
+          L(size=0.74, body=0.92, facew=1.16, faceh=0.94, cheek=1.04,
+            ear=1.14, legs=0.72, fluff=0.22, tail="plain",
+            coat=(154, 132, 106), mark=(96, 78, 60), belly=(214, 198, 174),
+            pat="tabby", eye=(146, 180, 112), eyeshape="round"),
+          "hunter",
+          "Takes one sock from every wash and hides it somewhere new.",
+          ("brown tabby", "silver", "blue")),
+    Breed("wks", "Three Weeks Old", R_COMMON, "a cardboard box in a kitchen",
+          "Walks like the floor is new to it, which it is.",
+          L(size=0.62, body=0.80, facew=1.22, faceh=1.00, cheek=1.12,
+            ear=0.80, legs=0.60, fluff=0.52, tail="pom",
+            coat=(186, 176, 164), mark=(140, 128, 118), belly=(238, 234, 228),
+            pat="solid", eye=(132, 164, 196), eyeshape="round"),
+          "sleeper",
+          "Sleeps in a heap, wakes, falls over, sleeps again.",
+          ("dove grey", "cream", "white")),
+    Breed("gout", "The One That Got Out", R_UNCOMMON, "the gap in the fence",
+          "Found at the end of the road, entirely pleased with itself.",
+          L(size=0.80, body=1.04, facew=1.06, faceh=0.96, cheek=0.94,
+            ear=1.30, legs=0.90, fluff=0.10, tail="whip",
+            coat=(118, 112, 110), mark=(74, 70, 70), belly=(176, 170, 166),
+            pat="ticked", eye=(206, 184, 86), eyeshape="almond"),
+          "shadow",
+          "Is at the door the moment it opens, every time, without fail.",
+          ("storm grey", "black", "red")),
+    Breed("sbx", "Shoebox Number Four", R_UNCOMMON, "the fourth box along",
+          "One of five, and the one that climbed out first.",
+          L(size=0.78, body=0.98, facew=1.10, faceh=1.04, cheek=1.08,
+            ear=1.02, legs=0.78, fluff=0.76, tail="plume",
+            coat=(206, 158, 96), mark=(238, 232, 224), belly=(244, 238, 230),
+            pat="bicolour", eye=(188, 166, 92), eyeshape="round"),
+          "lap",
+          "Climbs into whatever has most recently been emptied.",
+          ("ginger and white", "cream", "grey and white")),
+    Breed("loud", "The Loud One", R_RARE, "the whole street, at four a.m.",
+          "Has a great deal to say and says all of it.",
+          L(size=0.76, body=0.88, facew=0.98, faceh=1.14, cheek=0.86,
+            ear=1.44, legs=0.86, fluff=0.06, tail="kink",
+            coat=(222, 210, 188), mark=(96, 80, 76), belly=(240, 234, 222),
+            pat="point", eye=(118, 174, 206), eyeshape="almond"),
+          "busy",
+          "Announces every room it enters, including ones it has left.",
+          ("seal point", "blue point", "chocolate")),
+    Breed("fsnw", "First Snow", R_RARE, "a doorstep in January",
+          "White, and under the impression that this is remarkable.",
+          L(size=0.82, body=1.00, facew=1.14, faceh=0.98, cheek=1.14,
+            ear=0.74, legs=0.68, fluff=0.94, tail="plume",
+            coat=(244, 242, 238), mark=(216, 212, 206), belly=(250, 250, 248),
+            pat="solid", eye=(128, 186, 198), eyeshape="round"),
+          "warmth",
+          "Finds the radiator within a minute of arriving anywhere.",
+          ("white", "ivory", "cream")),
+    Breed("clmb", "The Climber", R_PEDIGREE, "the top of the curtains",
+          "Got up there. Has not worked out the rest of it.",
+          L(size=0.84, body=0.90, facew=1.00, faceh=1.02, cheek=0.92,
+            ear=1.20, legs=1.02, fluff=0.28, tail="plain",
+            coat=(142, 116, 150), mark=(92, 74, 100), belly=(206, 194, 212),
+            pat="smoke", eye=(206, 190, 96), eyeshape="almond"),
+          "climber",
+          "Is always one shelf higher than you last looked.",
+          ("lilac smoke", "blue", "charcoal")),
+    Breed("quiet", "The Quiet One", R_PEDIGREE, "behind the washing machine",
+          "Says nothing. Misses nothing.",
+          L(size=0.72, body=1.10, facew=1.04, faceh=1.08, cheek=1.00,
+            ear=0.88, legs=0.66, fluff=0.40, tail="bob",
+            coat=(88, 84, 92), mark=(56, 54, 60), belly=(140, 136, 146),
+            pat="roan", eye=(150, 196, 142), eyeshape="round"),
+          "groomer",
+          "Watches the room from the one place you would not look.",
+          ("charcoal", "silver", "blue")),
+    Breed("runt", "The Runt", R_CHAMPION, "the end of the row",
+          "Smallest of the litter and first to every bowl.",
+          L(size=0.58, body=1.06, facew=1.24, faceh=0.90, cheek=1.22,
+            ear=0.96, legs=0.62, fluff=0.18, tail="none",
+            coat=(176, 142, 96), mark=(118, 88, 54), belly=(228, 208, 180),
+            pat="blotched", eye=(182, 198, 106), eyeshape="round"),
+          "glutton",
+          "Eats as though somebody is about to take the bowl away.",
+          ("honey", "charcoal", "blue")),
+    Breed("mitt", "Four White Mittens", R_CHAMPION, "a breeder's back room",
+          "Four of them, and the papers to prove it.",
+          L(size=0.88, body=0.96, facew=1.08, faceh=1.00, cheek=1.06,
+            ear=1.06, legs=0.94, fluff=0.62, tail="plume",
+            coat=(104, 88, 94), mark=(246, 244, 240), belly=(248, 246, 242),
+            pat="gloves", eye=(126, 170, 204), eyeshape="round"),
+          "lap",
+          "Puts one white foot on you and considers the matter settled.",
+          ("seal mitted", "blue", "chocolate")),
+    Breed("bkit", "Best Kitten In Show", R_LEGEND, "the junior class",
+          "Eleven weeks old and already insufferable about it.",
+          L(size=0.92, body=1.02, facew=1.18, faceh=0.92, cheek=1.18,
+            ear=0.82, legs=0.74, fluff=0.90, tail="plume",
+            coat=(238, 226, 206), mark=(198, 180, 152), belly=(250, 246, 240),
+            pat="tabbywhite", eye=(214, 186, 88), eyeshape="round"),
+          "groomer",
+          "Sits in the best light in the room and waits to be noticed.",
+          ("show cream", "chocolate", "blue")),
+    Breed("spot", "The Spotted One", R_EXOTIC, "a litter nobody expected",
+          "Came out spotted. Neither parent is spotted.",
+          L(size=0.86, body=1.00, facew=1.06, faceh=0.98, cheek=1.02,
+            ear=1.24, legs=0.92, fluff=0.12, tail="whip",
+            coat=(212, 180, 120), mark=(104, 80, 52), belly=(240, 226, 202),
+            pat="spotted", eye=(186, 192, 100), eyeshape="almond"),
+          "hunter", "Stalks the other ones from behind the sofa.",
+          ("wheat spotted", "silver", "cinnamon")),
+    Breed("tuft", "Tufts", R_EXOTIC, "a hybrid litter in a spare room",
+          "The ears arrived before the rest of it did.",
+          L(size=0.80, body=0.92, facew=1.10, faceh=1.00, cheek=1.06,
+            ear=1.48, tuft=1.0, legs=0.80, fluff=0.30, tail="pom",
+            coat=(190, 150, 104), mark=(126, 92, 58), belly=(232, 214, 188),
+            pat="ticked", eye=(170, 190, 112), eyeshape="round"),
+          "climber", "Gets somewhere high and then cannot get down.",
+          ("sand", "red", "fawn")),
+    Breed("keep", "The One They Kept", R_HEIRLOOM, "a litter of six",
+          "Five went to homes. This one was already asleep on the sofa.",
+          L(size=0.90, body=1.08, facew=1.20, faceh=0.90, cheek=1.24,
+            ear=0.76, legs=0.70, fluff=0.86, tail="plume",
+            coat=(224, 206, 180), mark=(170, 148, 118), belly=(246, 240, 230),
+            pat="tabbywhite", eye=(196, 164, 98), eyeshape="round"),
+          "lap", "Has chosen a person and the matter is closed.",
+          ("old cream", "blue", "silver")),
+    Breed("pud", "The Puddle Kitten", R_COMMON, "a wet car park",
+          "Found in weather nobody should be found in.",
+          L(size=0.68, body=0.96, facew=1.14, faceh=0.96, cheek=1.08,
+            ear=1.06, legs=0.76, fluff=0.08, tail="kink",
+            coat=(108, 104, 100), mark=(66, 64, 62), belly=(166, 162, 158),
+            pat="tabby", eye=(152, 184, 156), eyeshape="round"),
+          "glutton", "Eats like the car park might come back.",
+          ("wet grey", "black", "silver")),
+    Breed("win", "The Window Kitten", R_RARE, "a flat across the road",
+          "Spends all day watching a window that is not yours.",
+          L(size=0.84, body=0.86, facew=0.94, faceh=1.16, cheek=0.88,
+            ear=1.32, legs=1.08, fluff=0.66, tail="plume",
+            coat=(214, 206, 196), mark=(118, 104, 96), belly=(242, 238, 232),
+            pat="point", eye=(126, 178, 210), eyeshape="almond"),
+          "climber", "Is on the windowsill. Has always been on the windowsill.",
+          ("frost point", "blue point", "cream")),
+    Breed("bold", "The Bold One", R_CHAMPION, "the front of the box",
+          "First out, first up, first into everything.",
+          L(size=0.94, body=1.12, facew=1.02, faceh=0.94, cheek=1.00,
+            ear=1.14, legs=1.00, fluff=0.24, tail="bob",
+            coat=(166, 120, 78), mark=(102, 68, 40), belly=(224, 200, 170),
+            pat="blotched", eye=(200, 178, 88), eyeshape="almond"),
+          "busy", "Has already done whatever you were about to stop it doing.",
+          ("copper tabby", "red", "charcoal")),
+    Breed("first", "The First Litter", R_FOUNDATION, "the beginning of a line",
+          "Every cat in the catalogue goes back to one of these.",
+          L(size=0.86, body=1.18, facew=1.12, faceh=1.06, cheek=1.10,
+            ear=1.34, legs=0.82, fluff=0.34, tail="kink",
+            coat=(196, 164, 112), mark=(128, 98, 58), belly=(236, 220, 192),
+            pat="spotted", eye=(206, 196, 110), eyeshape="almond"),
+          "climber",
+          "Behaves as though the flat has always belonged to it.",
+          ("old gold", "silver", "cinnamon")),
+)
+KITTEN_BY_RARITY = tuple(tuple(b for b in KITTENS if b.rarity == r)
+                         for r in range(SOLD_RARITIES))
+KITTEN_KEYS = frozenset(b.key for b in KITTENS)
+
+
+ALL_BREEDS = BREEDS + SECRETS + EXPO_BREEDS + KITTENS
 BY_KEY = {b.key: b for b in ALL_BREEDS}
 # The two counters on the binder used to be "everything that is not a
 # stray" and "the strays". A third kind of cat that is neither breaks
@@ -1810,6 +2137,16 @@ BY_KEY = {b.key: b for b in ALL_BREEDS}
 # counts as a catalogue breed is now the catalogue, and not a process of
 # elimination.
 LISTED = frozenset(b.key for b in BREEDS)
+
+# The kittens go INTO the binder rather than beside it: once the series
+# is announced the book is a hundred and twelve, sorted together by tier
+# the same way the first hundred are, and the counter on the cover says
+# so. What it cannot do is say so from the start - a hundred and twelve
+# slots on day one would give away that there is a second series before
+# anybody has earned the right to be told, and twelve of them could
+# never be filled. So there are two books and the state picks one.
+BOOK = tuple(sorted(BREEDS + KITTENS, key=lambda b: (b.rarity, b.name)))
+BOOK_KEYS = LISTED | KITTEN_KEYS
 BY_RARITY = tuple(tuple(b for b in BREEDS if b.rarity == r)
                   for r in range(SOLD_RARITIES))
 
@@ -3203,11 +3540,11 @@ class Card:
 class Pack:
     __slots__ = ("key", "name", "price", "cards", "weights", "ship",
                  "floor", "blurb", "reviews", "shelf", "shiny_mult",
-                 "fresh_coats", "expo")
+                 "fresh_coats", "expo", "series")
 
     def __init__(self, key, name, price, cards, weights, ship, floor,
                  blurb, reviews, shelf="standard", shiny_mult=1.0,
-                 fresh_coats=False, expo=0.0):
+                 fresh_coats=False, expo=0.0, series="cat"):
         self.key = key
         self.name = name
         self.price = price
@@ -3221,43 +3558,44 @@ class Pack:
         self.shiny_mult = shiny_mult    # are on the other page
         self.fresh_coats = fresh_coats
         self.expo = expo            # chance per card of one of the five
+        self.series = series        # which collection it draws from
 
 
 PACKS = (
-    Pack("sack", "Paper Sack of Strays", 10, 2, (86, 13, 1, 0, 0, 0, 0), 25,
+    Pack("sack", "Paper Sack of Strays", 10, 2, (86, 13, 1, 0, 0, 0, 0, 0, 0), 25,
          R_COMMON,
          "Two cards in a paper sack, folded over twice and stapled. "
          "Mostly the cats you could meet on the way to the shop.",
          (("vastly better than the bin it came from", 4),
           ("one was damp. still a cat.", 3))),
-    Pack("box", "Shelf Box", 25, 3, (56, 33, 10, 1, 0, 0, 0), 55,
+    Pack("box", "Shelf Box", 25, 3, (56, 33, 10, 4, 1, 0, 0, 0, 0), 55,
          R_COMMON,
          "Three cards in a proper box with a window in the lid. The kind "
          "of thing a corner shop keeps by the till.",
          (("the lid window is a nice touch", 5),
           ("got a Russian Blue first go. no notes.", 5),
           ("three commons. the dice do what they like.", 3))),
-    Pack("case", "Pedigree Case", 85, 5, (30, 37, 24, 7, 1, 1, 0), 90,
+    Pack("case", "Pedigree Case", 85, 5, (30, 37, 24, 11, 7, 1, 1, 0, 0), 90,
          R_UNCOMMON,
          "Five cards in a hinged case with a felt tray, and a guarantee "
          "printed inside the lid: nothing in here is quite ordinary.",
          (("the felt smells like a library", 5),
           ("bought six. opened six. no regrets, slight debt.", 4))),
-    Pack("crate", "Breeders Crate", 250, 9, (10, 32, 34, 16, 5, 3, 0), 140,
+    Pack("crate", "Breeders Crate", 250, 9, (10, 32, 34, 18, 16, 5, 3, 1, 0), 140,
          R_RARE,
          "Nine cards, wood wool, and a crowbar you are expected to own. "
          "One card in here is rare or better. It says so on the lid.",
          (("arrived with actual straw in it", 5),
           ("my Bengal came out of one of these", 5),
           ("the crowbar is not included, which they do say", 4))),
-    Pack("lot", "The Estate Lot", 600, 15, (0, 17, 34, 26, 12, 10, 1), 200,
+    Pack("lot", "The Estate Lot", 600, 15, (0, 17, 34, 22, 26, 12, 10, 4, 1), 200,
          R_PEDIGREE,
          "Fifteen cards from a collection being broken up. No commons at "
          "all, and the last card is pedigree or legend. Sold as seen.",
          (("the whole binder in four orders. rude.", 5),
           ("Khao Manee. I had to sit down.", 5),
           ("expensive. correct, but expensive.", 4))),
-    Pack("shelf", "The Whole Shelf", 1500, 34, (0, 10, 30, 28, 16, 14, 2), 300,
+    Pack("shelf", "The Whole Shelf", 1500, 34, (0, 10, 30, 21, 28, 16, 14, 6, 2), 300,
          R_PEDIGREE,
          "Somebody has died and the whole shelf is being sold in one go. "
          "Thirty-four cards, nothing ordinary in it, and a long wait.",
@@ -3266,13 +3604,13 @@ PACKS = (
           ("the box is enormous. the cat sleeps in it now.", 5))),
 
     # ---- the other page: four things that are not on the ladder -------
-    Pack("bin", "The Returns Bin", 60, 8, (62, 38, 0, 0, 0, 0, 0), 70, R_COMMON,
+    Pack("bin", "The Returns Bin", 60, 8, (62, 38, 0, 0, 0, 0, 0, 0, 0), 70, R_COMMON,
          "Eight cards somebody else sent back. Ordinary cats, by the "
          "handful, and nothing above uncommon has ever been found in one.",
          (("it is exactly what it says it is", 4),
           ("six domestic shorthairs. I needed six domestic shorthairs.", 5)),
          shelf="special"),
-    Pack("swatch", "The Swatch Book", 450, 6, (26, 34, 22, 10, 4, 3, 1), 120,
+    Pack("swatch", "The Swatch Book", 450, 6, (26, 34, 22, 12, 10, 4, 3, 1, 1), 120,
          R_UNCOMMON,
          "Six cards chosen for their COLOUR. The house picks coats you "
          "have not seen before, wherever it still can.",
@@ -3280,14 +3618,14 @@ PACKS = (
           ("the only way I finished the Ragdoll page", 5),
           ("pricey for what it is, unless you need what it is", 4)),
          shelf="special", fresh_coats=True),
-    Pack("odd", "The Oddity Crate", 900, 4, (10, 26, 30, 18, 8, 7, 1), 150, R_RARE,
+    Pack("odd", "The Oddity Crate", 900, 4, (10, 26, 30, 17, 18, 8, 7, 3, 1), 150, R_RARE,
          "Four cards the sorters set aside and could not say why. Shinies "
          "turn up in here eight times as often as they do anywhere else.",
          (("two shinies out of nine crates. I am not complaining.", 5),
           ("nine crates.", 3),
           ("my snow Bengal came out of one of these", 5)),
          shelf="special", shiny_mult=8.0),
-    Pack("single", "The Single", 1800, 1, (0, 0, 0, 0, 0, 9, 1), 180, R_LEGEND,
+    Pack("single", "The Single", 1800, 1, (0, 0, 0, 0, 0, 0, 9, 4, 1), 180, R_LEGEND,
          "One card in a stiff sleeve, and it is a legend. Which legend is "
          "not something the shop is prepared to discuss beforehand.",
          (("expensive. certain. I have bought four.", 5),
@@ -3295,7 +3633,51 @@ PACKS = (
          shelf="special"),
 )
 BY_PACK = {p.key: p for p in PACKS}
+KITTEN_PACKS = (
+    Pack("kstart", "The Kitten Series Starter", 1200, 6,
+         (54, 28, 13, 6, 4, 1, 0, 0, 0), 60, R_COMMON,
+         "Six cards and a fold-out sheet showing all twelve of them, with "
+         "the ones nobody has photographed yet drawn in by hand.",
+         (("back to square one and loving it", 5),
+          ("the fold-out is better than the cards", 4)),
+         shelf="kitten", series="kitten"),
+    Pack("kboost", "A Kitten Series Booster", 4800, 12,
+         (22, 28, 25, 14, 14, 7, 3, 1, 1), 150, R_RARE,
+         "Twelve cards of the new series, and the foil on the wrapper is "
+         "a different foil, which everybody has an opinion about.",
+         (("the foil is wrong and they know it is wrong", 2),
+          ("pulled The Runt first go. worth it.", 5),
+          ("same cats, smaller. somehow that is enough.", 4)),
+         shelf="kitten", series="kitten"),
+    Pack("klitter", "The Whole Litter", 14000, 30,
+         (8, 18, 26, 17, 22, 14, 9, 4, 3), 280, R_CHAMPION,
+         "Thirty cards in a long box with a window down the side. The "
+         "closest the company has come to admitting it knows exactly "
+         "what it is doing.",
+         (("six hundred quid of kittens. no notes.", 5),
+          ("they have done it again and i have fallen for it again", 4)),
+         shelf="kitten", series="kitten"),
+)
+for _p in KITTEN_PACKS:
+    BY_PACK[_p.key] = _p
+PACKS = PACKS + KITTEN_PACKS
+
 SHELVES = ("standard", "special")
+
+
+def series_breeds(series):
+    """The collection a pack draws from. Everything that walks the book -
+    rolling a card, retiring a breed, deciding whether a product is
+    still worth selling - asks this rather than naming BREEDS, because
+    there are two books now."""
+    return KITTENS if series == "kitten" else BREEDS
+
+
+def series_rarity(series):
+    return KITTEN_BY_RARITY if series == "kitten" else BY_RARITY
+
+
+SERIES_NAME = {"cat": "the catalogue", "kitten": "the Kitten Series"}
 
 
 def packs_on(shelf):
@@ -3315,21 +3697,21 @@ def packs_on(shelf):
 # tables reset for next week.
 # ---------------------------------------------------------------------------
 CONV_PACKS = (
-    Pack("expo", "The Convention Exclusive", 0, 20, (0, 6, 22, 26, 20, 20, 6),
+    Pack("expo", "The Convention Exclusive", 0, 20, (0, 6, 22, 17, 26, 20, 20, 9, 6),
          0, R_CHAMPION,
          "Twenty cards printed for the hall and nowhere else. They do not "
          "post these and they never will.",
          (("queued an hour. would queue again.", 5),
           ("two foundation cards out of one pack", 5)),
          shelf="convention", expo=0.075),
-    Pack("judge", "The Judge's Table", 0, 10, (0, 0, 10, 24, 30, 26, 10),
+    Pack("judge", "The Judge's Table", 0, 10, (0, 0, 10, 12, 24, 30, 26, 13, 10),
          0, R_LEGEND,
          "Ten cards the judges put aside at the end of the show, every one "
          "of them a cat that won something.",
          (("the only place a foundation card is a sure thing", 5),
           ("they check you know what you are looking at first", 4)),
          shelf="convention", expo=0.055),
-    Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 24, 18, 18, 4),
+    Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 18, 24, 18, 18, 8, 4),
          0, R_PEDIGREE,
          "Fifteen cards from a man by the fire door who will not say where "
          "he got them. Face value is four thousand two hundred.",
@@ -3576,7 +3958,7 @@ class Lot:
 # because nobody ever sold them new.
 RESALE_PACKS = (
     Pack("shoebox", "A Shoebox From a House Clearance", 900, 26,
-         (54, 28, 12, 4, 1, 1, 0), 240, R_COMMON,
+         (54, 28, 12, 6, 4, 1, 1, 0, 0), 240, R_COMMON,
          "Somebody's aunt kept these in a shoebox under a bed for twenty "
          "years. Mostly moggies, one or two corners gone soft, and every "
          "so often something nobody in that house knew they had.",
@@ -3584,14 +3966,14 @@ RESALE_PACKS = (
           ("found a Foundation card in the bottom. worth the lot.", 5)),
          shelf="resale"),
     Pack("hoard", "Somebody's Whole Collection", 9000, 72,
-         (22, 26, 24, 14, 8, 5, 1), 420, R_LEGEND,
+         (22, 26, 24, 14, 14, 8, 5, 2, 1), 420, R_LEGEND,
          "All of it, in one go, because they are moving and it will not "
          "fit in the van. Seventy-two cards and no sorting.",
          (("two hours to put away. no regrets.", 5),
           ("he cried when he handed it over. so did i, later.", 4)),
          shelf="resale"),
     Pack("attic", "Everything I Had As A Kid", 6400, 160,
-         (72, 19, 6, 2, 1, 0, 0), 430, R_COMMON,
+         (72, 19, 6, 3, 2, 1, 0, 0, 0), 430, R_COMMON,
          "Four carrier bags out of a loft, emptied into one box. A "
          "hundred and sixty cards, most of them cats you could meet on "
          "the way to the shop, and a great many of them twice - but it "
@@ -3601,7 +3983,7 @@ RESALE_PACKS = (
           ("he said his mum wanted the loft back", 5)),
          shelf="resale"),
     Pack("graded", "One Card, Graded, Sealed", 5600, 1,
-         (0, 0, 0, 0, 26, 48, 26), 180, R_CHAMPION,
+         (0, 0, 0, 0, 0, 26, 48, 27, 26), 180, R_CHAMPION,
          "One card in a hard case with a number on it. You are paying for "
          "the number and the certainty, and you know it.",
          (("the certainty is the product", 4),
@@ -3964,6 +4346,8 @@ class State:
         self.club = 0               # memberships bought, 0 to 3
         self.things = set()         # furnishings bought for the flat
         self.big_room = False       # the wall through to the back room
+        self.kittens = False        # the second series, once the first is in
+        self.seen_news = False      # ... and whether it was announced to you
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
         self.lots = []              # what is on the resale site today
@@ -4021,7 +4405,7 @@ class State:
         """Breeds from the CATALOGUE. The strays are counted on their own,
         or thirty-two listed breeds and five cats off the street would
         add up to a finished binder."""
-        return sum(1 for k in self.cards if k in LISTED)
+        return sum(1 for k in self.cards if k in self.book_keys)
 
     @property
     def strays_owned(self):
@@ -4032,6 +4416,31 @@ class State:
         return sum(1 for k in self.cards if BY_KEY[k].rarity == R_EXPO)
 
     @property
+    def kittens_owned(self):
+        return sum(1 for k in self.cards if k in KITTEN_KEYS)
+
+    @property
+    def book(self):
+        """The binder, as it stands: a hundred, or a hundred and twelve."""
+        return BOOK if self.kittens else BREEDS
+
+    @property
+    def book_keys(self):
+        return BOOK_KEYS if self.kittens else LISTED
+
+    @property
+    def catalogue_full(self):
+        """Every breed in the FIRST hundred, owned.
+
+        This is the bar for the second series, so it has to be the
+        original book and not the one the kittens join - measuring
+        against `book` would move the finish line the moment you crossed
+        it, and the announcement would fire once and then look wrong
+        forever after.
+        """
+        return all(b.key in self.cards for b in BREEDS)
+
+    @property
     def slots(self):
         """How many parcels may be in the post at once."""
         return MAX_IN_TRANSIT + self.club
@@ -4039,19 +4448,20 @@ class State:
     @property
     def retired(self):
         return sum(1 for k, c in self.cards.items()
-                   if c.maxed and k in LISTED)
+                   if c.maxed and k in self.book_keys)
 
     @property
     def complete(self):
-        return self.retired >= len(BREEDS)
+        return self.retired >= len(self.book)
 
     def can_hold(self, key):
         """A breed the shop may still send: one you have not finished."""
         c = self.cards.get(key)
         return c is None or not c.maxed
 
-    def live_rarities(self):
-        return {b.rarity for b in BREEDS if self.can_hold(b.key)}
+    def live_rarities(self, series="cat"):
+        return {b.rarity for b in series_breeds(series)
+                if self.can_hold(b.key)}
 
     def sellable(self, pack):
         """Whether the website will still take an order for this.
@@ -4063,7 +4473,7 @@ class State:
         the final cards come out of a paper sack, which is where the
         first ones came from.
         """
-        live = self.live_rarities()
+        live = self.live_rarities(pack.series)
         return any(pack.weights[r] > 0 for r in live)
 
     def missing(self, rarity):
@@ -4079,6 +4489,8 @@ class State:
         return n
 
     def tick(self, dt):
+        if not self.kittens and self.catalogue_full:
+            self.kittens = True
         gain = self.income * dt
         self.money += gain
         self.earned += gain
@@ -4279,7 +4691,8 @@ class State:
         from further down the list rather than sending an empty box -
         which is why the opening screen can say SUBSTITUTED on a card.
         """
-        live = self.live_rarities()
+        live = self.live_rarities(pack.series)
+        by_rarity = series_rarity(pack.series)
         if not live:
             return None, False
         weights = list(pack.weights)
@@ -4301,7 +4714,7 @@ class State:
             if pick <= acc:
                 rarity = r
                 break
-        choices = [b for b in BY_RARITY[rarity] if self.can_hold(b.key)]
+        choices = [b for b in by_rarity[rarity] if self.can_hold(b.key)]
         return rng.choice(choices), sub
 
     def open_pack(self, pack, qty, rng):
@@ -4364,6 +4777,8 @@ class State:
             "club": self.club,
             "things": sorted(self.things),
             "big_room": self.big_room,
+            "kittens": self.kittens,
+            "seen_news": self.seen_news,
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
             "lots": [lot.to_row() for lot in self.lots],
@@ -4413,6 +4828,8 @@ class State:
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
         s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
         s.big_room = bool(d.get("big_room"))
+        s.kittens = bool(d.get("kittens"))
+        s.seen_news = bool(d.get("seen_news"))
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
         s.lots = [x for x in (Lot.from_row(r) for r in (d.get("lots") or ()))
@@ -5231,167 +5648,131 @@ def draw_unknown(surf, rect, hint=None):
 # ---------------------------------------------------------------------------
 # WHAT THE SHOP SENDS
 # ---------------------------------------------------------------------------
-def draw_pack_art(surf, rect, pack, t=0.0):
-    """Five things, five shapes. The shop is a shape before it is a price."""
-    rect = pygame.Rect(rect)
-    k = pack.key
-    acc = rarity_colour(min(4, pack.floor + 1))
-    if k == "sack":
-        body = pygame.Rect(rect.x + rect.w * 0.18, rect.y + rect.h * 0.22,
-                           rect.w * 0.64, rect.h * 0.70)
-        pygame.draw.rect(surf, (182, 152, 112), body, border_radius=3)
-        pygame.draw.polygon(surf, (196, 166, 124), [
-            (body.x, body.y), (body.right, body.y),
-            (body.right - 6, body.y - rect.h * 0.12),
-            (body.x + 6, body.y - rect.h * 0.12)])
-        pygame.draw.line(surf, (146, 118, 86), (body.x + 4, body.y + 2),
-                         (body.right - 4, body.y + 2), 2)
-        for i in range(3):
-            x = body.x + body.w * (0.3 + 0.2 * i)
-            pygame.draw.line(surf, (150, 140, 148), (x, body.y - 4),
-                             (x, body.y + 3), 3)
-        pygame.draw.line(surf, (160, 132, 98), (body.centerx, body.y + 10),
-                         (body.centerx, body.bottom - 8), 1)
-    elif k == "box":
-        body = pygame.Rect(rect.x + rect.w * 0.12, rect.y + rect.h * 0.30,
-                           rect.w * 0.76, rect.h * 0.56)
-        pygame.draw.rect(surf, (168, 124, 86), body, border_radius=3)
-        pygame.draw.rect(surf, (190, 144, 100),
-                         (body.x, body.y, body.w, body.h * 0.34),
-                         border_radius=3)
-        win = pygame.Rect(body.centerx - body.w * 0.22,
-                          body.y + body.h * 0.08, body.w * 0.44,
-                          body.h * 0.20)
-        pygame.draw.rect(surf, mix(PAPER, acc, 0.2), win, border_radius=2)
-        pygame.draw.rect(surf, (120, 86, 58), body, width=2, border_radius=3)
-    elif k == "case":
-        body = pygame.Rect(rect.x + rect.w * 0.10, rect.y + rect.h * 0.32,
-                           rect.w * 0.80, rect.h * 0.50)
-        pygame.draw.rect(surf, (74, 58, 72), body, border_radius=5)
-        pygame.draw.rect(surf, (96, 76, 94),
-                         (body.x, body.y, body.w, body.h * 0.46),
-                         border_radius=5)
-        pygame.draw.line(surf, (54, 42, 52), (body.x, body.centery),
-                         (body.right, body.centery), 2)
-        clasp = pygame.Rect(body.centerx - 9, body.centery - 7, 18, 14)
-        pygame.draw.rect(surf, mix(LAMP, acc, 0.3), clasp, border_radius=3)
-    elif k == "crate":
-        body = pygame.Rect(rect.x + rect.w * 0.10, rect.y + rect.h * 0.28,
-                           rect.w * 0.80, rect.h * 0.58)
-        pygame.draw.rect(surf, (128, 92, 58), body, border_radius=2)
-        for i in range(4):
-            y = body.y + body.h * (0.12 + i * 0.25)
-            pygame.draw.line(surf, (102, 72, 44), (body.x + 2, y),
-                             (body.right - 2, y), 3)
-        pygame.draw.line(surf, (102, 72, 44), (body.x + 3, body.y + 3),
-                         (body.right - 3, body.bottom - 3), 3)
-        pygame.draw.rect(surf, (92, 64, 40), body, width=2, border_radius=2)
-    elif k == "shelf":
-        # the whole shelf, strapped up and barely liftable
-        body = pygame.Rect(rect.x + rect.w * 0.04, rect.y + rect.h * 0.16,
-                           rect.w * 0.92, rect.h * 0.74)
-        pygame.draw.rect(surf, (140, 108, 76), body, border_radius=3)
-        pygame.draw.rect(surf, (160, 126, 90),
-                         (body.x, body.y, body.w, body.h * 0.2),
-                         border_radius=3)
-        for i in range(2):
-            x = body.x + body.w * (0.3 + 0.36 * i)
-            pygame.draw.line(surf, (88, 70, 52), (x, body.y),
-                             (x, body.bottom), 5)
-        pygame.draw.line(surf, (88, 70, 52), (body.x, body.centery),
-                         (body.right, body.centery), 5)
-        for i in range(3):
-            pygame.draw.rect(surf, mix(PAPER, acc, 0.2),
-                             (body.x + 6 + i * 5, body.y - 7 - i * 3,
-                              body.w * 0.3, 8))
-    elif k == "bin":
-        # a tray of loose cards somebody else sent back
-        tray = pygame.Rect(rect.x + rect.w * 0.08, rect.y + rect.h * 0.46,
-                           rect.w * 0.84, rect.h * 0.40)
-        rng = random.Random(3)
-        for i in range(7):
-            cw = rect.w * 0.17
-            cx = tray.x + 6 + i * (tray.w - cw - 12) / 6
-            lean = rng.uniform(-9, 9)
-            card = pygame.Surface((round(cw), round(rect.h * 0.46)),
-                                  pygame.SRCALPHA)
-            pygame.draw.rect(card, mix(PAPER, WOOD, 0.1),
-                             (0, 0, card.get_width(), card.get_height()),
-                             border_radius=2)
-            pygame.draw.rect(card, mix(TEA, WOOD, 0.4),
-                             (0, 0, card.get_width(), card.get_height()),
-                             width=1, border_radius=2)
-            card = pygame.transform.rotate(card, lean)
-            surf.blit(card, card.get_rect(midbottom=(cx + cw * 0.5,
-                                                     tray.y + 18)))
-        pygame.draw.rect(surf, (96, 84, 72), tray, border_radius=4)
-        pygame.draw.rect(surf, (124, 110, 94), tray, width=2,
-                         border_radius=4)
-    elif k == "swatch":
-        # a fan of colour swatches, bound at one corner
-        pivot = (rect.x + rect.w * 0.22, rect.bottom - rect.h * 0.22)
-        for i, col in enumerate(((206, 176, 136), (150, 150, 152),
-                                 (118, 132, 148), (214, 196, 170),
-                                 (96, 82, 76))):
-            a = -1.35 + i * 0.30
-            L = rect.w * 0.62
-            end = (pivot[0] + math.cos(a) * L, pivot[1] + math.sin(a) * L)
-            pygame.draw.line(surf, mix(PAPER, WOOD, 0.08), pivot, end,
-                             max(7, int(rect.w * 0.085)))
-            pygame.draw.circle(surf, col, (round(end[0]), round(end[1])),
-                               max(4, int(rect.w * 0.055)))
-        pygame.draw.circle(surf, mix(LAMP, TEA, 0.4),
-                           (round(pivot[0]), round(pivot[1])),
-                           max(3, int(rect.w * 0.04)))
-    elif k == "odd":
-        # a crate with a label nobody filled in
-        body = pygame.Rect(rect.x + rect.w * 0.12, rect.y + rect.h * 0.28,
-                           rect.w * 0.76, rect.h * 0.58)
-        pygame.draw.rect(surf, (104, 92, 108), body, border_radius=3)
-        pygame.draw.rect(surf, (82, 72, 86), body, width=2, border_radius=3)
-        lab = pygame.Rect(body.x + body.w * 0.18, body.y + body.h * 0.22,
-                          body.w * 0.64, body.h * 0.46)
-        pygame.draw.rect(surf, mix(PAPER, (104, 92, 108), 0.25), lab,
-                         border_radius=2)
-        text(surf, "?", int(lab.h * 0.9), lab.center, mix(INK, LAMP, 0.25),
-             center=True, shadow=False)
-        for i, (sx, sy) in enumerate(((0.1, 0.18), (0.9, 0.3), (0.2, 0.86))):
-            px = rect.x + rect.w * sx
-            py = rect.y + rect.h * sy
-            r0 = max(2, int(rect.w * 0.04))
-            pygame.draw.line(surf, mix(CREAM, LAMP, 0.4), (px - r0, py),
-                             (px + r0, py), 2)
-            pygame.draw.line(surf, mix(CREAM, LAMP, 0.4), (px, py - r0),
-                             (px, py + r0), 2)
-    elif k == "single":
-        # one card, in a stiff sleeve, in an envelope
-        env = pygame.Rect(rect.x + rect.w * 0.2, rect.y + rect.h * 0.24,
-                          rect.w * 0.6, rect.h * 0.64)
-        pygame.draw.rect(surf, mix(PAPER, WOOD, 0.18), env, border_radius=3)
-        pygame.draw.rect(surf, mix(TEA, WOOD, 0.4), env, width=2,
-                         border_radius=3)
-        pygame.draw.polygon(surf, mix(PAPER, WOOD, 0.3), [
-            (env.x, env.y), (env.right, env.y),
-            (env.centerx, env.y + env.h * 0.34)])
-        pygame.draw.circle(surf, mix(LAMP, acc, 0.4),
-                           (env.centerx, int(env.y + env.h * 0.62)),
-                           max(5, int(rect.w * 0.07)))
-    else:
-        body = pygame.Rect(rect.x + rect.w * 0.07, rect.y + rect.h * 0.22,
-                           rect.w * 0.86, rect.h * 0.66)
-        pygame.draw.rect(surf, (156, 122, 86), body, border_radius=3)
-        pygame.draw.rect(surf, (176, 140, 100),
-                         (body.x, body.y, body.w, body.h * 0.26),
-                         border_radius=3)
-        pygame.draw.line(surf, (122, 96, 68), (body.centerx, body.y),
-                         (body.centerx, body.bottom), 4)
-        pygame.draw.line(surf, (122, 96, 68), (body.x, body.centery),
-                         (body.right, body.centery), 4)
-        lab = pygame.Rect(body.x + body.w * 0.14, body.centery - body.h * 0.10,
-                          body.w * 0.34, body.h * 0.22)
-        pygame.draw.rect(surf, mix(PAPER, acc, 0.15), lab, border_radius=2)
-    return rect
+def _crimp(surf, r, col, top=True, teeth=9):
+    """The heat-sealed end of a wrapper: the one detail that says this is
+    a packet of cards and not a small cardboard box."""
+    h = max(3, int(r.h * 0.10))
+    y = r.y if top else r.bottom - h
+    pts = []
+    for i in range(teeth * 2 + 1):
+        x = r.x + r.w * i / (teeth * 2)
+        pts.append((x, y + (0 if i % 2 else h)))
+    pts += [(r.right, y + h if top else y), (r.x, y + h if top else y)]
+    pygame.draw.polygon(surf, col, pts)
 
+
+def _wrapper(surf, r, acc, seed=0, foil=False):
+    """One sealed pack. Paper, a band of colour across the middle, a cat
+    on the front and a crimp at each end."""
+    r = pygame.Rect(r)
+    base = mix(acc, PAPER, 0.42 if not foil else 0.20)
+    pygame.draw.rect(surf, shade(base, 0.76), r.move(1, 2), border_radius=3)
+    pygame.draw.rect(surf, base, r, border_radius=3)
+    _crimp(surf, r, shade(base, 0.82), True)
+    _crimp(surf, r, shade(base, 0.82), False)
+    # the band, and the window in it
+    band = pygame.Rect(r.x, r.y + r.h * 0.34, r.w, max(6, r.h * 0.26))
+    pygame.draw.rect(surf, mix(acc, INK, 0.18), band)
+    pygame.draw.line(surf, mix(acc, CREAM, 0.45), (r.x, band.y),
+                     (r.right, band.y), 1)
+    # a cat on the front, small enough to be a mark rather than a picture
+    cx, cy = r.centerx, band.centery
+    rad = max(3, int(min(r.w, band.h) * 0.30))
+    pygame.draw.circle(surf, mix(acc, CREAM, 0.55), (cx, cy), rad)
+    for sx in (-1, 1):
+        pygame.draw.polygon(surf, mix(acc, CREAM, 0.55), [
+            (cx + sx * rad * 0.45, cy - rad * 0.55),
+            (cx + sx * rad * 1.05, cy - rad * 1.35),
+            (cx + sx * rad * 1.05, cy - rad * 0.30)])
+    if foil:                    # a sheen down one corner, for the dear ones
+        sh = pygame.Surface(r.size, pygame.SRCALPHA)
+        pygame.draw.polygon(sh, (*mix(CREAM, LAMP, 0.4), 60), [
+            (r.w * 0.52, 0), (r.w * 0.80, 0), (r.w * 0.34, r.h),
+            (r.w * 0.06, r.h)])
+        surf.blit(sh, r.topleft)
+        pygame.draw.rect(surf, mix(LAMP, CREAM, 0.4), r, width=1,
+                         border_radius=3)
+
+
+def _sleeved_card(surf, r, acc):
+    """Not a packet. One card, in a rigid sleeve, which is what you are
+    paying for when a product holds exactly one of them."""
+    pygame.draw.rect(surf, mix(TEA, CREAM, 0.30), r, border_radius=3)
+    inner = r.inflate(-max(4, r.w * 0.16), -max(4, r.h * 0.12))
+    pygame.draw.rect(surf, mix(PAPER, acc, 0.12), inner, border_radius=2)
+    win = pygame.Rect(inner.x + 2, inner.y + 2, inner.w - 4, inner.h * 0.56)
+    pygame.draw.rect(surf, mix(acc, INK, 0.70), win, border_radius=2)
+    cx, cy = win.centerx, win.centery + win.h * 0.10
+    rad = max(3, int(win.h * 0.30))
+    pygame.draw.circle(surf, mix(acc, CREAM, 0.5), (cx, int(cy)), rad)
+    for sx in (-1, 1):
+        pygame.draw.polygon(surf, mix(acc, CREAM, 0.5), [
+            (cx + sx * rad * 0.45, cy - rad * 0.55),
+            (cx + sx * rad * 1.05, cy - rad * 1.35),
+            (cx + sx * rad * 1.05, cy - rad * 0.30)])
+    pygame.draw.rect(surf, shade(mix(TEA, CREAM, 0.30), 0.7), r, width=2,
+                     border_radius=3)
+
+
+def pack_accent(pack):
+    """The colour of a product, from the average card in it.
+
+    Not the floor and not the best card: the AVERAGE. It makes the
+    catalogue a colour ladder you can read down without reading a word
+    of it, which is what the thumbnails are for.
+    """
+    tot = sum(pack.weights) or 1
+    ev = sum(r * w for r, w in enumerate(pack.weights)) / tot
+    return rarity_colour(int(clamp(round(ev), 0, SOLD_RARITIES - 1)))
+
+
+def draw_pack_art(surf, rect, pack, t=0.0):
+    """Every product in both shops, drawn as what it actually is: sealed
+    packets of cards.
+
+    They used to be boxes, cases and crates - nine hand-drawn shapes and
+    a blank for everything added since, which by now was seven of them.
+    One wrapper, repeated and sized, covers the lot and means a new
+    product has art the moment it exists. What tells them apart is how
+    many packets there are, how big they are, and the colour of the
+    average card inside.
+    """
+    rect = pygame.Rect(rect)
+    acc = pack_accent(pack)
+    packs = packs_in(pack.cards)
+    foil = pack.shiny_mult > 1.0 or pack.floor >= R_CHAMPION
+
+    if pack.cards <= 1:                      # one card, in a hard sleeve
+        r = pygame.Rect(0, 0, int(rect.h * 0.52), int(rect.h * 0.78))
+        r.center = rect.center
+        _sleeved_card(surf, r, acc)
+        return
+
+    show = int(clamp(packs, 1, 5))
+    # a wrapper is roughly two to three cards wide; more of them in the
+    # same thumbnail means each one is drawn smaller, which is how a
+    # Whole Shelf reads as bigger than a Shelf Box at a glance
+    ph = int(rect.h * (0.86 if show == 1 else 0.80 if show < 4 else 0.72))
+    pw = int(min(rect.w * 0.92 / (show * 0.62 + 0.38), ph * 0.70))
+    step = pw * 0.62 if show > 1 else 0
+    total = pw + step * (show - 1)
+    x0 = rect.centerx - total / 2
+    for i in range(show):
+        r = pygame.Rect(0, 0, pw, ph)
+        r.midbottom = (int(x0 + pw / 2 + step * i),
+                       rect.bottom - int(rect.h * 0.06) - (i % 2) * 2)
+        _wrapper(surf, r, acc, i, foil)
+
+    if packs > 5:
+        # too many to show: strap the brick up and say how many
+        band = pygame.Rect(rect.x + rect.w * 0.06,
+                           rect.centery - rect.h * 0.08,
+                           rect.w * 0.88, max(7, rect.h * 0.16))
+        pygame.draw.rect(surf, mix(WOOD, EMBER, 0.25), band)
+        pygame.draw.rect(surf, shade(WOOD, 0.7), band, width=1)
+        if band.h >= 11:
+            text(surf, f"x{packs}", min(12, int(band.h) - 1), band.center,
+                 warm(CREAM, 0.15), center=True, kind="mono", shadow=False)
 
 def draw_parcel(surf, rect, seed=0, open_frac=0.0, num=0):
     """A box on the mat, and then a box with its lid cut open."""
@@ -6816,7 +7197,7 @@ def _binder(surf, t, hot=False, owned=0, total=None):
     # `total` used to default to 24, which was the number of breeds
     # on the day this was written. The spine then went on saying
     # 24 of 24 while the binder itself said 24 of 36.
-    total = len(BREEDS) if total is None else total
+    total = len(BREEDS) if total is None else total   # callers pass it
     r = BINDER_R
     pygame.draw.rect(surf, mix(RUG, WOOD, 0.35), r, border_radius=5)
     pygame.draw.rect(surf, mix(RUG, LAMP, 0.18 if hot else 0.08), r, width=2,
@@ -6890,7 +7271,7 @@ def _study(surf, state, t):
                  mix(LAMP, CREAM, 0.3), alpha=a, shadow=False)
     _lamp(surf, t)
     _laptop(surf, t, unread=len(state.orders))
-    _binder(surf, t, owned=state.owned)
+    _binder(surf, t, owned=state.owned, total=len(state.book))
     _grass(surf, t)
     draw_cats(surf, state, "study", t)
 
@@ -7381,6 +7762,11 @@ class GameBase:
             self.beep("page")
         elif name == "lot":
             self.buy_lot(val)
+        elif name == "news":
+            if val == "skip":
+                self.end_news()
+            else:
+                self.news_next()
         elif name == "intro":
             if val == "skip":
                 self.end_intro()
@@ -7764,7 +8150,7 @@ class GameBase:
     # -- time ---------------------------------------------------------------
     def update(self, dt):
         self.t += dt
-        if self.scene == "intro":
+        if self.scene in ("intro", "news"):
             self.beat_t += dt
         self.shown_t -= dt
         if self.shown_t <= 0:
@@ -7796,6 +8182,16 @@ class GameBase:
         st = self.state
         before = st.income
         landed = st.tick(dt)
+        # Read AFTER the clock has run. The flag is set inside State.tick
+        # now, so checking it earlier in this method put the announcement
+        # one frame behind the thing it announces - invisible at sixty a
+        # second, and plainly wrong the moment anything steps the game
+        # once, which is how the test found it.
+        if (st.kittens and not st.seen_news and self.scene == "room"
+                and not self.pan):
+            self.beat, self.beat_t = 0, 0.0
+            self.beep("shiny")
+            self.go("news")
         for o in landed:
             self.beep("bell" if len(landed) == 1 else "thud")
             self.toast(f"order #{o.num} is here",
@@ -7864,6 +8260,8 @@ class GameBase:
             self.draw_open(s)
         elif self.scene == "intro":
             self.draw_intro(s)
+        elif self.scene == "news":
+            self.draw_news(s)
         elif self.scene == "mini":
             self.draw_mini(s)
         elif self.scene == "menu":
@@ -7993,7 +8391,7 @@ class GameBase:
              mix(CREAM, TEA, 0.38), kind="mono")
         text(s, rate_soft(st.income), 13, (r.right - 13, r.y + 26),
              mix(EMBER, TEA, 0.55), right=True, kind="mono")
-        line = f"{st.owned}/{len(BREEDS)} breeds   {st.retired} retired"
+        line = f"{st.owned}/{len(st.book)} breeds   {st.retired} retired"
         if st.comfort > 1.001:
             line += f"   flat +{int(round(st.comfort * 100 - 100))}%"
         text(s, date_words(st.played), 12, (r.right - 13, r.y + 44),
@@ -8200,6 +8598,117 @@ def _intro_room(surf, t, beat, lit):
         surf.blit(img, img.get_rect(midbottom=(953, 292)))
 
 
+# ---------------------------------------------------------------------------
+# THE ANNOUNCEMENT
+#
+# Three screens, the day the hundredth breed goes in the book. The first
+# is the binder finished, the second is the email, and the third is what
+# the email was about.
+#
+# It does NOT play the moment the flag flips. You finish the catalogue by
+# opening a parcel, so the moment it happens you are almost always
+# halfway through a pack with cards still face down - and cutting away
+# from that would eat them. The series exists immediately, because the
+# website has to have the page; the cutscene waits until you are back in
+# a room, and `seen_news` is saved so it cannot be missed by quitting.
+# ---------------------------------------------------------------------------
+NEWS = (
+    ("A hundred of a hundred.",
+     "Every breed in the catalogue, in a binder, on a desk, in a flat you "
+     "have nearly paid for. There is nothing left in the book to find."),
+    ("MEOWRDER would like a word.",
+     "The email came at nine minutes past midnight, which is when these "
+     "things are sent. They have been working on something. They are very "
+     "excited about it. They would like you to be excited about it too."),
+    ("The Kitten Series.",
+     "Twelve new cards, none of them in the old book, and a page on the "
+     "website that was not there this morning. You know exactly what this "
+     "is. You are going to buy them anyway."),
+)
+
+
+def _news_scene(surf, t, beat, f):
+    """`f` is 0 to 1 through the current screen."""
+    surf.fill(INK)
+    for y in range(0, H, 6):
+        pygame.draw.rect(surf, mix((26, 20, 20), (48, 36, 32),
+                                   (y / H) ** 0.8), (0, y, W, 6))
+    glow(surf, (W // 2, 300), 520, mix(LAMP, EMBER, 0.35), 0.12 + 0.06 * f)
+
+    if beat == 0:
+        # the binder, shut, with everything in it
+        book = pygame.Rect(W // 2 - 190, 300, 380, 270)
+        panel(surf, book, mix(RUG, WOOD, 0.45), shade(RUG, 1.2), radius=12)
+        inner = book.inflate(-30, -30)
+        pygame.draw.rect(surf, mix(DEEP, WOOD, 0.35), inner, width=3,
+                         border_radius=8)
+        spine = pygame.Rect(book.x, book.y, 26, book.h)
+        pygame.draw.rect(surf, shade(RUG, 0.82), spine,
+                         border_top_left_radius=12,
+                         border_bottom_left_radius=12)
+        for i in range(3):
+            c = (spine.centerx, book.y + 66 + i * 70)
+            pygame.draw.circle(surf, shade(INK, 1.4), c, 9)
+            pygame.draw.circle(surf, mix(TEA, CREAM, 0.35), c, 9, 3)
+        stamp = pygame.Rect(0, 0, 150, 56)
+        stamp.center = (book.centerx, book.centery)
+        pygame.draw.rect(surf, mix(LAMP, CREAM, 0.3), stamp, width=3,
+                         border_radius=6)
+        text(surf, f"{len(BREEDS)}/{len(BREEDS)}", 30, stamp.center,
+             mix(LAMP, CREAM, 0.35), center=True, kind="mono")
+        text(surf, "THE CATALOGUE, COMPLETE", 13,
+             (book.centerx, book.bottom - 36), mix(PAPER, WOOD, 0.4),
+             center=True, kind="mono")
+
+    elif beat == 1:
+        # the email, on the laptop, at nine minutes past midnight
+        win = pygame.Rect(W // 2 - 300, 290, 600, 290)
+        panel(surf, win, SCREEN, shade(SCREEN_HI, 1.4), radius=10)
+        bar = pygame.Rect(win.x, win.y, win.w, 40)
+        pygame.draw.rect(surf, shade(SCREEN_HI, 0.8), bar,
+                         border_top_left_radius=10, border_top_right_radius=10)
+        for i, c in enumerate(((168, 96, 86), (176, 150, 92),
+                               (118, 150, 112))):
+            pygame.draw.circle(surf, c, (bar.x + 22 + i * 18, bar.centery), 5)
+        text(surf, "inbox - 1 new", 13, (bar.centerx, bar.centery),
+             mix(TEA, CREAM, 0.2), center=True, kind="mono", shadow=False)
+        text(surf, "00:09", 12, (bar.right - 18, bar.centery), DIM,
+             right=True, kind="mono", shadow=False)
+        text(surf, "MEOWRDER", 24, (win.x + 24, win.y + 58),
+             warm(EMBER, 0.25))
+        text(surf, "A SECOND SERIES", 15, (win.x + 24, win.y + 92),
+             mix(CREAM, TEA, 0.2), kind="mono")
+        hairline(surf, win.x + 24, win.y + 116, win.right - 24, TEA, 60)
+        rng = random.Random(6)
+        for i in range(5):           # the body, too far away to read
+            wr = pygame.Rect(win.x + 24, win.y + 132 + i * 20,
+                             int((win.w - 48) * rng.uniform(0.45, 1.0)), 9)
+            if i * 20 + 132 < win.h - 40:
+                pygame.draw.rect(surf, shade(SCREEN_HI, 1.5), wr,
+                                 border_radius=4)
+        seal = pygame.Rect(win.right - 150, win.bottom - 62, 126, 38)
+        pygame.draw.rect(surf, mix(EMBER, LAMP, 0.3), seal, border_radius=6)
+        text(surf, "READ MORE", 14, seal.center, shade(INK, 1.4),
+             center=True, kind="mono", shadow=False)
+
+    else:
+        # the twelve of them, coming up out of the dark one at a time
+        show = KITTENS[:6]
+        wide = len(show) * 150
+        x0 = W // 2 - wide // 2 + 75
+        for i, b in enumerate(show):
+            on = clamp((f * len(show) + 0.6) - i, 0.0, 1.0)
+            img = cat_surface(b, "sit", 150, level=3).copy()
+            dark = pygame.Surface(img.get_size(), pygame.SRCALPHA)
+            tone = mix((38, 32, 34), (255, 250, 246), on)
+            dark.fill((*tone, 255))
+            img.blit(dark, (0, 0), None, pygame.BLEND_RGBA_MULT)
+            img.set_alpha(int(150 + 105 * on))
+            surf.blit(img, img.get_rect(midbottom=(x0 + i * 150, 540)))
+        text(surf, f"and {len(KITTENS) - len(show)} more", 14,
+             (W // 2, 560), MUTED, center=True, kind="mono")
+
+
 def _browser(surf, title, host="meowrder.example"):
     panel(surf, SHOP_R, SCREEN, shade(SCREEN_HI, 1.4), radius=10)
     bar_r = pygame.Rect(SHOP_R.x, SHOP_R.y, SHOP_R.w, 44)
@@ -8248,15 +8757,17 @@ class ShopMixin:
         # Nine products do not fit one page at a size anybody can read,
         # and the four odd ones are not rungs on the ladder anyway: they
         # are things you go looking for when you want a particular thing.
-        tabs = (("catalogue", "CATALOGUE"), ("specials", "SPECIALS"),
-                ("home", "FOR THE FLAT"), ("merch", "MERCH"),
-                ("room", "THE ROOM"), ("orders", "ORDERS"),
-                ("club", "THE CLUB"))
+        tabs = [("catalogue", "CATALOGUE"), ("specials", "SPECIALS")]
+        if st.kittens:
+            tabs.append(("kitten", "KITTENS"))
+        tabs += [("home", "THE FLAT"), ("merch", "MERCH"),
+                 ("room", "THE ROOM"), ("orders", "ORDERS"),
+                 ("club", "THE CLUB")]
         tx = x
         for key, label in tabs:
             lab = label + (f" ({len(st.orders)})" if key == "orders"
                            and st.orders else "")
-            wdt = font(16, False, "mono").size(lab)[0] + 26
+            wdt = font(16, False, "mono").size(lab)[0] + 20
             r = pygame.Rect(tx, y + 60, wdt, 30)
             on = self.tab == key
             if on:
@@ -8269,14 +8780,39 @@ class ShopMixin:
             if on:
                 text(s, lab, 16, r.center, warm(CREAM, 0.2), center=True,
                      kind="mono", shadow=False)
-            tx += wdt + 8
-        self.buttons.append(Button((PAGE_R.right - 190, y + 60, 180, 30),
-                                   "< back to the room", ("scene", "room"),
+            tx += wdt + 5
+        self.buttons.append(Button((PAGE_R.right - 124, y + 60, 116, 30),
+                                   "< the room", ("scene", "room"),
                                    "link", 15, kind="mono", colour=TEA))
 
         body = pygame.Rect(PAGE_R.x + 18, y + 102, PAGE_R.w - 36,
                            PAGE_R.bottom - (y + 102) - 8)
-        if self.tab == "merch":
+        # The product page wins over the tab it was opened from.
+        #
+        # It used to be the LAST branch of this chain, below every tab
+        # that has no products in it, which worked only because those
+        # tabs can never have a product open: switching tab clears it.
+        # The kitten page broke that the moment it was added above the
+        # check - you could open a kitten product and the list would
+        # redraw over it, so there was no ORDER button anywhere and the
+        # whole series was unbuyable. Nothing about the state refused
+        # the sale; the page to make it simply never rendered.
+        if self.product and self.product in BY_PACK:
+            self.draw_product(s, body)
+        elif self.tab == "kitten":
+            if not st.kittens:
+                self.tab = "catalogue"
+            else:
+                text(s, "THE KITTEN SERIES", 22, (body.x, body.y),
+                     warm(CREAM, 0.2))
+                text(s, f"Twelve new cards, none of them in the old book. "
+                        f"You have {st.kittens_owned} of "
+                        f"{len(KITTENS)}.", 13, (body.x, body.y + 28),
+                     MUTED, kind="mono", max_w=body.w)
+                self.draw_catalogue(s, pygame.Rect(body.x, body.y + 46,
+                                                   body.w, body.h - 46),
+                                    "kitten")
+        elif self.tab == "merch":
             self.draw_merch(s, body)
         elif self.tab == "room":
             self.draw_room_page(s, body)
@@ -8286,8 +8822,6 @@ class ShopMixin:
             self.draw_home(s, body)
         elif self.tab == "club":
             self.draw_club(s, body)
-        elif self.product:
-            self.draw_product(s, body)
         else:
             self.draw_catalogue(s, body, "special" if self.tab == "specials"
                                 else "standard")
@@ -8472,7 +9006,9 @@ class ShopMixin:
     def draw_product(self, s, body):
         st = self.state
         p = BY_PACK[self.product]
-        back = "specials" if p.shelf == "special" else "catalogue"
+        # back to the shelf it is actually on, not always the front page
+        back = {"special": "specials", "kitten": "kitten"}.get(p.shelf,
+                                                               "catalogue")
         self.buttons.append(Button((body.x, body.y, 160, 24),
                                    "< everything else", ("tab", back),
                                    "link", 14, kind="mono", colour=TEA))
@@ -8491,14 +9027,25 @@ class ShopMixin:
 
         right = pygame.Rect(body.x + 330, body.y, body.w - 330, body.h)
         text(s, p.name, 28, (right.x, right.y), warm(CREAM, 0.2))
-        y = paragraph(s, p.blurb, 14, (right.x, right.y + 38), mix(TEA, CREAM, 0.3),
-                      right.w - 10, 4, kind="mono") + 8
+        y = paragraph(s, p.blurb, 14, (right.x, right.y + 38),
+                      mix(TEA, CREAM, 0.3), right.w - 10, 3,
+                      kind="mono") + 8
 
         # the odds, drawn as the shop would have to print them
         text(s, "WHAT IS IN IT", 13, (right.x, y), TEA, kind="mono",
              shadow=False)
         y += 20
         tot = sum(p.weights)
+        # The pitch comes from how many rows there are going to be. At
+        # seven tiers this column fitted with nothing to spare, and the
+        # comment below said so; at nine, a crate that sells eight of
+        # them pushed PLACE ORDER down onto the postage options.
+        rows = sum(1 for r in range(SOLD_RARITIES) if p.weights[r])
+        extras = 1 + (1 if p.fresh_coats else 0) + (1 if p.shiny_mult > 1
+                                                    else 0)
+        choices_y = body.bottom - 226
+        room = choices_y - y - 20 - extras * 18
+        pitch = int(clamp(room / max(1, rows), 11, 18))
         for r in range(SOLD_RARITIES):
             if not p.weights[r]:
                 continue
@@ -8512,8 +9059,7 @@ class ShopMixin:
             n = sum(1 for b in BY_RARITY[r] if st.can_hold(b.key))
             text(s, f"{n} still in print", 12, (br.right + 56, y + 7),
                  DIM if n else shade(BAD, 0.9), kind="mono", shadow=False)
-            y += 18
-        # seven tiers means up to seven rows above this line
+            y += pitch
         y += 4
         text(s, f"the last card is {rarity_name(p.floor).lower()} or better",
              12, (right.x, y + 6), mix(TEA, CREAM, 0.1), kind="mono",
@@ -8531,6 +9077,7 @@ class ShopMixin:
         y += 4
 
         # quantity and postage, which is the only choice the shop offers
+        y = choices_y
         text(s, "HOW MANY", 13, (right.x, y), TEA, kind="mono", shadow=False)
         for i in range(1, BULK + 1):
             r = pygame.Rect(right.x + 96 + (i - 1) * 46, y - 6, 40, 28)
@@ -9034,7 +9581,7 @@ class BinderMixin:
         shiny_n = sum(1 for c in st.cards.values() if c.shiny)
         strays_n = st.strays_owned
         expo_n = st.expo_owned
-        text(s, f"{st.owned} of {len(BREEDS)} breeds    "
+        text(s, f"{st.owned} of {len(st.book)} breeds    "
                 + (f"{expo_n} from the hall    " if expo_n else "")
                 + (f"{strays_n} stray{'s' if strays_n > 1 else ''}    "
                    if strays_n else "")
@@ -9057,7 +9604,8 @@ class BinderMixin:
         # the mat. An empty page of question marks would say "there are
         # five more of these", which is the one thing it must not say.
         found = [b for b in SECRETS if b.key in st.cards]
-        book_pages = (len(BREEDS) + per - 1) // per
+        book = st.book
+        book_pages = (len(book) + per - 1) // per
         pages = book_pages + 1 + (1 if found else 0)
         self.page = int(clamp(self.page, 0, pages - 1))
         expo_page = self.page == book_pages
@@ -9068,7 +9616,7 @@ class BinderMixin:
         gy = area.centery - (rows * ch + (rows - 1) * vgap) // 2
         shown = (found if secret_page else
                  list(EXPO_BREEDS) if expo_page else
-                 BREEDS[self.page * per:(self.page + 1) * per])
+                 book[self.page * per:(self.page + 1) * per])
         if expo_page:
             got = st.expo_owned
             text(s, "PRINTED FOR THE HALL", 20, (inner.centerx, area.y + 10),
@@ -9117,7 +9665,7 @@ class BinderMixin:
                                        colour=mix(LAMP, CREAM, 0.3) if last
                                        else rarity_colour(R_EXPO) if expo
                                        else None))
-        left = [b for b in BREEDS if b.key not in st.cards]
+        left = [b for b in book if b.key not in st.cards]
         if expo_page:
             short = [b for b in EXPO_BREEDS if b.key not in st.cards]
             note = ("every one of them, and not one by post"
@@ -9134,7 +9682,7 @@ class BinderMixin:
             note = (f"{len(left)} still to find, the rarest of them a "
                     f"{rarity_name(max(b.rarity for b in left)).lower()}")
         else:
-            note = (f"{len(BREEDS) - st.retired} still to take to level 10")
+            note = (f"{len(book) - st.retired} still to take to level 10")
         text(s, note, 15, (inner.centerx, inner.bottom - 36), TEA,
              center=True, kind="mono")
         self.buttons.append(Button((inner.x + 20, inner.bottom - 52, 190, 34),
@@ -9383,6 +9931,52 @@ class MenuMixin:
             self.buttons.append(Button((W - 150, 26, 120, 30),
                                        "skip this", ("intro", "skip"),
                                        "link", 14, kind="mono", colour=TEA))
+
+    def draw_news(self, s):
+        """The three screens that say there is a second collection."""
+        beat = int(clamp(self.beat, 0, len(NEWS) - 1))
+        f = min(1.0, self.beat_t / 1.4)
+        _news_scene(s, self.t, beat, f)
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((8, 6, 6, 96))
+        s.blit(dim, (0, 0))
+        head, body = NEWS[beat]
+        fade = int(255 * min(1.0, self.beat_t / 0.8))
+        r = pygame.Rect(W // 2 - 340, 92, 680, 160)
+        text(s, head, 32, (r.centerx, r.y), warm(CREAM, 0.2), center=True,
+             alpha=fade, max_w=r.w)
+        paragraph(s, body, 16, (r.x, r.y + 46), mix(TEA, CREAM, 0.25), r.w,
+                  4, kind="mono", center=True, alpha=fade)
+        for i in range(len(NEWS)):
+            d = pygame.Rect(48 + i * 18, H - 56, 10, 10)
+            pygame.draw.rect(s, warm(CREAM, 0.1) if i <= beat
+                             else shade(TEA, 0.45), d, border_radius=5)
+        last = beat == len(NEWS) - 1
+        self.buttons.append(Button((W - 266, H - 74, 226, 46),
+                                   "GO AND LOOK" if last else "NEXT",
+                                   ("news", "next"), "solid", 18,
+                                   kind="mono"))
+        if not last:
+            self.buttons.append(Button((W - 150, 26, 120, 30),
+                                       "skip this", ("news", "skip"),
+                                       "link", 14, kind="mono", colour=TEA))
+
+    def news_next(self):
+        if self.beat >= len(NEWS) - 1:
+            self.end_news()
+            return
+        self.beat += 1
+        self.beat_t = 0.0
+        self.beep("page")
+
+    def end_news(self):
+        self.state.seen_news = True
+        self.go("room")
+        self.go_area("study", quiet=True)
+        self.toast("the kitten series is up",
+                   f"a new page on the website, and {len(KITTENS)} empty "
+                   f"slots in the binder", mix(LAMP, CREAM, 0.3), 14.0)
+        self.save()
 
     def intro_next(self):
         if self.beat >= len(INTRO) - 1:

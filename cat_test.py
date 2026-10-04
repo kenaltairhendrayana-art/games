@@ -291,6 +291,25 @@ def _affordable(state, policy):
     one. `need` spends on whatever rarity it is furthest from finishing,
     which is what a person does once they have looked at the binder.
     """
+    # Since the kittens went into the binder, no amount of shopping on
+    # the first page can finish it: those twelve are only in the three
+    # products on the kitten page. `cheap` and `dear` never looked at
+    # that page, so both of them went from finishing the book to
+    # "binder full never" the moment it fused - not because the balance
+    # moved, but because the test was modelling players who cannot win.
+    # Each one shops the new page by its own rule about price, which is
+    # the thing each of them is actually there to test, and waits rather
+    # than spending if it cannot afford one yet.
+    kit_all = [p for p in cc.packs_on("kitten") if state.sellable(p)]
+    if state.kittens and kit_all:
+        kit = [p for p in kit_all if p.price <= state.money]
+        if not kit:
+            return None
+        if policy == "cheap":
+            return kit[0]
+        if policy == "dear":
+            return kit[-1]
+        return max(kit, key=lambda p: p.cards / p.ship)
     ladder = [p for p in cc.packs_on("standard") if p.price <= state.money
               and state.sellable(p)]
     if policy in ("cheap", "dear"):
@@ -303,8 +322,9 @@ def _affordable(state, policy):
     # eighteen hundred - and a bot that buys eight hundred of those takes
     # two hours over a binder the ladder finishes in fifty minutes. The
     # guarantee is priced like a guarantee; it is not a staple.
+    shelves = cc.SHELVES + (("kitten",) if state.kittens else ())
     can = [p for p in cc.PACKS if p.price <= state.money
-           and state.sellable(p) and p.shelf in cc.SHELVES]
+           and state.sellable(p) and p.shelf in shelves]
     if not can:
         return None
     want = max(range(cc.SOLD_RARITIES), key=lambda r: state.missing(r))
@@ -418,7 +438,24 @@ def sameness():
     toward one average cat.
     """
     pygame.display.set_mode((64, 64))
+    ok = True
     SZ = 72
+    # The most complete way for two cats to be the same cat is to share
+    # a key. BY_KEY is a dict, so the second one silently replaces the
+    # first: that breed becomes unreachable, and a save holding one loads
+    # as the other. It has happened once (a kitten called First Snow took
+    # the Snowshoe's key) and it looked exactly like a drawing bug.
+    keys = [b.key for b in cc.ALL_BREEDS]
+    if len(set(keys)) != len(keys):
+        for k in sorted({k for k in keys if keys.count(k) > 1}):
+            who = [b.name for b in cc.ALL_BREEDS if b.key == k]
+            print(f"  two cats share the key {k!r}: {who}")
+        ok = False
+    if len(cc.BY_KEY) != len(cc.ALL_BREEDS):
+        print(f"  {len(cc.ALL_BREEDS) - len(cc.BY_KEY)} cats cannot be "
+              f"looked up at all")
+        ok = False
+
     masks = {}
     # Every cat in the game, not just the catalogue. The five off the
     # street and the five printed for the hall were never compared
@@ -459,7 +496,6 @@ def sameness():
     print(f"  the two least alike: {worst[-1][0]:.3f}  "
           f"{worst[-1][1]} / {worst[-1][2]}")
 
-    ok = True
     bad = [w for w in worst if w[0] > IDENTICAL]
     close = [w for w in worst if w[0] > CLOSE]
     print(f"  over {IDENTICAL}: {len(bad)}   over {CLOSE}: {len(close)} "
@@ -1084,6 +1120,95 @@ def score():
     return ok
 
 
+def buyable():
+    """Every product the shop lists can be opened and ordered.
+
+    Written against a real one: the kitten page was added to the chain
+    of tab branches ABOVE the check for an open product, so clicking a
+    kitten pack redrew the list over the page and there was no ORDER
+    button anywhere in the game. Nothing refused the sale - `order`
+    placed it happily when called directly - so the only way to catch it
+    is to press the buttons in the order a person presses them.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.kittens = True
+    g.state.seen_news = True
+    g.state.money = 10 ** 9
+    g.state.club = len(cc.CLUB)
+    g.go("shop")
+    tabs = {"standard": "catalogue", "special": "specials", "kitten": "kitten"}
+    for shelf, tab in tabs.items():
+        on = cc.packs_on(shelf)
+        if not on:
+            print(f"  the {shelf} shelf is empty")
+            ok = False
+        for pk in on:
+            g.state.orders = []
+            g.press(("tab", tab))
+            g.draw()
+            if ("product", pk.key) not in {b.key for b in g.buttons}:
+                print(f"  {pk.name} is not on the {tab} page")
+                ok = False
+                continue
+            g.press(("product", pk.key))
+            g.draw()
+            btn = [b for b in g.buttons if b.key == ("place", None)]
+            if not btn:
+                print(f"  {pk.name}: no way to order it once it is open")
+                ok = False
+                continue
+            if not btn[0].enabled:
+                print(f"  {pk.name}: ordering it is refused ({btn[0].note})")
+                ok = False
+                continue
+            # the page itself has to hold together for THIS product:
+            # the odds list is one row per tier that the pack sells, so
+            # a crate that sells eight of them lays out differently to a
+            # paper sack that sells three
+            drawn = [b for b in g.buttons if b.style != "hit"]
+            hits = [b for b in g.buttons if b.style == "hit"]
+            for i, x in enumerate(drawn):
+                for z in drawn[i + 1:]:
+                    if x.rect.colliderect(z.rect):
+                        print(f"  {pk.name}: {x.key} and {z.key} are drawn "
+                              f"on top of each other")
+                        ok = False
+                for z in hits:
+                    if x.rect.colliderect(z.rect) and x.key != z.key:
+                        print(f"  {pk.name}: {x.key} overlaps hit area "
+                              f"{z.key}")
+                        ok = False
+            g.press(("place", None))
+            if len(g.state.orders) != 1:
+                print(f"  {pk.name}: pressing PLACE ORDER did nothing")
+                ok = False
+            elif g.state.orders[0].pack != pk.key:
+                print(f"  {pk.name}: ordered {g.state.orders[0].pack} instead")
+                ok = False
+        # ... and the way back off a product lands on the right shelf
+        for pk in on:
+            g.press(("tab", tab))
+            g.press(("product", pk.key))
+            g.draw()
+            backs = [b.key[1] for b in g.buttons
+                     if isinstance(b.key, tuple) and b.key[0] == "tab"
+                     and b.label.startswith("<")]
+            if not backs:
+                print(f"  {pk.name}: no way back off the product page")
+                ok = False
+            elif backs[0] != tab:
+                print(f"  {pk.name}: the way back goes to {backs[0]!r}, "
+                      f"not {tab!r}")
+                ok = False
+    print(f"  {sum(len(cc.packs_on(sh)) for sh in tabs)} products, all of "
+          f"them reachable and orderable")
+    print("  buyable:", "ok" if ok else "FAILED")
+    return ok
+
+
 def flow():
     """Drive the real Game through a whole loop, by pressing its buttons.
 
@@ -1356,6 +1481,11 @@ def layout():
                          ("shop", lambda: (setattr(g, "site", "purrbay"),
                                            setattr(g.state, "money", 10 ** 9))),
                          ("shop", lambda: setattr(g, "site", "meowrder")),
+                         # with the second series out, which is the row at
+                         # its longest - eight tabs and a link beside them
+                         ("shop", lambda: (setattr(g.state, "kittens", True),
+                                           setattr(g, "tab", "kitten"))),
+                         ("shop", lambda: setattr(g, "tab", "catalogue")),
                          ("binder", None), ("open", None)):
         if scene == "open":
             g.open_pack_key, g.open_qty = "crate", 1
@@ -1374,6 +1504,16 @@ def layout():
         g.draw()
         drawn = [b for b in g.buttons if b.style != "hit"]
         hits = [b for b in g.buttons if b.style == "hit"]
+        # Two things that are both drawn must not sit on top of each
+        # other either. An eighth tab on the shop row printed straight
+        # through the link back to the room and nothing noticed, because
+        # this only ever compared drawn buttons against invisible ones.
+        for i, a in enumerate(drawn):
+            for b in drawn[i + 1:]:
+                if a.rect.colliderect(b.rect):
+                    print(f"  {scene}: {a.key} and {b.key} are drawn on "
+                          f"top of each other")
+                    ok = False
         for a in drawn:
             for b in hits:
                 if a.rect.colliderect(b.rect) and a.key != b.key:
@@ -2232,6 +2372,262 @@ def intro():
     return ok
 
 
+
+def kittens():
+    """The second collection, and the wall between it and the first.
+
+    Two books in one binder is the kind of change that goes wrong in the
+    plumbing rather than in the drawing: a kitten rolled out of an
+    ordinary pack, a kitten counted as one of the hundred, a product on
+    sale before the series exists. All three are checked by walking the
+    game rather than by reading flags.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    rng = random.Random(9)
+
+    print(f"  {len(cc.KITTENS)} kittens, {len(cc.KITTEN_PACKS)} products, "
+          f"rarities {sorted({b.rarity for b in cc.KITTENS})}")
+    if set(cc.KITTEN_KEYS) & set(cc.LISTED):
+        print("  a kitten is also in the catalogue")
+        ok = False
+    # every tier a kitten pack can roll has to have a kitten in it, or the
+    # roll falls through to a substitution nobody asked for
+    for pk in cc.KITTEN_PACKS:
+        for r in range(cc.SOLD_RARITIES):
+            if pk.weights[r] > 0 and not cc.KITTEN_BY_RARITY[r]:
+                print(f"  {pk.name} rolls {cc.rarity_name(r)} and there is "
+                      f"no kitten in that tier")
+                ok = False
+        if pk.shelf in cc.SHELVES:
+            print(f"  {pk.name} is on an ordinary shelf")
+            ok = False
+
+    # -- the two pools never meet ---------------------------------------
+    st = cc.State()
+    leak = set()
+    for pk in cc.PACKS:
+        if pk.series == "kitten":
+            continue
+        for _ in range(120):
+            for pull in st.open_pack(pk, 1, rng):
+                if pull.breed.key in cc.KITTEN_KEYS:
+                    leak.add(pull.breed.name)
+    print(f"  kittens out of the other {len(cc.PACKS) - len(cc.KITTEN_PACKS)} "
+          f"products: {sorted(leak) or 'none'}")
+    if leak:
+        ok = False
+    st2 = cc.State()
+    grown = set()
+    for pk in cc.KITTEN_PACKS:
+        for _ in range(120):
+            for pull in st2.open_pack(pk, 1, rng):
+                if pull.breed.key not in cc.KITTEN_KEYS:
+                    grown.add(pull.breed.name)
+    print(f"  grown cats out of a kitten pack: {sorted(grown) or 'none'}")
+    if grown:
+        ok = False
+    if st2.kittens_owned != len(cc.KITTENS):
+        print(f"  only {st2.kittens_owned} of the series ever came out")
+        ok = False
+
+    # -- one book, which grows ------------------------------------------
+    st3 = cc.State()
+    for b in cc.KITTENS:
+        st3.cards[b.key] = cc.Card(level=cc.MAX_LEVEL)
+    print(f"  twelve kittens and nothing else, series unannounced: "
+          f"{st3.owned} of {len(st3.book)}, {st3.retired} retired")
+    if st3.owned or st3.retired or st3.catalogue_full or st3.complete:
+        print("  the kittens count before the series has been announced")
+        ok = False
+    st3.kittens = True
+    print(f"  ... and once it is: {st3.owned} of {len(st3.book)}, "
+          f"{st3.retired} retired")
+    if st3.owned != len(cc.KITTENS) or st3.retired != len(cc.KITTENS):
+        print("  the kittens do not count once the series is out")
+        ok = False
+    if st3.catalogue_full:
+        print("  twelve kittens finished the catalogue")
+        ok = False
+    if st3.complete:
+        print("  twelve kittens finished the game")
+        ok = False
+
+    # the book is one book, in one order, with nothing in it twice
+    for st4, want in ((cc.State(), len(cc.BREEDS)),):
+        if len(st4.book) != want:
+            print(f"  the book is {len(st4.book)} before the series, not "
+                  f"{want}")
+            ok = False
+    st5 = cc.State()
+    st5.kittens = True
+    print(f"  the book goes from {len(cc.BREEDS)} to {len(st5.book)}")
+    if len(st5.book) != len(cc.BREEDS) + len(cc.KITTENS):
+        print("  the two books did not add up")
+        ok = False
+    if len({b.key for b in st5.book}) != len(st5.book):
+        print("  something is in the book twice")
+        ok = False
+    if list(st5.book) != sorted(st5.book, key=lambda b: (b.rarity, b.name)):
+        print("  the kittens are not sorted in with the rest")
+        ok = False
+    if not set(cc.KITTENS) <= set(st5.book):
+        print("  the kittens are not in the book at all")
+        ok = False
+    # and finishing it means finishing all of it
+    full = cc.State()
+    full.kittens = True
+    for b in cc.BREEDS:
+        full.cards[b.key] = cc.Card(level=cc.MAX_LEVEL)
+    if full.complete:
+        print("  the game finished with the kitten series untouched")
+        ok = False
+    for b in cc.KITTENS:
+        full.cards[b.key] = cc.Card(level=cc.MAX_LEVEL)
+    if not full.complete:
+        print("  the whole book retired and the game did not finish")
+        ok = False
+    print(f"  the end needs all {len(full.book)} of them retired")
+
+    # -- and it does not exist until the first book is full --------------
+    g = cc.Game(screen)
+    g.state = cc.State()
+    for b in list(cc.BREEDS)[:-1]:          # ninety-nine of a hundred
+        g.state.cards[b.key] = cc.Card(level=1)
+    g.update(0.05)
+    if g.state.kittens:
+        print(f"  the series arrived at {g.state.owned} of {len(cc.BREEDS)}")
+        ok = False
+    g.go("shop")
+    g.draw()
+    if any(k == ("tab", "kitten") for k in {b.key for b in g.buttons}):
+        print("  the kitten page is on the website before it exists")
+        ok = False
+    if any(g.state.sellable(pk) and pk.shelf in cc.SHELVES
+           for pk in cc.KITTEN_PACKS):
+        print("  a kitten product can be ordered already")
+        ok = False
+    g.go("binder")
+    g.draw()
+    pre = len([b for b in g.buttons
+               if isinstance(b.key, tuple) and b.key[0] == "page"])
+
+    # the hundredth card is the one that does it
+    g.state.cards[cc.BREEDS[-1].key] = cc.Card(level=1)
+    g.go("room")
+    g.update(0.05)
+    print(f"  the hundredth breed -> the series is "
+          f"{'out' if g.state.kittens else 'STILL NOT OUT'}")
+    if not g.state.kittens:
+        ok = False
+    g.go("shop")
+    g.draw()
+    if ("tab", "kitten") not in {b.key for b in g.buttons}:
+        print("  the page did not appear once it was announced")
+        ok = False
+    g.go("binder")
+    g.draw()
+    post = len([b for b in g.buttons
+                if isinstance(b.key, tuple) and b.key[0] == "page"])
+    seen = set()
+    for i in range(post):
+        g.page = i
+        g.draw()
+        picks = {b.key[1] for b in g.buttons
+                 if isinstance(b.key, tuple) and b.key[0] == "pick"}
+        if not picks:
+            print(f"  binder page {i + 1} has nothing on it")
+            ok = False
+        seen |= picks
+    print(f"  {len(seen)} cats across {post} pages, {pre} pages before")
+    missing = [b.name for b in cc.KITTENS if b.key not in seen]
+    if missing:
+        print(f"  not on any page of the binder: {missing}")
+        ok = False
+    if not {b.key for b in cc.BREEDS} <= seen:
+        print("  fusing them in pushed some of the hundred off the pages")
+        ok = False
+
+    # -- the announcement ------------------------------------------------
+    # You finish the catalogue by opening a parcel, so the moment the
+    # flag flips you are almost always mid-pack with cards still face
+    # down. Cutting to a cutscene there would eat them.
+    g2 = cc.Game(screen)
+    g2.state = cc.State()
+    for b in cc.BREEDS:
+        g2.state.cards[b.key] = cc.Card(level=1)
+    g2.go("open")
+    g2.update(0.05)
+    print(f"  finishing the book mid-parcel: still in {g2.scene!r}, "
+          f"series {'out' if g2.state.kittens else 'not out'}, "
+          f"announced {g2.state.seen_news}")
+    if g2.scene != "open":
+        print("  the cutscene cut into a pack that was being opened")
+        ok = False
+    if not g2.state.kittens:
+        print("  the series did not exist until the cutscene had played")
+        ok = False
+    # ... and it is waiting as soon as you are back in a room
+    g2.go("room")
+    g2.update(0.05)
+    if g2.scene != "news":
+        print(f"  back in the room and it went to {g2.scene!r}")
+        ok = False
+    for i, (head, body) in enumerate(cc.NEWS):
+        g2.beat, g2.beat_t = i, 2.0
+        g2.update(0.05)
+        g2.draw()
+        if not head.strip() or not body.strip():
+            print(f"  announcement screen {i + 1} is blank")
+            ok = False
+    presses = 0
+    g2.beat, g2.beat_t = 0, 2.0
+    while g2.scene == "news" and presses < 20:
+        g2.draw()
+        g2.press(("news", "next"))
+        presses += 1
+    print(f"  {len(cc.NEWS)} screens, {presses} presses, ending in "
+          f"{g2.area!r}")
+    if presses != len(cc.NEWS) or g2.scene != "room":
+        print("  it does not end after its own screens")
+        ok = False
+    if not g2.state.seen_news:
+        print("  it did not record that it had played")
+        ok = False
+    g2.update(0.05)
+    if g2.scene == "news":
+        print("  it starts again the moment it finishes")
+        ok = False
+    # skipping, and never seeing it twice across a save
+    g3 = cc.Game(screen)
+    g3.state = cc.State()
+    for b in cc.BREEDS:
+        g3.state.cards[b.key] = cc.Card(level=1)
+    g3.update(0.05)
+    g3.draw()
+    if ("news", "skip") not in {b.key for b in g3.buttons}:
+        print("  the announcement cannot be skipped")
+        ok = False
+    g3.press(("news", "skip"))
+    g4 = cc.Game(screen)
+    g4.state = cc.State.from_dict(g3.state.to_dict())
+    g4.update(0.05)
+    if g4.scene == "news":
+        print("  it plays again every time the game is opened")
+        ok = False
+    else:
+        print("  skipped, saved, and it does not come back")
+
+    # -- it survives being put down --------------------------------------
+    back = cc.State.from_dict(g.state.to_dict())
+    if not back.kittens:
+        print("  the series was forgotten when the game was saved")
+        ok = False
+
+    print("  kittens:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -2262,6 +2658,9 @@ def main():
         print()
     if cmd in ("intro", "all"):
         ok &= intro()
+        print()
+    if cmd in ("buyable", "all"):
+        ok &= buyable()
         print()
     if cmd in ("flow", "all"):
         ok &= flow()
@@ -2298,6 +2697,9 @@ def main():
         print()
     if cmd in ("numbers", "all"):
         ok &= numbers()
+        print()
+    if cmd in ("kittens", "all"):
+        ok &= kittens()
         print()
     if cmd in ("merch", "all"):
         ok &= merch()
