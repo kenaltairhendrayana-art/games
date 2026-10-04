@@ -104,20 +104,24 @@ RARITY = (
     # series, and most of the new cats went in at the TOP of the ladder
     # to fill out the thin tiers - which bought x1.68 the income for
     # x1.24 the cards, and put the player back on nearly three million
-    # by the end of a run. Everything here is 0.6 of what it was again:
-    # a full binder earns 591/s rather than 985/s.
-    ("COMMON",    (171, 152, 126), 0.0096),
-    ("UNCOMMON",  (126, 171, 131), 0.033),
-    ("RARE",      (116, 150, 208), 0.090),
-    ("EXOTIC",    (124, 232, 236), 0.150),
-    ("PEDIGREE",  (184, 132, 208), 0.240),
-    ("CHAMPION",  (204, 74, 92),   0.378),
-    ("LEGEND",    (240, 178, 86),  0.600),
-    ("HEIRLOOM",  (172, 236, 88),  0.810),
-    ("FOUNDATION", (72, 214, 170), 1.080),
-    ("ARCHIVE",   (236, 236, 148), 1.560),
-    ("UNLISTED",  (206, 214, 228), 0.510),
-    ("CONVENTION", (238, 70, 174),  0.900),
+    # by the end of a run, so everything was cut to 0.6 of what it was.
+    #
+    # That was too far at the top of the shop: a box at fifty-two thousand
+    # is most of ten minutes of waiting before you can press the button,
+    # and waiting to press a button is not the same as a decision. Back up
+    # to 0.8, which is a third more a second than 0.6 was.
+    ("COMMON",    (171, 152, 126), 0.0128),
+    ("UNCOMMON",  (126, 171, 131), 0.044),
+    ("RARE",      (116, 150, 208), 0.120),
+    ("EXOTIC",    (124, 232, 236), 0.200),
+    ("PEDIGREE",  (184, 132, 208), 0.320),
+    ("CHAMPION",  (204, 74, 92),   0.504),
+    ("LEGEND",    (240, 178, 86),  0.800),
+    ("HEIRLOOM",  (172, 236, 88),  1.080),
+    ("FOUNDATION", (72, 214, 170), 1.440),
+    ("ARCHIVE",   (236, 236, 148), 2.080),
+    ("UNLISTED",  (206, 214, 228), 0.680),
+    ("CONVENTION", (238, 70, 174),  1.200),
 )
 (R_COMMON, R_UNCOMMON, R_RARE, R_EXOTIC, R_PEDIGREE, R_CHAMPION, R_LEGEND,
  R_HEIRLOOM, R_FOUNDATION, R_ARCHIVE, R_UNLISTED, R_EXPO) = range(12)
@@ -4253,14 +4257,14 @@ PACKS = (
 )
 BY_PACK = {p.key: p for p in PACKS}
 KITTEN_PACKS = (
-    Pack("kstart", "The Kitten Series Starter", 1200, 6,
+    Pack("kstart", "The Kitten Series Starter", 500, 6,
          (54, 28, 13, 6, 4, 1, 0, 0, 0, 0), 60, R_COMMON,
          "Six cards and a fold-out sheet showing all twelve of them, with "
          "the ones nobody has photographed yet drawn in by hand.",
          (("back to square one and loving it", 5),
           ("the fold-out is better than the cards", 4)),
          shelf="kitten", series="kitten"),
-    Pack("kboost", "A Kitten Series Booster", 4800, 12,
+    Pack("kboost", "A Kitten Series Booster", 2400, 12,
          (22, 28, 25, 14, 14, 7, 3, 1, 1, 0), 150, R_RARE,
          "Twelve cards of the new series, and the foil on the wrapper is "
          "a different foil, which everybody has an opinion about.",
@@ -4268,7 +4272,7 @@ KITTEN_PACKS = (
           ("pulled The Runt first go. worth it.", 5),
           ("same cats, smaller. somehow that is enough.", 4)),
          shelf="kitten", series="kitten"),
-    Pack("klitter", "The Whole Litter", 14000, 30,
+    Pack("klitter", "The Whole Litter", 9000, 30,
          (8, 18, 26, 17, 22, 14, 9, 4, 3, 1), 280, R_CHAMPION,
          "Thirty cards in a long box with a window down the side. The "
          "closest the company has come to admitting it knows exactly "
@@ -4278,14 +4282,14 @@ KITTEN_PACKS = (
          shelf="kitten", series="kitten"),
 )
 WORKING_PACKS = (
-    Pack("wstart", "The Working Cats Starter", 2600, 6,
+    Pack("wstart", "The Working Cats Starter", 800, 6,
          (34, 26, 18, 9, 8, 4, 1, 0, 0, 0), 70, R_COMMON,
          "Six cards and a sheet of facts about working animals that "
          "reads as though it was written to be read aloud in a school.",
          (("the facts sheet is doing a lot of lifting", 3),
           ("got the ship's cat first go", 5)),
          shelf="working", series="working"),
-    Pack("wboost", "A Working Cats Booster", 9000, 12,
+    Pack("wboost", "A Working Cats Booster", 3400, 12,
          (12, 18, 22, 14, 16, 10, 6, 2, 0, 0), 170, R_RARE,
          "Twelve cards, and the wrapper has a rope border on it that "
          "nobody asked for and everybody rather likes.",
@@ -4293,7 +4297,7 @@ WORKING_PACKS = (
           ("four pub cats. FOUR.", 2),
           ("the station cat card made me put it down for a minute", 5)),
          shelf="working", series="working"),
-    Pack("wcase", "The Whole Shift", 26000, 28,
+    Pack("wcase", "The Whole Shift", 11000, 28,
          (6, 10, 18, 14, 20, 16, 10, 6, 0, 0), 300, R_CHAMPION,
          "Twenty-eight cards in a tin with a hinge, which is the first "
          "tin the company has ever done and will not be the last.",
@@ -4302,21 +4306,21 @@ WORKING_PACKS = (
          shelf="working", series="working"),
 )
 OLD_PACKS = (
-    Pack("ostart", "The Old Guard Starter", 6000, 5,
+    Pack("ostart", "The Old Guard Starter", 2000, 5,
          (0, 0, 30, 20, 20, 18, 8, 3, 1, 0), 90, R_RARE,
          "Five cards on board so thick the sleeve will not take two of "
          "them, and a note about how long each cat has been at it.",
          (("five cards for six thousand. and yet.", 3),
           ("the card stock is absurd and i love it", 5)),
          shelf="old", series="old"),
-    Pack("oboost", "An Old Guard Booster", 18000, 10,
+    Pack("oboost", "An Old Guard Booster", 6000, 10,
          (0, 0, 18, 14, 18, 20, 14, 8, 6, 2), 200, R_PEDIGREE,
          "Ten of them, and a foil on the wrapper that looks like frost "
          "on a window, which is either very clever or an accident.",
          (("pulled Grandmother. sat down for a bit.", 5),
           ("the frost foil is clever and they know it", 4)),
          shelf="old", series="old"),
-    Pack("ocase", "The Long Service Box", 52000, 22,
+    Pack("ocase", "The Long Service Box", 18000, 22,
          (0, 0, 10, 10, 16, 20, 18, 12, 10, 4), 340, R_CHAMPION,
          "Twenty-two cards in a wooden box with a sliding lid. The most "
          "expensive thing on the website and they are not embarrassed "
@@ -4729,7 +4733,7 @@ def roll_lots(state, rng):
     owned = [b for b in sellable if b.key in state.cards]
     attic = rng.random() < ATTIC_ODDS
     lots = []
-    for i in range(LOTS_ON_SITE):
+    for i in range(LOTS_ON_SITE + today(state.played).lots):
         seller = _pick_seller(rng)
         mark = SELLERS[seller][1]
         if i == LOTS_ON_SITE - 1 and attic:
@@ -4919,15 +4923,17 @@ def roll_swaps(state, rng):
     if not mine:
         return []
     missing = [b for b in book if b.key not in state.cards]
+    day = today(state.played)
     out = []
-    for _ in range(SWAPS_ON_BOARD):
+    for _ in range(SWAPS_ON_BOARD + day.swaps):
         want = rng.choice(mine)
         pool = missing if (missing and rng.random() < 0.75) else book
         give = rng.choice(pool)
         if give.key == want.key:
             continue
         who = rng.randrange(len(SWAPPERS))
-        cost = max(1, round(swap_price(want, give) * SWAPPERS[who][1]))
+        cost = max(1, round(swap_price(want, give) * SWAPPERS[who][1]
+                            * day.haggle))
         out.append(Swap(give.key, want.key, cost, who))
     return out
 
@@ -5055,8 +5061,10 @@ CLUB = (
 )
 
 
-def ship_cost(pack, qty, mode):
-    return round(pack.price * qty * SHIPPING[mode][2], 2)
+def ship_cost(pack, qty, mode, unit=None):
+    """Postage is a slice of the price, so it follows the price down."""
+    unit = pack.price if unit is None else unit
+    return round(unit * qty * SHIPPING[mode][2], 2)
 
 
 BULK = 5                    # the most of one thing the shop will send at once
@@ -5129,6 +5137,73 @@ def until_shut(played):
     if not convention_open(played):
         return 0.0
     return DAY - (played - day_of(played) * DAY)
+
+
+# ---------------------------------------------------------------------------
+# WHAT DAY IT IS
+#
+# The calendar existed to make "next Saturday" mean something. Six of the
+# seven days did nothing with it, which made a week a thing you waited
+# out rather than a thing you planned around.
+#
+# Every weekday does something now. None of it is large - a quarter off,
+# a faster post, better odds on a shiny - and that is deliberate: the
+# point is that there is a reason to order the dear thing on a Monday and
+# the risky thing on a Friday, not that any single day is worth
+# rearranging an evening for. Wednesday does nothing at all on purpose,
+# because a week with no quiet day in it has no rhythm.
+# ---------------------------------------------------------------------------
+class Day:
+    __slots__ = ("name", "blurb", "sale", "ship", "shiny", "lots", "swaps",
+                 "haggle")
+
+    def __init__(self, name, blurb="", sale=1.0, ship=1.0, shiny=1.0,
+                 lots=0, swaps=0, haggle=1.0):
+        self.name = name
+        self.blurb = blurb
+        self.sale = sale        # off everything on the website
+        self.ship = ship        # how long the post takes
+        self.shiny = shiny      # the odds on a shiny
+        self.lots = lots        # extra listings on the resale site
+        self.swaps = swaps      # extra posts on the swap board
+        self.haggle = haggle    # what the board asks for, in copies
+
+    @property
+    def quiet(self):
+        return (not self.name
+                and self.sale == self.ship == self.shiny == self.haggle == 1.0
+                and not self.lots and not self.swaps)
+
+
+DAYS = (
+    Day("STOCKTAKE", "a quarter off everything on the website, because "
+                     "somebody has to count it all on Tuesday",
+        sale=0.75),
+    Day("SECOND POST", "two rounds today, so everything ordered gets "
+                       "there in two thirds of the time",
+        ship=0.66),
+    Day("", "nothing on"),
+    Day("NEW IN", "the resale site has had a clear-out and there is twice "
+                  "as much on it",
+        lots=6),
+    Day("LATE NIGHT", "the printers run a night shift and the foil comes "
+                      "out wrong twice as often as it should",
+        shiny=2.0),
+    Day("THE CONVENTION", "across town, all day, and nothing in it can be "
+                          "ordered"),
+    Day("THE SWAP MEET", "twice as many posts on the board, and everybody "
+                         "is feeling generous about it",
+        swaps=5, haggle=0.7),
+)
+
+
+def today(played):
+    return DAYS[weekday_of(played)]
+
+
+def price_of(pack, state):
+    """What the website is asking for this today."""
+    return round(pack.price * today(state.played).sale)
 
 
 FIRST_STRAY = 330.0        # seconds of play before the first one comes
@@ -5459,14 +5534,16 @@ class State:
 
     # -- buying -------------------------------------------------------------
     def order(self, pack, qty, mode):
-        cost = pack.price * qty + ship_cost(pack, qty, mode)
+        unit = price_of(pack, self)
+        cost = unit * qty + ship_cost(pack, qty, mode, unit)
         if (cost > self.money + 1e-6 or len(self.orders) >= self.slots
                 or not self.sellable(pack)):
             return None
         self.money -= cost
         self.spent += cost
         o = Order(self.next_num, pack.key, qty,
-                  ship_time(pack, mode, qty), cost, mode)
+                  ship_time(pack, mode, qty) * today(self.played).ship,
+                  cost, mode)
         self.next_num += 1
         self.orders.append(o)
         return o
@@ -5820,7 +5897,8 @@ class State:
                 card = self.cards.get(b.key)
                 coat = roll_coat(b, rng, card, pack.fresh_coats)
                 shiny = (rng.random()
-                         < pack.shiny_mult * self.shiny_gear / SHINY_IN)
+                         < pack.shiny_mult * self.shiny_gear
+                         * today(self.played).shiny / SHINY_IN)
                 if card is None:
                     card = Card(coat=coat, shiny=shiny)
                     self.cards[b.key] = card
@@ -10066,8 +10144,12 @@ class GameBase:
         line = f"{st.owned}/{len(st.book)} breeds   {st.retired} retired"
         if st.comfort > 1.001:
             line += f"   flat +{int(round(st.comfort * 100 - 100))}%"
-        text(s, date_words(st.played), 12, (r.right - 13, r.y + 44),
-             mix(TEA, CREAM, 0.1) if st.convention() else shade(MUTED, 0.9),
+        day = today(st.played)
+        when = date_words(st.played) + ("" if day.quiet
+                                        else "  -  " + day.name)
+        text(s, when, 12, (r.right - 13, r.y + 44),
+             mix(TEA, CREAM, 0.1) if st.convention() else
+             warm(EMBER, 0.2) if not day.quiet else shade(MUTED, 0.9),
              right=True, kind="mono", shadow=False)
         text(s, line, 12, (r.x + 15, r.y + 48), shade(MUTED, 0.9),
              kind="mono", shadow=False)
@@ -10431,6 +10513,14 @@ class ShopMixin:
         text(s, f"{len(st.orders)}/{st.slots} parcels in the post", 12,
              (PAGE_R.right - 18, y + 36), MUTED if not self.full else BAD,
              right=True, kind="mono", shadow=False)
+        day = today(st.played)
+        if not day.quiet:
+            tag = text(s, day.name, 14, (x + 196, y + 34),
+                       warm(EMBER, 0.25) if day.sale < 1 else
+                       mix(LAMP, CREAM, 0.3), left=True, kind="mono")
+            text(s, day.blurb, 12, (tag.right + 12, y + 35), MUTED,
+                 left=True, kind="mono",
+                 max_w=max(80, (PAGE_R.right - 230) - (tag.right + 12)))
         hairline(s, x, y + 50, PAGE_R.right - 18, TEA, 60)
 
         # Nine products do not fit one page at a size anybody can read,
@@ -10807,7 +10897,8 @@ class ShopMixin:
         for i, p in enumerate(rows):
             r = pygame.Rect(body.x, body.y + i * rowh, body.w, rowh - 8)
             live = st.sellable(p)
-            afford = st.money >= p.price and not self.full
+            ask = price_of(p, st)
+            afford = st.money >= ask and not self.full
             panel(s, r, mix(SCREEN_HI, EMBER, 0.05 if live else 0.0),
                   shade(SCREEN_HI, 1.5), radius=8, shadow=False)
             art = pygame.Rect(r.x + 10, r.y + 8, 104, r.h - 16)
@@ -10832,7 +10923,8 @@ class ShopMixin:
                     else ""), 13,
                  (art.right + 16, r.bottom - 22),
                  mix(TEA, CREAM, 0.2), kind="mono", shadow=False)
-            text(s, f"ships in {clock_str(p.ship)}", 13,
+            text(s, f"ships in {clock_str(p.ship * today(st.played).ship)}",
+                 13,
                  (art.right + 196, r.bottom - 22), DIM, kind="mono",
                  shadow=False)
             _stars(s, 5 - i // 2, (art.right + 330, r.bottom - 16))
@@ -10840,7 +10932,14 @@ class ShopMixin:
                  (art.right + 420, r.bottom - 16), DIM, kind="mono",
                  shadow=False, left=True)
             if live:
-                text(s, money(p.price), 26, (r.right - 150, r.y + 18),
+                if ask < p.price:
+                    was = text(s, money(p.price), 15,
+                               (r.right - 150, r.y + 10), shade(MUTED, 0.9),
+                               right=True, kind="mono")
+                    pygame.draw.line(s, shade(MUTED, 0.9),
+                                     (was.x - 2, was.centery),
+                                     (was.right + 2, was.centery), 1)
+                text(s, money(ask), 26, (r.right - 150, r.y + 18),
                      warm(EMBER, 0.2), right=True)
             btn = pygame.Rect(r.right - 132, r.centery - 19, 118, 38)
             if not live:
@@ -10861,6 +10960,7 @@ class ShopMixin:
     def draw_product(self, s, body):
         st = self.state
         p = BY_PACK[self.product]
+        unit = price_of(p, st)          # what it is today, not on the box
         # back to the shelf it is actually on, not always the front page
         back = ("specials" if p.shelf == "special"
                 else p.shelf if any(x.shelf == p.shelf and x.key != "cat"
@@ -10955,10 +11055,11 @@ class ShopMixin:
                                (r.x + 16, r.centery), 6, 0 if on else 1)
             text(s, label, 15, (r.x + 32, r.centery), CREAM if on else MUTED,
                  left=True, kind="mono", shadow=False)
-            text(s, clock_str(ship_time(p, m, self.qty)), 14,
+            text(s, clock_str(ship_time(p, m, self.qty)
+                              * today(st.played).ship), 14,
                  (r.x + 210, r.centery), mix(TEA, CREAM, 0.2), left=True,
                  kind="mono", shadow=False)
-            fee_v = ship_cost(p, self.qty, m)
+            fee_v = ship_cost(p, self.qty, m, unit)
             text(s, "free" if fee_v <= 0 else "+" + money(fee_v), 14,
                  (r.right - 12, r.centery), GOOD if fee_v <= 0 else EMBER,
                  right=True, kind="mono", shadow=False)
@@ -10968,7 +11069,7 @@ class ShopMixin:
              12, (right.x + 112, y - 2), DIM, kind="mono", shadow=False)
 
         # the total, and the one button that spends money
-        total = p.price * self.qty + ship_cost(p, self.qty, self.mode)
+        total = unit * self.qty + ship_cost(p, self.qty, self.mode, unit)
         y = body.bottom - 72
         hairline(s, right.x, y - 12, right.right - 10, TEA, 60)
         text(s, "TOTAL", 15, (right.x, y + 8), TEA, kind="mono", shadow=False)

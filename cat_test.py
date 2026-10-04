@@ -3099,6 +3099,124 @@ def auctions():
     return ok
 
 
+
+def days():
+    """A week of events, and the one thing that must never slip: what the
+    shelf says, what the product page says, and what the till actually
+    takes all have to be the same number.
+
+    A discount is three separate pieces of arithmetic in three separate
+    places - the price on the list, the total on the page, and the sum
+    subtracted in `order` - and a sale that is only in two of them is a
+    shop that lies.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+    st = cc.State()
+    st.money = 10 ** 9
+
+    if len(cc.DAYS) != 7:
+        print(f"  {len(cc.DAYS)} days in the week")
+        ok = False
+    quiet = [i for i, d in enumerate(cc.DAYS) if d.quiet]
+    print(f"  {7 - len(quiet)} of 7 days do something; "
+          f"{len(quiet)} quiet one(s)")
+    if not quiet:
+        print("  a week with no quiet day in it has no rhythm")
+        ok = False
+    if cc.DAYS[cc.CONVENTION_DAY].name != "THE CONVENTION":
+        print("  the convention is not on the day the calendar says")
+        ok = False
+
+    # -- the shelf, the page and the till ---------------------------------
+    worst = 0.0
+    for d in range(7):
+        st.played = cc.DAY * d + 60
+        day = cc.today(st.played)
+        for pk in cc.PACKS:
+            if not pk.price or pk.shelf not in cc.SHELVES:
+                continue
+            for qty in (1, 3):
+                for mode in range(len(cc.SHIPPING)):
+                    st.orders = []
+                    st.money = 10 ** 9
+                    shelf = cc.price_of(pk, st)
+                    page = shelf * qty + cc.ship_cost(pk, qty, mode, shelf)
+                    before = st.money
+                    o = st.order(pk, qty, mode)
+                    if o is None:
+                        print(f"  {pk.name} could not be ordered at all")
+                        ok = False
+                        continue
+                    took = before - st.money
+                    worst = max(worst, abs(took - page))
+                    if abs(took - page) > 0.01:
+                        print(f"  {cc.DAY_NAMES[cc.weekday_of(st.played)]}: "
+                              f"{pk.name} x{qty} shows {cc.money(page)} and "
+                              f"takes {cc.money(took)}")
+                        ok = False
+                    want_ship = cc.ship_time(pk, mode, qty) * day.ship
+                    if abs(o.left - want_ship) > 0.01:
+                        print(f"  {pk.name}: quoted {want_ship:.0f}s, "
+                              f"ordered at {o.left:.0f}s")
+                        ok = False
+    print(f"  every product, every day, every postage: the page and the "
+          f"till never differ by more than {worst:.4f}")
+
+    # -- a sale is a sale and a quiet day is not --------------------------
+    sale_days = [i for i, d in enumerate(cc.DAYS) if d.sale < 1]
+    if not sale_days:
+        print("  nothing is ever on sale")
+        ok = False
+    for i, d in enumerate(cc.DAYS):
+        st.played = cc.DAY * 0 + 60
+        if d.sale > 1 or d.ship > 1 or d.shiny < 1 or d.haggle > 1:
+            print(f"  {d.name or 'the quiet day'} makes something worse")
+            ok = False
+
+    # -- the resale site and the board notice what day it is --------------
+    counts = {}
+    for d in range(7):
+        a = cc.State()
+        a.played = cc.DAY * d + 60
+        for b in list(cc.BREEDS)[:60]:
+            a.cards[b.key] = cc.Card(level=4)
+        a.refresh_lots()
+        a.refresh_swaps()
+        counts[cc.DAY_NAMES[cc.weekday_of(a.played)]] = (len(a.lots),
+                                                         len(a.swaps))
+    for nm, (lots, swaps) in counts.items():
+        print(f"    {nm:<10} {lots} listings, {swaps} posts on the board")
+    if len({v[0] for v in counts.values()}) < 2:
+        print("  the resale site is the same size every day")
+        ok = False
+    if len({v[1] for v in counts.values()}) < 2:
+        print("  the swap board is the same size every day")
+        ok = False
+
+    # -- and the odds move on the night the foil goes wrong ---------------
+    rng = random.Random(4)
+    got = {}
+    late = next(i for i, x in enumerate(cc.DAYS) if x.shiny > 1)
+    calm = next(i for i, x in enumerate(cc.DAYS) if x.quiet)
+    for d in ((calm - cc.WEEK_START) % 7, (late - cc.WEEK_START) % 7):
+        a = cc.State()
+        a.played = cc.DAY * d + 60
+        n_shiny = sum(1 for _ in range(400)
+                      for pull in a.open_pack(cc.BY_PACK["lot"], 1, rng)
+                      if pull.shiny)
+        got[cc.DAY_NAMES[cc.weekday_of(a.played)]] = n_shiny
+    pairs = sorted(got.items(), key=lambda kv: kv[1])
+    print(f"    shinies in 6000 cards: "
+          + ", ".join(f"{k} {v}" for k, v in pairs))
+    if pairs[0][1] >= pairs[-1][1]:
+        print("  the late night does not change the odds")
+        ok = False
+
+    print("  days:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -3150,6 +3268,9 @@ def main():
         print()
     if cmd in ("convention", "all"):
         ok &= convention()
+        print()
+    if cmd in ("days", "all"):
+        ok &= days()
         print()
     if cmd in ("shelves", "all"):
         ok &= shelves()
