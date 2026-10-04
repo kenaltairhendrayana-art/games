@@ -98,28 +98,43 @@ RARITY = (
     # The rates were set when the book held twenty-four breeds. At a
     # hundred they added up to two thousand a second and the back half of
     # the game was a player sitting on five million pounds with nothing
-    # that could absorb it. Everything here is a third of what it was.
-    ("COMMON",    (171, 152, 126), 0.016),
-    ("UNCOMMON",  (126, 171, 131), 0.055),
-    ("RARE",      (116, 150, 208), 0.15),
-    ("EXOTIC",    (124, 232, 236), 0.25),
-    ("PEDIGREE",  (184, 132, 208), 0.40),
-    ("CHAMPION",  (204, 74, 92),   0.63),
-    ("LEGEND",    (240, 178, 86),  1.00),
-    ("HEIRLOOM",  (172, 236, 88),  1.35),
-    ("FOUNDATION", (72, 214, 170), 1.80),
-    ("UNLISTED",  (206, 214, 228), 0.85),
-    ("CONVENTION", (238, 70, 174),  1.50),
+    # that could absorb it, so everything was cut to a third.
+    #
+    # Then the book went to a hundred and eighty-eight across four
+    # series, and most of the new cats went in at the TOP of the ladder
+    # to fill out the thin tiers - which bought x1.68 the income for
+    # x1.24 the cards, and put the player back on nearly three million
+    # by the end of a run. Everything here is 0.6 of what it was again:
+    # a full binder earns 591/s rather than 985/s.
+    ("COMMON",    (171, 152, 126), 0.0096),
+    ("UNCOMMON",  (126, 171, 131), 0.033),
+    ("RARE",      (116, 150, 208), 0.090),
+    ("EXOTIC",    (124, 232, 236), 0.150),
+    ("PEDIGREE",  (184, 132, 208), 0.240),
+    ("CHAMPION",  (204, 74, 92),   0.378),
+    ("LEGEND",    (240, 178, 86),  0.600),
+    ("HEIRLOOM",  (172, 236, 88),  0.810),
+    ("FOUNDATION", (72, 214, 170), 1.080),
+    ("ARCHIVE",   (236, 236, 148), 1.560),
+    ("UNLISTED",  (206, 214, 228), 0.510),
+    ("CONVENTION", (238, 70, 174),  0.900),
 )
 (R_COMMON, R_UNCOMMON, R_RARE, R_EXOTIC, R_PEDIGREE, R_CHAMPION, R_LEGEND,
- R_HEIRLOOM, R_FOUNDATION, R_UNLISTED, R_EXPO) = range(11)
-SOLD_RARITIES = 9          # the catalogue stocks the first nine of them
+ R_HEIRLOOM, R_FOUNDATION, R_ARCHIVE, R_UNLISTED, R_EXPO) = range(12)
+SOLD_RARITIES = 10         # the catalogue stocks the first ten of them
 
 MAX_LEVEL = 10
 
 
 def rarity_name(r):
     return RARITY[r][0]
+
+
+def a_rarity(r):
+    """"a legend", but "an exotic" - two of the tiers start with a vowel
+    now and nothing on the ladder used to."""
+    word = RARITY[r][0].lower()
+    return ("an " if word[0] in "aeiou" else "a ") + word
 
 
 def rarity_colour(r):
@@ -684,12 +699,12 @@ TEMPERS = {
         label="hunts everything that moves",
         acts={"play": 7, "prowl": 4, "watch": 2, "eat": 1, "sleep": 1,
               "scratch": 3, "drink": 1, "climb": 2, "chatter": 3, "hide": 1},
-        likes=("toy", "floor", "perch"), speed=1.35, stay=(7, 16)),
+        likes=("toy", "floor", "perch", "bird"), speed=1.35, stay=(7, 16)),
     "climber": dict(
         label="will be found somewhere high",
         acts={"watch": 6, "loaf": 3, "prowl": 2, "sleep": 2, "play": 1,
               "scratch": 2, "eat": 1, "drink": 1, "climb": 5, "chatter": 2},
-        likes=("perch",), speed=1.15, stay=(12, 28)),
+        likes=("perch", "wall"), speed=1.15, stay=(12, 28)),
     "glutton": dict(
         label="is never far from the bowls",
         acts={"eat": 5, "drink": 2, "sleep": 4, "loaf": 3, "prowl": 1,
@@ -704,7 +719,8 @@ TEMPERS = {
         label="keeps to the edges of the room",
         acts={"prowl": 5, "watch": 3, "sleep": 3, "groom": 2,
               "scratch": 2, "eat": 1, "drink": 1, "hide": 4, "climb": 1, "chatter": 1},
-        likes=("box", "floor", "perch"), speed=1.05, stay=(9, 20)),
+        likes=("box", "floor", "perch", "tunnel"), speed=1.05,
+        stay=(9, 20)),
     "lap": dict(
         label="wants to be where you are",
         acts={"loaf": 5, "sit": 3, "groom": 2, "sleep": 2, "play": 2,
@@ -1678,7 +1694,7 @@ def _build_more():
 # ---------------------------------------------------------------------------
 NEW_BREEDS = (
     # -- EXOTIC: the ones that look like they got out of somewhere ------
-    Breed("chau", "Chausie", R_EXOTIC, "the reed beds of the Nile",
+    Breed("chau", "Marsh Runner", R_EXOTIC, "the reed beds of the Nile",
           "Half again as long as it has any need to be.",
           L(size=1.18, body=1.26, facew=0.94, faceh=1.06, cheek=0.88,
             ear=1.28, legs=1.30, fluff=0.08, tail="plain",
@@ -1686,7 +1702,7 @@ NEW_BREEDS = (
             pat="ticked", eye=(206, 184, 86), eyeshape="almond"),
           "hunter", "Covers the whole flat at a trot, twice an hour.",
           ("grizzled tabby", "black", "silver")),
-    Breed("cara", "Caracat", R_EXOTIC, "a dry hillside",
+    Breed("cara", "The Hillside Lynx", R_EXOTIC, "a dry hillside",
           "The ears have tufts on them and it knows exactly how that looks.",
           L(size=1.14, body=0.96, facew=1.00, faceh=1.04, cheek=0.94,
             ear=1.46, tuft=1.0, legs=1.18, fluff=0.14, tail="plain",
@@ -1702,7 +1718,7 @@ NEW_BREEDS = (
             pat="spotted", eye=(198, 182, 92), eyeshape="almond"),
           "busy", "Clears the kitchen counter from a standing start.",
           ("golden spotted", "silver", "charcoal")),
-    Breed("jcrl", "Jungle Curl", R_EXOTIC, "a hybrid programme in Nevada",
+    Breed("jcrl", "Backward Ears", R_EXOTIC, "a hybrid programme in Nevada",
           "The ears go backwards, which takes some getting used to.",
           L(size=1.04, body=1.06, facew=1.06, faceh=0.98, cheek=1.10,
             ear=1.16, earcurl=1.0, legs=0.98, fluff=0.58, tail="plume",
@@ -1718,7 +1734,7 @@ NEW_BREEDS = (
             pat="blotched", eye=(176, 190, 104), eyeshape="round"),
           "warmth", "Finds the one square of sun and stays in it.",
           ("desert tabby", "silver", "fawn")),
-    Breed("soko", "Sokoke", R_EXOTIC, "a forest on the Kenyan coast",
+    Breed("soko", "The Bark Cat", R_EXOTIC, "a forest on the Kenyan coast",
           "Marked like bark, and about as easy to spot against it.",
           L(size=0.98, body=1.12, facew=0.96, faceh=1.00, cheek=0.92,
             ear=1.10, legs=1.14, fluff=0.04, tail="whip",
@@ -1814,8 +1830,222 @@ NEW_BREEDS = (
 )
 
 
+MORE_BREEDS = (
+    # -- ARCHIVE: the copies the company kept -----------------------------
+    Breed("plate", "Plate One", R_ARCHIVE, "the top of the first sheet",
+          "The first cat ever printed, in the corner where the ink ran.",
+          L(size=1.08, body=1.26, facew=1.08, faceh=1.00, cheek=1.08,
+            ear=1.36, legs=0.66, fluff=0.44, tail="kink",
+            coat=(214, 198, 160), mark=(146, 128, 96), belly=(242, 234, 216),
+            pat="tabbywhite", eye=(188, 174, 100), eyeshape="almond"),
+          "lap", "Sits very still, as though being drawn.",
+          ("ink and cream", "silver", "blue")),
+    Breed("museum", "The Museum Copy", R_ARCHIVE, "a drawer in a basement",
+          "Behind glass, in a building with a cloakroom.",
+          L(size=1.22, body=1.12, facew=1.18, faceh=0.92, cheek=1.26,
+            ear=0.76, flat=0.7, legs=0.78, fluff=0.92, tail="plume",
+            coat=(216, 206, 190), mark=(160, 148, 132), belly=(244, 240, 234),
+            pat="smoke", eye=(142, 178, 200), eyeshape="round"),
+          "sleeper", "Settles somewhere and becomes part of the furniture.",
+          ("dust and silver", "blue", "chocolate")),
+    Breed("proof", "The Proof Sheet", R_ARCHIVE, "a printer's bin",
+          "Should have been destroyed. Was not.",
+          L(size=0.94, body=0.88, facew=0.92, faceh=1.14, cheek=0.86,
+            ear=1.38, legs=1.26, fluff=0.10, tail="whip",
+            coat=(238, 232, 212), mark=(88, 84, 80), belly=(248, 246, 240),
+            pat="van", eye=(206, 196, 110), eyeshape="almond"),
+          "shadow", "Appears in rooms you were sure you had shut.",
+          ("off-white", "silver", "charcoal")),
+    Breed("fndr", "The Founder's Cat", R_ARCHIVE, "a photograph on a wall",
+          "Belonged to the man whose name is on the catalogue.",
+          L(size=1.14, body=1.22, facew=1.04, faceh=1.02, cheek=1.02,
+            ear=1.14, legs=0.88, fluff=0.30, tail="bob",
+            coat=(132, 112, 88), mark=(78, 62, 46), belly=(198, 180, 154),
+            pat="ticked", eye=(214, 190, 96), eyeshape="almond",
+            collar=(206, 170, 84)),
+          "climber", "Takes the highest seat in the room without asking.",
+          ("sepia", "brown", "cinnamon")),
+
+    # -- FOUNDATION ------------------------------------------------------
+    Breed("pair", "The Original Pair", R_FOUNDATION, "a crate off a ship",
+          "Two cats in 1903, and everything since.",
+          L(size=1.10, body=1.06, facew=1.12, faceh=0.96, cheek=1.16,
+            ear=0.94, legs=0.92, fluff=0.66, tail="plume",
+            coat=(170, 142, 110), mark=(104, 82, 58), belly=(226, 208, 184),
+            pat="blotched", eye=(170, 190, 120), eyeshape="round"),
+          "warmth", "Picks the warmest corner and holds it against all comers.",
+          ("ship's tabby", "red", "blue")),
+    Breed("linez", "Line Zero", R_FOUNDATION, "before the records start",
+          "Nobody knows where this one came from either.",
+          L(size=0.96, body=0.92, facew=0.94, faceh=1.12, cheek=0.90,
+            ear=1.32, legs=1.22, fluff=0.14, tail="kink",
+            coat=(70, 68, 74), mark=(44, 42, 48), belly=(118, 114, 122),
+            pat="solid", eye=(226, 198, 100), eyeshape="almond"),
+          "shadow", "Walks the edge of every room, once, then settles.",
+          ("pitch", "charcoal", "smoke")),
+    Breed("import", "The First Import", R_FOUNDATION, "a quarantine shed",
+          "Six weeks in a shed and then a hundred years of descendants.",
+          L(size=1.18, body=1.16, facew=1.00, faceh=1.04, cheek=0.98,
+            ear=1.08, legs=1.10, fluff=0.22, tail="plain",
+            coat=(188, 160, 112), mark=(118, 92, 56), belly=(232, 216, 188),
+            pat="spotted", eye=(182, 196, 106), eyeshape="almond"),
+          "hunter", "Treats the hallway as a distance to be covered quickly.",
+          ("harvest", "golden", "silver")),
+
+    # -- HEIRLOOM --------------------------------------------------------
+    Breed("wartime", "The Wartime Card", R_HEIRLOOM, "a tin under a floor",
+          "Printed on the wrong paper because there was no other paper.",
+          L(size=1.00, body=1.10, facew=1.06, faceh=0.98, cheek=1.10,
+            ear=0.88, legs=0.82, fluff=0.48, tail="bob",
+            coat=(158, 146, 124), mark=(100, 92, 76), belly=(214, 206, 190),
+            pat="roan", eye=(164, 182, 128), eyeshape="round"),
+          "sleeper", "Sleeps through everything, which is the point of it.",
+          ("utility grey", "blue", "cream")),
+    Breed("xmas58", "A Christmas Present, 1958", R_HEIRLOOM, "under a tree",
+          "Still has the tape on the back of it.",
+          L(size=0.90, body=0.98, facew=1.16, faceh=0.94, cheek=1.20,
+            ear=1.04, legs=0.76, fluff=0.70, tail="pom",
+            coat=(204, 148, 112), mark=(236, 230, 222), belly=(244, 238, 230),
+            pat="bicolour", eye=(148, 186, 142), eyeshape="round"),
+          "lap", "Arrives on a lap within a minute of anybody sitting down.",
+          ("ribbon red", "cream", "silver")),
+    Breed("framed", "The Framed One", R_HEIRLOOM, "a hallway in Lancashire",
+          "Somebody put this in a frame and hung it in a hall.",
+          L(size=1.16, body=0.94, facew=1.02, faceh=1.06, cheek=0.98,
+            ear=1.20, legs=1.14, fluff=0.84, tail="plume",
+            coat=(124, 134, 152), mark=(78, 86, 104), belly=(194, 202, 216),
+            pat="smoke", eye=(214, 184, 92), eyeshape="almond"),
+          "groomer", "Washes in front of the mirror, which cannot be an accident.",
+          ("hall blue", "silver", "charcoal")),
+
+    # -- LEGEND ----------------------------------------------------------
+    Breed("frostc", "The Frost Cat", R_LEGEND, "a hallway in 1981",
+          "An accident between two pedigrees that turned out beautifully.",
+          L(size=1.02, body=1.00, facew=1.12, faceh=0.96, cheek=1.14,
+            ear=0.92, legs=0.94, fluff=0.62, tail="plume",
+            coat=(230, 228, 222), mark=(140, 138, 142), belly=(246, 246, 244),
+            pat="smoke", eye=(150, 194, 136), eyeshape="round"),
+          "groomer", "Sits where the light catches the tipping.",
+          ("silver tipped", "golden", "chocolate")),
+    Breed("chartreux", "The Blue Monk", R_LEGEND, "a monastery in France",
+          "Blue, smiling, and entirely silent about it.",
+          L(size=1.12, body=1.20, facew=1.20, faceh=0.90, cheek=1.28,
+            ear=0.80, legs=0.78, fluff=0.28, tail="plain",
+            coat=(132, 146, 160), mark=(96, 108, 122), belly=(190, 202, 214),
+            pat="solid", eye=(222, 178, 86), eyeshape="round"),
+          "lap", "Follows you from room to room and says nothing at all.",
+          ("monastery blue", "silver", "charcoal")),
+    Breed("ussuri", "Ussuri", R_LEGEND, "the Amur river",
+          "Barely a domestic cat and does not pretend otherwise.",
+          L(size=1.20, body=1.14, facew=0.96, faceh=1.08, cheek=0.90,
+            ear=1.26, legs=1.24, fluff=0.18, tail="whip",
+            coat=(158, 134, 98), mark=(88, 70, 48), belly=(212, 196, 170),
+            pat="blotched", eye=(196, 186, 92), eyeshape="almond"),
+          "hunter", "Patrols the far end of the room and watches the near one.",
+          ("river tabby", "brown", "silver")),
+
+    # -- CHAMPION --------------------------------------------------------
+    Breed("bakery", "The Bakery Cat", R_CHAMPION, "behind a bread counter",
+          "Round, tailless, and warm from standing near the ovens.",
+          L(size=1.06, body=1.08, facew=1.14, faceh=0.94, cheek=1.20,
+            ear=0.84, legs=0.80, fluff=0.90, tail="none",
+            coat=(176, 160, 136), mark=(112, 100, 82), belly=(228, 218, 202),
+            pat="tabby", eye=(176, 188, 110), eyeshape="round"),
+          "warmth", "Rounds itself off on the warmest surface available.",
+          ("flour tabby", "red", "blue")),
+    Breed("orchard", "The Orchard Cat", R_CHAMPION, "under the apple trees",
+          "Short at the back and convinced it is something wilder.",
+          L(size=1.14, body=1.30, facew=1.08, faceh=0.98, cheek=1.12,
+            ear=1.16, tuft=0.9, legs=0.62, fluff=0.40, tail="bob",
+            coat=(150, 126, 96), mark=(90, 72, 52), belly=(206, 188, 164),
+            pat="spotted", eye=(182, 174, 100), eyeshape="almond"),
+          "busy", "Carries things from room to room with no plan for them.",
+          ("orchard tabby", "silver", "cinnamon")),
+    Breed("tiffanie", "Tiffanie", R_CHAMPION, "a London breeder",
+          "A Burmilla that kept growing its coat.",
+          L(size=1.00, body=1.10, facew=1.06, faceh=1.02, cheek=1.04,
+            ear=1.40, legs=0.68, fluff=0.96, tail="pom",
+            coat=(198, 168, 124), mark=(132, 104, 70), belly=(236, 222, 200),
+            pat="ticked", eye=(166, 192, 124), eyeshape="round"),
+          "groomer", "Spends most of the evening on the coat.",
+          ("apricot", "chocolate", "blue")),
+
+    # -- PEDIGREE --------------------------------------------------------
+    Breed("javanese", "Javanese", R_PEDIGREE, "a cattery in Ontario",
+          "A Siamese that went the long way round.",
+          L(size=0.98, body=0.88, facew=0.90, faceh=1.16, cheek=0.84,
+            ear=1.34, legs=1.18, fluff=0.52, tail="plume",
+            coat=(228, 216, 192), mark=(112, 92, 86), belly=(244, 238, 228),
+            pat="point", eye=(120, 172, 206), eyeshape="almond"),
+          "busy", "Talks the whole way across the room and back.",
+          ("red point", "charcoal", "silver")),
+    Breed("orilong", "Oriental Longhair", R_PEDIGREE, "an English cattery",
+          "Angles, mostly, with a tail on the end.",
+          L(size=1.04, body=0.86, facew=0.88, faceh=1.18, cheek=0.82,
+            ear=1.42, legs=1.28, fluff=0.60, tail="plume",
+            coat=(146, 124, 102), mark=(92, 76, 62), belly=(204, 188, 170),
+            pat="ticked", eye=(150, 196, 122), eyeshape="almond"),
+          "climber", "Is on top of the wardrobe. It was always going to be.",
+          ("havana", "silver", "lilac")),
+    Breed("singa", "The Drain Cat", R_PEDIGREE, "a storm drain in Singapore",
+          "The smallest cat in the book and the loudest about it.",
+          L(size=0.72, body=0.94, facew=1.08, faceh=1.00, cheek=1.04,
+            ear=1.30, legs=0.88, fluff=0.12, tail="plain",
+            coat=(206, 182, 146), mark=(138, 112, 80), belly=(238, 226, 206),
+            pat="ticked", eye=(176, 190, 112), eyeshape="round"),
+          "lap", "Sits on the one thing you were about to pick up.",
+          ("sepia agouti", "ivory", "fawn")),
+
+    # -- EXOTIC ----------------------------------------------------------
+    Breed("bare", "The Bare One", R_EXOTIC, "a draughty flat",
+          "No coat at all, and warmer than anything that has one.",
+          L(size=1.00, body=1.04, facew=1.10, faceh=0.98, cheek=1.06,
+            ear=1.36, legs=1.04, fluff=0.0, skin=1.0, curl=0.0, tail="whip",
+            coat=(206, 168, 158), mark=(170, 130, 122), belly=(224, 194, 186),
+            pat="solid", eye=(160, 186, 150), eyeshape="almond"),
+          "warmth", "Is under the blanket. Was always under the blanket.",
+          ("bare pink", "charcoal", "blue")),
+    Breed("kinka", "The Low One", R_EXOTIC, "a breeder's experiment",
+          "Short legs, curled ears, and no apparent downside.",
+          L(size=0.80, body=1.10, facew=1.10, faceh=0.96, cheek=1.12,
+            ear=1.08, earcurl=1.0, legs=0.58, fluff=0.34, tail="plain",
+            coat=(142, 132, 124), mark=(88, 80, 74), belly=(202, 194, 186),
+            pat="tabby", eye=(178, 186, 124), eyeshape="round"),
+          "busy", "Gets everywhere, slowly, and arrives pleased.",
+          ("mushroom", "silver", "red")),
+
+    # -- RARE ------------------------------------------------------------
+    Breed("anatol", "Anatolian", R_RARE, "the shore of Lake Van",
+          "Swims, which nobody asked it to do.",
+          L(size=1.08, body=1.02, facew=1.00, faceh=1.02, cheek=1.00,
+            ear=1.12, legs=1.06, fluff=0.44, tail="plume",
+            coat=(240, 236, 230), mark=(188, 182, 174), belly=(248, 246, 244),
+            pat="van", eye=(152, 188, 198), eyeshape="almond"),
+          "hunter", "Is in the bath. There is no water in it, but still.",
+          ("van white", "red", "silver")),
+    Breed("stool", "The Footstool", R_RARE, "in front of the fire",
+          "Bald and short-legged, and entirely untroubled by either.",
+          L(size=0.76, body=1.14, facew=1.06, faceh=1.00, cheek=1.08,
+            ear=1.28, legs=0.56, fluff=0.0, skin=1.0, tail="plain",
+            coat=(212, 176, 166), mark=(176, 138, 130), belly=(230, 202, 194),
+            pat="solid", eye=(170, 180, 142), eyeshape="round"),
+          "warmth", "Sits on the radiator shelf like a loaf proving.",
+          ("bare cream", "charcoal", "red")),
+
+    # -- UNCOMMON --------------------------------------------------------
+    Breed("pillow", "The Pillow Cat", R_UNCOMMON, "the spare room",
+          "Folded ears on a round face, which is a lot of round.",
+          L(size=0.96, body=1.06, facew=1.22, faceh=0.90, cheek=1.26,
+            ear=0.92, fold=1.0, legs=0.82, fluff=0.56, tail="plain",
+            coat=(186, 170, 148), mark=(124, 110, 92), belly=(232, 222, 206),
+            pat="tabby", eye=(166, 184, 136), eyeshape="round"),
+          "sleeper", "Folds up on the nearest soft thing and stays folded.",
+          ("oatmeal", "blue", "cream")),
+)
+
+
 # The book, in tier order, which is the order the binder reads in.
-BREEDS = tuple(sorted(BREEDS + _build_more() + NEW_BREEDS,
+BREEDS = tuple(sorted(BREEDS + _build_more() + NEW_BREEDS + MORE_BREEDS,
                       key=lambda b: (b.rarity, b.name)))
 
 
@@ -2114,6 +2344,70 @@ KITTENS = (
             pat="blotched", eye=(200, 178, 88), eyeshape="almond"),
           "busy", "Has already done whatever you were about to stop it doing.",
           ("copper tabby", "red", "charcoal")),
+    Breed("plate2", "Plate One, Reprinted", R_ARCHIVE, "the second sheet",
+          "They ran it again, smaller, and nobody has forgiven them.",
+          L(size=0.76, body=0.98, facew=1.14, faceh=0.96, cheek=1.10,
+            ear=0.98, legs=0.78, fluff=0.50, tail="plain",
+            coat=(220, 206, 172), mark=(152, 136, 106), belly=(244, 238, 222),
+            pat="tabbywhite", eye=(184, 172, 104), eyeshape="round"),
+          "lap", "Sits in the middle of whatever is being read.",
+          ("ink and cream", "blue", "silver")),
+    Breed("ffoal", "The Foundation Kitten", R_FOUNDATION, "a line being started",
+          "Everything after this one is descended from it.",
+          L(size=0.88, body=1.06, facew=1.00, faceh=1.08, cheek=0.96,
+            ear=1.30, legs=0.94, fluff=0.20, tail="plain",
+            coat=(176, 148, 104), mark=(104, 80, 50), belly=(226, 208, 180),
+            pat="spotted", eye=(196, 190, 100), eyeshape="almond"),
+          "climber", "Is already on the shelf you were going to use.",
+          ("harvest", "silver", "red")),
+    Breed("legk", "The Prizewinner's Kitten", R_LEGEND, "a cardboard box at a show",
+          "Eight weeks old with a rosette already pinned to the box.",
+          L(size=0.92, body=0.90, facew=1.04, faceh=1.06, cheek=1.00,
+            ear=1.12, legs=1.10, fluff=0.78, tail="plume",
+            coat=(222, 194, 146), mark=(146, 112, 68), belly=(244, 232, 210),
+            pat="tabbywhite", eye=(182, 198, 116), eyeshape="almond"),
+          "groomer", "Washes in front of anybody who stops to look.",
+          ("rosette gold", "cream", "chocolate")),
+    Breed("pedk", "The Papers Kitten", R_PEDIGREE, "a folder of documents",
+          "Came with more paperwork than a car.",
+          L(size=0.82, body=0.90, facew=0.92, faceh=1.18, cheek=0.86,
+            ear=1.38, legs=1.02, fluff=0.40, tail="whip",
+            coat=(226, 212, 190), mark=(104, 86, 80), belly=(242, 236, 226),
+            pat="point", eye=(126, 176, 208), eyeshape="almond"),
+          "busy", "Has opinions and shares all of them.",
+          ("seal point", "blue", "silver")),
+    Breed("rark", "The Shy One", R_RARE, "behind the boiler",
+          "Took three weeks to come out and has not gone back.",
+          L(size=0.78, body=1.16, facew=1.02, faceh=1.04, cheek=0.98,
+            ear=0.86, legs=0.66, fluff=0.54, tail="bob",
+            coat=(96, 92, 100), mark=(60, 58, 64), belly=(152, 148, 158),
+            pat="roan", eye=(160, 198, 150), eyeshape="round"),
+          "shadow", "Watches from under something, and will not be moved.",
+          ("slate", "charcoal", "blue")),
+    Breed("unck", "The Noisy One", R_UNCOMMON, "the top of the stairs",
+          "Found the stairs. Has told the whole house about the stairs.",
+          L(size=0.72, body=0.88, facew=1.00, faceh=1.14, cheek=0.90,
+            ear=1.40, legs=0.86, fluff=0.16, tail="kink",
+            coat=(150, 140, 130), mark=(94, 88, 82), belly=(206, 198, 190),
+            pat="ticked", eye=(166, 190, 132), eyeshape="almond"),
+          "busy", "Announces the stairs again.",
+          ("stair grey", "red", "cream")),
+    Breed("heirk", "The Hand-Me-Down", R_HEIRLOOM, "a second-hand basket",
+          "Came with the basket, which came with the house.",
+          L(size=0.86, body=1.04, facew=1.18, faceh=0.92, cheek=1.22,
+            ear=0.80, legs=0.72, fluff=0.92, tail="pom",
+            coat=(206, 192, 170), mark=(150, 136, 114), belly=(240, 234, 224),
+            pat="smoke", eye=(150, 182, 164), eyeshape="round"),
+          "sleeper", "Sleeps in the basket it arrived in and nowhere else.",
+          ("old wool", "blue", "cream")),
+    Breed("exok", "The Odd One Out", R_EXOTIC, "a litter of ordinary cats",
+          "Nobody can account for the ears.",
+          L(size=0.84, body=1.02, facew=1.04, faceh=0.98, cheek=1.00,
+            ear=1.44, earcurl=1.0, legs=0.96, fluff=0.22, tail="bob",
+            coat=(164, 140, 112), mark=(100, 82, 62), belly=(216, 200, 178),
+            pat="blotched", eye=(188, 180, 108), eyeshape="almond"),
+          "hunter", "Hears the tin opening from two rooms away.",
+          ("toast", "silver", "charcoal")),
     Breed("first", "The First Litter", R_FOUNDATION, "the beginning of a line",
           "Every cat in the catalogue goes back to one of these.",
           L(size=0.86, body=1.18, facew=1.12, faceh=1.06, cheek=1.10,
@@ -2124,12 +2418,295 @@ KITTENS = (
           "Behaves as though the flat has always belonged to it.",
           ("old gold", "silver", "cinnamon")),
 )
+# ---------------------------------------------------------------------------
+# THE THIRD SERIES: THE WORKING CATS
+#
+# Cats with jobs. Announced when the kittens are all in, the same way the
+# kittens were announced when the catalogue was.
+# ---------------------------------------------------------------------------
+WORKING = (
+    Breed("ship", "The Ship's Cat", R_COMMON, "a cargo deck",
+          "Signed on at Rotterdam and has not been ashore since.",
+          L(size=1.04, body=1.14, facew=1.02, faceh=0.98, cheek=1.06,
+            ear=1.00, legs=0.94, fluff=0.24, tail="plain",
+            coat=(128, 124, 118), mark=(80, 78, 74), belly=(192, 188, 182),
+            pat="tabbywhite", eye=(150, 180, 190), eyeshape="almond"),
+          "busy", "Walks the whole flat twice before settling anywhere.",
+          ("deck grey", "black and white", "red")),
+    Breed("mill", "The Mill Cat", R_COMMON, "between the looms",
+          "Deaf as a post, which in a mill is an advantage.",
+          L(size=0.98, body=1.08, facew=1.16, faceh=0.92, cheek=1.22,
+            ear=0.78, legs=0.80, fluff=0.60, tail="pom",
+            coat=(196, 186, 170), mark=(132, 124, 110), belly=(234, 228, 218),
+            pat="solid", eye=(132, 170, 196), eyeshape="round"),
+          "sleeper", "Sleeps through everything, including you.",
+          ("cotton white", "cream", "silver")),
+    Breed("pub", "The Pub Cat", R_UNCOMMON, "the end of the bar",
+          "Has a stool. Nobody else sits on the stool.",
+          L(size=1.14, body=1.24, facew=1.20, faceh=0.90, cheek=1.28,
+            ear=0.82, legs=0.76, fluff=0.34, tail="plain",
+            coat=(178, 136, 92), mark=(116, 82, 48), belly=(228, 206, 178),
+            pat="tabby", eye=(176, 186, 104), eyeshape="round"),
+          "glutton", "Appears whenever anything is unwrapped.",
+          ("bitter brown", "red", "cream")),
+    Breed("signal", "The Signal Box Cat", R_UNCOMMON, "beside the levers",
+          "Knows the timetable better than the man who works there.",
+          L(size=0.96, body=0.92, facew=1.24, faceh=0.88, cheek=1.30,
+            ear=0.74, legs=1.18, fluff=0.90, tail="whip",
+            coat=(104, 108, 114), mark=(64, 68, 74), belly=(168, 172, 178),
+            pat="ticked", eye=(206, 188, 92), eyeshape="almond"),
+          "climber", "Sits where it can see the door and the window at once.",
+          ("signal grey", "black", "silver")),
+    Breed("church", "The Church Cat", R_RARE, "the back of the nave",
+          "Attends everything. Contributes nothing.",
+          L(size=1.08, body=1.00, facew=1.06, faceh=1.04, cheek=1.04,
+            ear=0.90, legs=0.96, fluff=0.88, tail="plume",
+            coat=(70, 68, 72), mark=(44, 42, 46), belly=(124, 120, 126),
+            pat="solid", eye=(180, 200, 150), eyeshape="round"),
+          "groomer", "Washes in the quietest corner of the room.",
+          ("vestry black", "charcoal", "blue")),
+    Breed("bodega", "The Bodega Cat", R_RARE, "on top of the crisps",
+          "Lives on the counter and is the reason there are no mice.",
+          L(size=0.88, body=1.18, facew=1.10, faceh=0.94, cheek=1.14,
+            ear=1.20, legs=0.70, fluff=0.18, tail="kink",
+            coat=(202, 158, 102), mark=(134, 96, 54), belly=(236, 218, 190),
+            pat="blotched", eye=(184, 180, 100), eyeshape="round"),
+          "hunter", "Sits on whatever is for sale.",
+          ("shop ginger", "cream", "silver")),
+    Breed("light", "The Lighthouse Cat", R_EXOTIC, "ninety-two steps up",
+          "Goes up at dusk and comes down at dawn, every day, for years.",
+          L(size=1.20, body=0.88, facew=0.92, faceh=1.14, cheek=0.86,
+            ear=1.30, legs=1.36, fluff=0.42, tail="plume",
+            coat=(226, 220, 208), mark=(150, 144, 136), belly=(244, 242, 236),
+            pat="van", eye=(140, 184, 204), eyeshape="almond"),
+          "climber", "Is at the top of something. Always.",
+          ("lamp white", "silver", "blue")),
+    Breed("theatre", "The Theatre Cat", R_PEDIGREE, "the wings, stage left",
+          "Walks on during the second act. Every night. On purpose.",
+          L(size=1.02, body=0.94, facew=1.00, faceh=1.08, cheek=0.98,
+            ear=1.14, legs=1.10, fluff=0.76, tail="plume",
+            coat=(142, 118, 148), mark=(90, 72, 96), belly=(206, 190, 210),
+            pat="smoke", eye=(214, 190, 96), eyeshape="almond"),
+          "busy", "Crosses the room at the least convenient moment.",
+          ("curtain mauve", "charcoal", "silver")),
+    Breed("hotel", "The Hotel Cat", R_PEDIGREE, "the lobby, by the fire",
+          "On the register. Has a room number.",
+          L(size=1.16, body=1.06, facew=1.18, faceh=0.92, cheek=1.24,
+            ear=0.80, legs=0.84, fluff=0.94, tail="plume",
+            coat=(214, 192, 158), mark=(148, 124, 92), belly=(242, 232, 214),
+            pat="tabbywhite", eye=(160, 192, 128), eyeshape="round",
+            collar=(206, 170, 84)),
+          "lap", "Chooses the best seat in the room and keeps it warm.",
+          ("lobby gold", "cream", "chocolate")),
+    Breed("brew", "The Brewery Cat", R_CHAMPION, "between the barrels",
+          "Three hundred years of these, in a row, in that cellar.",
+          L(size=1.10, body=1.28, facew=1.08, faceh=0.96, cheek=1.12,
+            ear=1.06, legs=0.74, fluff=0.28, tail="bob",
+            coat=(118, 96, 76), mark=(70, 56, 42), belly=(182, 164, 144),
+            pat="roan", eye=(190, 178, 96), eyeshape="almond"),
+          "shadow", "Keeps to the dark end and watches the lit one.",
+          ("cellar brown", "black", "silver")),
+    Breed("station", "The Station Cat", R_LEGEND, "platform two",
+          "Has a plaque. Had a funeral. Has a successor.",
+          L(size=1.06, body=0.84, facew=1.12, faceh=0.96, cheek=1.18,
+            ear=0.72, legs=1.32, fluff=0.96, tail="pom",
+            coat=(160, 146, 122), mark=(98, 88, 70), belly=(220, 210, 192),
+            pat="tabby", eye=(198, 186, 100), eyeshape="round",
+            collar=(170, 170, 176)),
+          "lap", "Greets everybody who comes in, then goes back to sleep.",
+          ("platform tabby", "silver", "red")),
+    Breed("market", "The Market Cat", R_HEIRLOOM, "under the fish stall",
+          "Every trader says it is theirs. It is nobody's.",
+          L(size=1.22, body=1.16, facew=1.00, faceh=1.02, cheek=1.00,
+            ear=1.28, legs=1.14, fluff=0.20, tail="whip",
+            coat=(186, 170, 140), mark=(112, 100, 78), belly=(230, 222, 204),
+            pat="spotted", eye=(176, 194, 110), eyeshape="almond"),
+          "glutton", "Is wherever food has most recently been opened.",
+          ("market tabby", "red", "charcoal")),
+)
+
+
+# ---------------------------------------------------------------------------
+# THE FOURTH SERIES: THE OLD GUARD
+#
+# Cats that have been at it a long time. The last series the company has
+# in it, and the one it charges most for.
+# ---------------------------------------------------------------------------
+OLD_GUARD = (
+    Breed("threeleg", "The Three-Legged One", R_RARE, "a bad winter, years ago",
+          "Manages perfectly well and would rather not discuss it.",
+          L(size=1.00, body=1.30, facew=1.22, faceh=0.88, cheek=1.28,
+            ear=0.74, legs=0.60, fluff=0.30, tail="bob",
+            coat=(146, 138, 128), mark=(92, 86, 80), belly=(204, 198, 190),
+            pat="blotched", eye=(168, 186, 120), eyeshape="round"),
+          "sleeper", "Picks one spot a day and commits to it.",
+          ("weathered tabby", "silver", "blue")),
+    Breed("deaf", "The Deaf One", R_RARE, "a quiet house",
+          "Has not heard a tin open in four years and still knows.",
+          L(size=1.06, body=0.96, facew=1.22, faceh=0.90, cheek=1.26,
+            ear=0.72, legs=0.86, fluff=0.82, tail="plume",
+            coat=(240, 238, 234), mark=(196, 194, 190), belly=(249, 248, 246),
+            pat="solid", eye=(138, 180, 200), eyeshape="round"),
+          "glutton", "Arrives at the bowl before anybody has touched it.",
+          ("old white", "cream", "silver")),
+    Breed("ear", "The One With The Ear", R_EXOTIC, "a disagreement in 2009",
+          "Won, by all accounts.",
+          L(size=1.12, body=1.22, facew=1.14, faceh=0.92, cheek=1.26,
+            ear=0.88, legs=0.82, fluff=0.16, tail="kink",
+            coat=(116, 112, 106), mark=(70, 68, 64), belly=(176, 172, 166),
+            pat="ticked", eye=(204, 180, 88), eyeshape="almond"),
+          "shadow", "Walks the edges at night, checking.",
+          ("scar grey", "black", "red")),
+    Breed("mouser", "The Retired Mouser", R_PEDIGREE, "a barn, formerly",
+          "Did forty years of it. Does not intend to do any more.",
+          L(size=1.18, body=1.26, facew=1.10, faceh=0.96, cheek=1.16,
+            ear=1.02, legs=0.70, fluff=0.44, tail="plain",
+            coat=(154, 126, 94), mark=(94, 74, 52), belly=(212, 194, 170),
+            pat="tabby", eye=(182, 190, 102), eyeshape="round"),
+          "warmth", "Lies by the warmest thing and watches the mice go by.",
+          ("barn tabby", "silver", "cream")),
+    Breed("twenty", "The Twenty-Year-Old", R_CHAMPION, "the same chair, since 2005",
+          "Older than the chair. Older than the house, nearly.",
+          L(size=0.94, body=1.04, facew=1.18, faceh=0.94, cheek=1.22,
+            ear=0.84, legs=0.74, fluff=0.90, tail="plume",
+            coat=(212, 206, 196), mark=(158, 152, 142), belly=(242, 240, 236),
+            pat="smoke", eye=(170, 190, 150), eyeshape="round"),
+          "sleeper", "Has not moved. Will not move. Is fine.",
+          ("frosted", "blue", "cream")),
+    Breed("slow", "The Slow Walk", R_CHAMPION, "the length of the hall",
+          "Gets there. Takes its time about it.",
+          L(size=1.08, body=1.30, facew=1.04, faceh=1.00, cheek=1.08,
+            ear=1.10, legs=0.64, fluff=0.36, tail="plain",
+            coat=(132, 118, 104), mark=(82, 72, 62), belly=(196, 184, 170),
+            pat="roan", eye=(176, 188, 128), eyeshape="almond"),
+          "lap", "Arrives eventually and stays once it has.",
+          ("ash tabby", "charcoal", "red")),
+    Breed("remember", "The One Who Remembers", R_LEGEND, "the old flat",
+          "Still goes to where the radiator used to be.",
+          L(size=1.02, body=0.90, facew=0.96, faceh=1.14, cheek=0.90,
+            ear=1.26, legs=1.20, fluff=0.68, tail="plume",
+            coat=(96, 104, 120), mark=(60, 66, 80), belly=(164, 174, 190),
+            pat="smoke", eye=(214, 186, 94), eyeshape="almond"),
+          "shadow", "Sits in a spot that used to be warm.",
+          ("memory blue", "charcoal", "silver")),
+    Breed("winter", "The Last Winter", R_HEIRLOOM, "a cold February",
+          "Everybody thought that was it. It was not.",
+          L(size=1.14, body=1.08, facew=1.16, faceh=0.94, cheek=1.20,
+            ear=0.78, legs=0.92, fluff=0.96, tail="plume",
+            coat=(222, 226, 232), mark=(164, 170, 180), belly=(246, 248, 250),
+            pat="smoke", eye=(148, 186, 196), eyeshape="round"),
+          "warmth", "Finds the radiator within seconds of arriving anywhere.",
+          ("hoarfrost", "blue", "silver")),
+    Breed("sun", "The Sunbather", R_FOUNDATION, "wherever the light is",
+          "Has followed the sun round one room for fifteen years.",
+          L(size=1.10, body=1.18, facew=1.12, faceh=0.94, cheek=1.18,
+            ear=0.90, legs=0.80, fluff=0.50, tail="plain",
+            coat=(222, 180, 118), mark=(152, 112, 62), belly=(242, 226, 198),
+            pat="tabby", eye=(198, 190, 104), eyeshape="round"),
+          "warmth", "Moves four times a day, with the light, and no further.",
+          ("sunlit", "blue", "charcoal")),
+    Breed("grand", "Grandmother", R_ARCHIVE, "four generations back",
+          "Everything in the cat room is descended from this one.",
+          L(size=1.24, body=1.12, facew=1.24, faceh=0.88, cheek=1.30,
+            ear=0.74, flat=0.5, legs=0.76, fluff=0.98, tail="plume",
+            coat=(200, 190, 176), mark=(142, 134, 122), belly=(238, 234, 228),
+            pat="tortie", eye=(176, 196, 142), eyeshape="round",
+            collar=(206, 170, 84)),
+          "lap", "Sits in the middle of the room and lets it happen round her.",
+          ("old tortie", "cream", "blue")),
+)
+
 KITTEN_BY_RARITY = tuple(tuple(b for b in KITTENS if b.rarity == r)
                          for r in range(SOLD_RARITIES))
 KITTEN_KEYS = frozenset(b.key for b in KITTENS)
 
 
-ALL_BREEDS = BREEDS + SECRETS + EXPO_BREEDS + KITTENS
+class Series:
+    """One collection: a set of cats, a shelf in the shop, and the series
+    that has to be finished before it is announced.
+
+    This started as `if series == "kitten" else`, in four places, which
+    was fine for two collections and is the wrong shape for four.
+    Everything that walks a collection - rolling a card, retiring a
+    breed, deciding whether a product is still worth selling, drawing
+    the binder - reads this.
+    """
+    __slots__ = ("key", "name", "cats", "by_rarity", "keys", "after",
+                 "shelf", "blurb", "news")
+
+    def __init__(self, key, name, cats, after=None, shelf=None, blurb="",
+                 news=()):
+        self.key = key
+        self.name = name
+        self.cats = cats
+        self.after = after          # the series that unlocks this one
+        self.shelf = shelf          # its page in the shop, if it has one
+        self.blurb = blurb
+        self.news = news            # the three screens that announce it
+        self.by_rarity = tuple(tuple(b for b in cats if b.rarity == r)
+                               for r in range(SOLD_RARITIES))
+        self.keys = frozenset(b.key for b in cats)
+
+
+SERIES_TAB = {"kitten": "KITTENS", "working": "WORKING CATS",
+              "old": "OLD GUARD"}
+
+SERIES = (
+    Series("cat", "the catalogue", BREEDS, shelf="standard",
+           blurb="The book itself."),
+    Series("kitten", "the Kitten Series", KITTENS, after="cat",
+           shelf="kitten",
+           blurb="Twelve - and then some - new cards, none of them in the "
+                 "old book.",
+           news=(("A hundred of a hundred.",
+                  "Every breed in the catalogue, in a binder, on a desk, in "
+                  "a flat you have nearly paid for. There is nothing left "
+                  "in the book to find."),
+                 ("MEOWRDER would like a word.",
+                  "The email came at nine minutes past midnight, which is "
+                  "when these things are sent. They have been working on "
+                  "something. They are very excited about it. They would "
+                  "like you to be excited about it too."),
+                 ("The Kitten Series.",
+                  "New cards, none of them in the old book, and a page on "
+                  "the website that was not there this morning. You know "
+                  "exactly what this is. You are going to buy them "
+                  "anyway."))),
+    Series("working", "the Working Cats", WORKING, after="kitten",
+           shelf="working",
+           blurb="Cats with jobs. Every one of them is somebody's, and "
+                 "none of them is anybody's.",
+           news=(("Every kitten, in the book.",
+                  "Two collections finished, and the second one took longer "
+                  "than the first, which they will have known it would."),
+                 ("They have sent another email.",
+                  "Same hour, same tone, a different font. There is a "
+                  "phrase in the second paragraph about honouring the cats "
+                  "that work for a living, and underneath it a price."),
+                 ("The Working Cats.",
+                  "A ship's cat, a mill cat, a cat with a plaque on "
+                  "platform two. Twelve cards about labour, sold at a "
+                  "margin."))),
+    Series("old", "the Old Guard", OLD_GUARD, after="working",
+           shelf="old",
+           blurb="Cats that have been at it a long time, on the thickest "
+                 "card the company has ever cut.",
+           news=(("Three collections, finished.",
+                  "The binder does not shut properly any more. You have "
+                  "stopped trying to make it."),
+                 ("The last one, they say.",
+                  "They have said that before. This time the email is "
+                  "shorter, and there is a photograph of an old cat in a "
+                  "chair, and it is quite hard to be cynical about it."),
+                 ("The Old Guard.",
+                  "Ten cats that have done their time, on card you could "
+                  "stand a cup on. They are not cheap and nobody pretends "
+                  "they are."))),
+)
+BY_SERIES = {x.key: x for x in SERIES}
+
+ALL_BREEDS = (BREEDS + SECRETS + EXPO_BREEDS + KITTENS + WORKING
+              + OLD_GUARD)
 BY_KEY = {b.key: b for b in ALL_BREEDS}
 # The two counters on the binder used to be "everything that is not a
 # stray" and "the strays". A third kind of cat that is neither breaks
@@ -3562,40 +4139,40 @@ class Pack:
 
 
 PACKS = (
-    Pack("sack", "Paper Sack of Strays", 10, 2, (86, 13, 1, 0, 0, 0, 0, 0, 0), 25,
+    Pack("sack", "Paper Sack of Strays", 10, 2, (86, 13, 1, 0, 0, 0, 0, 0, 0, 0), 25,
          R_COMMON,
          "Two cards in a paper sack, folded over twice and stapled. "
          "Mostly the cats you could meet on the way to the shop.",
          (("vastly better than the bin it came from", 4),
           ("one was damp. still a cat.", 3))),
-    Pack("box", "Shelf Box", 25, 3, (56, 33, 10, 4, 1, 0, 0, 0, 0), 55,
+    Pack("box", "Shelf Box", 25, 3, (56, 33, 10, 4, 1, 0, 0, 0, 0, 0), 55,
          R_COMMON,
          "Three cards in a proper box with a window in the lid. The kind "
          "of thing a corner shop keeps by the till.",
          (("the lid window is a nice touch", 5),
           ("got a Russian Blue first go. no notes.", 5),
           ("three commons. the dice do what they like.", 3))),
-    Pack("case", "Pedigree Case", 85, 5, (30, 37, 24, 11, 7, 1, 1, 0, 0), 90,
+    Pack("case", "Pedigree Case", 85, 5, (30, 37, 24, 11, 7, 1, 1, 0, 0, 0), 90,
          R_UNCOMMON,
          "Five cards in a hinged case with a felt tray, and a guarantee "
          "printed inside the lid: nothing in here is quite ordinary.",
          (("the felt smells like a library", 5),
           ("bought six. opened six. no regrets, slight debt.", 4))),
-    Pack("crate", "Breeders Crate", 250, 9, (10, 32, 34, 18, 16, 5, 3, 1, 0), 140,
+    Pack("crate", "Breeders Crate", 250, 9, (10, 32, 34, 18, 16, 5, 3, 1, 0, 0), 140,
          R_RARE,
          "Nine cards, wood wool, and a crowbar you are expected to own. "
          "One card in here is rare or better. It says so on the lid.",
          (("arrived with actual straw in it", 5),
           ("my Bengal came out of one of these", 5),
           ("the crowbar is not included, which they do say", 4))),
-    Pack("lot", "The Estate Lot", 600, 15, (0, 17, 34, 22, 26, 12, 10, 4, 1), 200,
+    Pack("lot", "The Estate Lot", 600, 15, (0, 17, 34, 22, 26, 12, 10, 4, 1, 0), 200,
          R_PEDIGREE,
          "Fifteen cards from a collection being broken up. No commons at "
          "all, and the last card is pedigree or legend. Sold as seen.",
          (("the whole binder in four orders. rude.", 5),
           ("Khao Manee. I had to sit down.", 5),
           ("expensive. correct, but expensive.", 4))),
-    Pack("shelf", "The Whole Shelf", 1500, 34, (0, 10, 30, 21, 28, 16, 14, 6, 2), 300,
+    Pack("shelf", "The Whole Shelf", 1500, 34, (0, 10, 30, 21, 28, 16, 14, 6, 2, 1), 300,
          R_PEDIGREE,
          "Somebody has died and the whole shelf is being sold in one go. "
          "Thirty-four cards, nothing ordinary in it, and a long wait.",
@@ -3604,13 +4181,13 @@ PACKS = (
           ("the box is enormous. the cat sleeps in it now.", 5))),
 
     # ---- the other page: four things that are not on the ladder -------
-    Pack("bin", "The Returns Bin", 60, 8, (62, 38, 0, 0, 0, 0, 0, 0, 0), 70, R_COMMON,
+    Pack("bin", "The Returns Bin", 60, 8, (62, 38, 0, 0, 0, 0, 0, 0, 0, 0), 70, R_COMMON,
          "Eight cards somebody else sent back. Ordinary cats, by the "
          "handful, and nothing above uncommon has ever been found in one.",
          (("it is exactly what it says it is", 4),
           ("six domestic shorthairs. I needed six domestic shorthairs.", 5)),
          shelf="special"),
-    Pack("swatch", "The Swatch Book", 450, 6, (26, 34, 22, 12, 10, 4, 3, 1, 1), 120,
+    Pack("swatch", "The Swatch Book", 450, 6, (26, 34, 22, 12, 10, 4, 3, 1, 1, 0), 120,
          R_UNCOMMON,
          "Six cards chosen for their COLOUR. The house picks coats you "
          "have not seen before, wherever it still can.",
@@ -3618,14 +4195,14 @@ PACKS = (
           ("the only way I finished the Ragdoll page", 5),
           ("pricey for what it is, unless you need what it is", 4)),
          shelf="special", fresh_coats=True),
-    Pack("odd", "The Oddity Crate", 900, 4, (10, 26, 30, 17, 18, 8, 7, 3, 1), 150, R_RARE,
+    Pack("odd", "The Oddity Crate", 900, 4, (10, 26, 30, 17, 18, 8, 7, 3, 1, 0), 150, R_RARE,
          "Four cards the sorters set aside and could not say why. Shinies "
          "turn up in here eight times as often as they do anywhere else.",
          (("two shinies out of nine crates. I am not complaining.", 5),
           ("nine crates.", 3),
           ("my snow Bengal came out of one of these", 5)),
          shelf="special", shiny_mult=8.0),
-    Pack("single", "The Single", 1800, 1, (0, 0, 0, 0, 0, 0, 9, 4, 1), 180, R_LEGEND,
+    Pack("single", "The Single", 1800, 1, (0, 0, 0, 0, 0, 0, 9, 4, 1, 0), 180, R_LEGEND,
          "One card in a stiff sleeve, and it is a legend. Which legend is "
          "not something the shop is prepared to discuss beforehand.",
          (("expensive. certain. I have bought four.", 5),
@@ -3635,14 +4212,14 @@ PACKS = (
 BY_PACK = {p.key: p for p in PACKS}
 KITTEN_PACKS = (
     Pack("kstart", "The Kitten Series Starter", 1200, 6,
-         (54, 28, 13, 6, 4, 1, 0, 0, 0), 60, R_COMMON,
+         (54, 28, 13, 6, 4, 1, 0, 0, 0, 0), 60, R_COMMON,
          "Six cards and a fold-out sheet showing all twelve of them, with "
          "the ones nobody has photographed yet drawn in by hand.",
          (("back to square one and loving it", 5),
           ("the fold-out is better than the cards", 4)),
          shelf="kitten", series="kitten"),
     Pack("kboost", "A Kitten Series Booster", 4800, 12,
-         (22, 28, 25, 14, 14, 7, 3, 1, 1), 150, R_RARE,
+         (22, 28, 25, 14, 14, 7, 3, 1, 1, 0), 150, R_RARE,
          "Twelve cards of the new series, and the foil on the wrapper is "
          "a different foil, which everybody has an opinion about.",
          (("the foil is wrong and they know it is wrong", 2),
@@ -3650,7 +4227,7 @@ KITTEN_PACKS = (
           ("same cats, smaller. somehow that is enough.", 4)),
          shelf="kitten", series="kitten"),
     Pack("klitter", "The Whole Litter", 14000, 30,
-         (8, 18, 26, 17, 22, 14, 9, 4, 3), 280, R_CHAMPION,
+         (8, 18, 26, 17, 22, 14, 9, 4, 3, 1), 280, R_CHAMPION,
          "Thirty cards in a long box with a window down the side. The "
          "closest the company has come to admitting it knows exactly "
          "what it is doing.",
@@ -3658,6 +4235,58 @@ KITTEN_PACKS = (
           ("they have done it again and i have fallen for it again", 4)),
          shelf="kitten", series="kitten"),
 )
+WORKING_PACKS = (
+    Pack("wstart", "The Working Cats Starter", 2600, 6,
+         (34, 26, 18, 9, 8, 4, 1, 0, 0, 0), 70, R_COMMON,
+         "Six cards and a sheet of facts about working animals that "
+         "reads as though it was written to be read aloud in a school.",
+         (("the facts sheet is doing a lot of lifting", 3),
+          ("got the ship's cat first go", 5)),
+         shelf="working", series="working"),
+    Pack("wboost", "A Working Cats Booster", 9000, 12,
+         (12, 18, 22, 14, 16, 10, 6, 2, 0, 0), 170, R_RARE,
+         "Twelve cards, and the wrapper has a rope border on it that "
+         "nobody asked for and everybody rather likes.",
+         (("the rope border is the best thing they have done", 5),
+          ("four pub cats. FOUR.", 2),
+          ("the station cat card made me put it down for a minute", 5)),
+         shelf="working", series="working"),
+    Pack("wcase", "The Whole Shift", 26000, 28,
+         (6, 10, 18, 14, 20, 16, 10, 6, 0, 0), 300, R_CHAMPION,
+         "Twenty-eight cards in a tin with a hinge, which is the first "
+         "tin the company has ever done and will not be the last.",
+         (("the tin. the TIN.", 5),
+          ("i did not need this and i have bought three", 4)),
+         shelf="working", series="working"),
+)
+OLD_PACKS = (
+    Pack("ostart", "The Old Guard Starter", 6000, 5,
+         (0, 0, 30, 20, 20, 18, 8, 3, 1, 0), 90, R_RARE,
+         "Five cards on board so thick the sleeve will not take two of "
+         "them, and a note about how long each cat has been at it.",
+         (("five cards for six thousand. and yet.", 3),
+          ("the card stock is absurd and i love it", 5)),
+         shelf="old", series="old"),
+    Pack("oboost", "An Old Guard Booster", 18000, 10,
+         (0, 0, 18, 14, 18, 20, 14, 8, 6, 2), 200, R_PEDIGREE,
+         "Ten of them, and a foil on the wrapper that looks like frost "
+         "on a window, which is either very clever or an accident.",
+         (("pulled Grandmother. sat down for a bit.", 5),
+          ("the frost foil is clever and they know it", 4)),
+         shelf="old", series="old"),
+    Pack("ocase", "The Long Service Box", 52000, 22,
+         (0, 0, 10, 10, 16, 20, 18, 12, 10, 4), 340, R_CHAMPION,
+         "Twenty-two cards in a wooden box with a sliding lid. The most "
+         "expensive thing on the website and they are not embarrassed "
+         "about it in the slightest.",
+         (("fifty-two thousand pounds of cats", 5),
+          ("the sliding lid is worth half of it", 4)),
+         shelf="old", series="old"),
+)
+for _p in WORKING_PACKS + OLD_PACKS:
+    BY_PACK[_p.key] = _p
+PACKS = PACKS + WORKING_PACKS + OLD_PACKS
+
 for _p in KITTEN_PACKS:
     BY_PACK[_p.key] = _p
 PACKS = PACKS + KITTEN_PACKS
@@ -3666,18 +4295,16 @@ SHELVES = ("standard", "special")
 
 
 def series_breeds(series):
-    """The collection a pack draws from. Everything that walks the book -
-    rolling a card, retiring a breed, deciding whether a product is
-    still worth selling - asks this rather than naming BREEDS, because
-    there are two books now."""
-    return KITTENS if series == "kitten" else BREEDS
+    """The collection a pack draws from."""
+    return BY_SERIES[series].cats if series in BY_SERIES else BREEDS
 
 
 def series_rarity(series):
-    return KITTEN_BY_RARITY if series == "kitten" else BY_RARITY
+    return (BY_SERIES[series].by_rarity if series in BY_SERIES
+            else BY_RARITY)
 
 
-SERIES_NAME = {"cat": "the catalogue", "kitten": "the Kitten Series"}
+SERIES_NAME = {x.key: x.name for x in SERIES}
 
 
 def packs_on(shelf):
@@ -3697,21 +4324,21 @@ def packs_on(shelf):
 # tables reset for next week.
 # ---------------------------------------------------------------------------
 CONV_PACKS = (
-    Pack("expo", "The Convention Exclusive", 0, 20, (0, 6, 22, 17, 26, 20, 20, 9, 6),
+    Pack("expo", "The Convention Exclusive", 0, 20, (0, 6, 22, 17, 26, 20, 20, 9, 6, 3),
          0, R_CHAMPION,
          "Twenty cards printed for the hall and nowhere else. They do not "
          "post these and they never will.",
          (("queued an hour. would queue again.", 5),
           ("two foundation cards out of one pack", 5)),
          shelf="convention", expo=0.075),
-    Pack("judge", "The Judge's Table", 0, 10, (0, 0, 10, 12, 24, 30, 26, 13, 10),
+    Pack("judge", "The Judge's Table", 0, 10, (0, 0, 10, 12, 24, 30, 26, 13, 10, 4),
          0, R_LEGEND,
          "Ten cards the judges put aside at the end of the show, every one "
          "of them a cat that won something.",
          (("the only place a foundation card is a sure thing", 5),
           ("they check you know what you are looking at first", 4)),
          shelf="convention", expo=0.055),
-    Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 18, 24, 18, 18, 8, 4),
+    Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 18, 24, 18, 18, 8, 4, 2),
          0, R_PEDIGREE,
          "Fifteen cards from a man by the fire door who will not say where "
          "he got them. Face value is four thousand two hundred.",
@@ -3958,7 +4585,7 @@ class Lot:
 # because nobody ever sold them new.
 RESALE_PACKS = (
     Pack("shoebox", "A Shoebox From a House Clearance", 900, 26,
-         (54, 28, 12, 6, 4, 1, 1, 0, 0), 240, R_COMMON,
+         (54, 28, 12, 6, 4, 1, 1, 0, 0, 0), 240, R_COMMON,
          "Somebody's aunt kept these in a shoebox under a bed for twenty "
          "years. Mostly moggies, one or two corners gone soft, and every "
          "so often something nobody in that house knew they had.",
@@ -3966,14 +4593,14 @@ RESALE_PACKS = (
           ("found a Foundation card in the bottom. worth the lot.", 5)),
          shelf="resale"),
     Pack("hoard", "Somebody's Whole Collection", 9000, 72,
-         (22, 26, 24, 14, 14, 8, 5, 2, 1), 420, R_LEGEND,
+         (22, 26, 24, 14, 14, 8, 5, 2, 1, 0), 420, R_LEGEND,
          "All of it, in one go, because they are moving and it will not "
          "fit in the van. Seventy-two cards and no sorting.",
          (("two hours to put away. no regrets.", 5),
           ("he cried when he handed it over. so did i, later.", 4)),
          shelf="resale"),
     Pack("attic", "Everything I Had As A Kid", 6400, 160,
-         (72, 19, 6, 3, 2, 1, 0, 0, 0), 430, R_COMMON,
+         (72, 19, 6, 3, 2, 1, 0, 0, 0, 0), 430, R_COMMON,
          "Four carrier bags out of a loft, emptied into one box. A "
          "hundred and sixty cards, most of them cats you could meet on "
          "the way to the shop, and a great many of them twice - but it "
@@ -3983,7 +4610,7 @@ RESALE_PACKS = (
           ("he said his mum wanted the loft back", 5)),
          shelf="resale"),
     Pack("graded", "One Card, Graded, Sealed", 5600, 1,
-         (0, 0, 0, 0, 0, 26, 48, 27, 26), 180, R_CHAMPION,
+         (0, 0, 0, 0, 0, 26, 48, 27, 26, 12), 180, R_CHAMPION,
          "One card in a hard case with a number on it. You are paying for "
          "the number and the certainty, and you know it.",
          (("the certainty is the product", 4),
@@ -4346,8 +4973,8 @@ class State:
         self.club = 0               # memberships bought, 0 to 3
         self.things = set()         # furnishings bought for the flat
         self.big_room = False       # the wall through to the back room
-        self.kittens = False        # the second series, once the first is in
-        self.seen_news = False      # ... and whether it was announced to you
+        self.out = {"cat"}          # the collections that exist
+        self.told = set()           # ... and the ones announced to you
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
         self.lots = []              # what is on the resale site today
@@ -4420,25 +5047,55 @@ class State:
         return sum(1 for k in self.cards if k in KITTEN_KEYS)
 
     @property
+    def kittens(self):
+        """Kept because a great deal of this file and its tests ask it."""
+        return "kitten" in self.out
+
+    @property
+    def series(self):
+        return tuple(x for x in SERIES if x.key in self.out)
+
+    @property
     def book(self):
-        """The binder, as it stands: a hundred, or a hundred and twelve."""
-        return BOOK if self.kittens else BREEDS
+        """The binder, as it stands: every collection that exists, in one
+        order, which is what the cover counts."""
+        if len(self.out) == 1:
+            return BREEDS
+        cats = []
+        for x in self.series:
+            cats += list(x.cats)
+        return tuple(sorted(cats, key=lambda b: (b.rarity, b.name)))
 
     @property
     def book_keys(self):
-        return BOOK_KEYS if self.kittens else LISTED
+        if len(self.out) == 1:
+            return LISTED
+        keys = set()
+        for x in self.series:
+            keys |= x.keys
+        return keys
+
+    def series_full(self, key):
+        """Every cat in that collection, owned.
+
+        The bar for the NEXT series, so it is measured against that
+        collection and never against the binder - measuring against the
+        binder would move the finish line the moment you crossed it, and
+        each announcement would fire once and then look wrong for ever.
+        """
+        return all(b.key in self.cards for b in BY_SERIES[key].cats)
 
     @property
     def catalogue_full(self):
-        """Every breed in the FIRST hundred, owned.
+        return self.series_full("cat")
 
-        This is the bar for the second series, so it has to be the
-        original book and not the one the kittens join - measuring
-        against `book` would move the finish line the moment you crossed
-        it, and the announcement would fire once and then look wrong
-        forever after.
-        """
-        return all(b.key in self.cards for b in BREEDS)
+    def due(self):
+        """The next collection the company owes you, if any."""
+        for x in SERIES:
+            if x.key not in self.out and x.after in self.out \
+                    and self.series_full(x.after):
+                return x
+        return None
 
     @property
     def slots(self):
@@ -4489,8 +5146,9 @@ class State:
         return n
 
     def tick(self, dt):
-        if not self.kittens and self.catalogue_full:
-            self.kittens = True
+        nxt = self.due()
+        if nxt is not None:
+            self.out.add(nxt.key)
         gain = self.income * dt
         self.money += gain
         self.earned += gain
@@ -4777,8 +5435,8 @@ class State:
             "club": self.club,
             "things": sorted(self.things),
             "big_room": self.big_room,
-            "kittens": self.kittens,
-            "seen_news": self.seen_news,
+            "out": sorted(self.out),
+            "told": sorted(self.told),
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
             "lots": [lot.to_row() for lot in self.lots],
@@ -4828,8 +5486,13 @@ class State:
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
         s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
         s.big_room = bool(d.get("big_room"))
-        s.kittens = bool(d.get("kittens"))
-        s.seen_news = bool(d.get("seen_news"))
+        s.out = {k for k in (d.get("out") or ()) if k in BY_SERIES}
+        s.told = {k for k in (d.get("told") or ()) if k in BY_SERIES}
+        if d.get("kittens"):        # saved before there were four of them
+            s.out.add("kitten")
+        if d.get("seen_news"):
+            s.told.add("kitten")
+        s.out.add("cat")
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
         s.lots = [x for x in (Lot.from_row(r) for r in (d.get("lots") or ()))
@@ -7512,6 +8175,7 @@ class GameBase:
         self.cam_to = 0.0
         self.room = CatRoom()       # the cat room runs its own simulation
         self.mini = None            # the minigame being played, if any
+        self.news_for = None        # the series being announced, if any
         self.focus = None           # a cat you have clicked on
         self.focus_t = 0.0
         self.t = 0.0
@@ -8187,8 +8851,9 @@ class GameBase:
         # one frame behind the thing it announces - invisible at sixty a
         # second, and plainly wrong the moment anything steps the game
         # once, which is how the test found it.
-        if (st.kittens and not st.seen_news and self.scene == "room"
-                and not self.pan):
+        untold = [x for x in st.series if x.news and x.key not in st.told]
+        if untold and self.scene == "room" and not self.pan:
+            self.news_for = untold[0].key
             self.beat, self.beat_t = 0, 0.0
             self.beep("shiny")
             self.go("news")
@@ -8627,7 +9292,7 @@ NEWS = (
 )
 
 
-def _news_scene(surf, t, beat, f):
+def _news_scene(surf, t, beat, f, cats=()):
     """`f` is 0 to 1 through the current screen."""
     surf.fill(INK)
     for y in range(0, H, 6):
@@ -8654,7 +9319,7 @@ def _news_scene(surf, t, beat, f):
         stamp.center = (book.centerx, book.centery)
         pygame.draw.rect(surf, mix(LAMP, CREAM, 0.3), stamp, width=3,
                          border_radius=6)
-        text(surf, f"{len(BREEDS)}/{len(BREEDS)}", 30, stamp.center,
+        text(surf, "FULL", 30, stamp.center,
              mix(LAMP, CREAM, 0.35), center=True, kind="mono")
         text(surf, "THE CATALOGUE, COMPLETE", 13,
              (book.centerx, book.bottom - 36), mix(PAPER, WOOD, 0.4),
@@ -8692,8 +9357,8 @@ def _news_scene(surf, t, beat, f):
              center=True, kind="mono", shadow=False)
 
     else:
-        # the twelve of them, coming up out of the dark one at a time
-        show = KITTENS[:6]
+        # the new ones, coming up out of the dark one at a time
+        show = cats[:6]
         wide = len(show) * 150
         x0 = W // 2 - wide // 2 + 75
         for i, b in enumerate(show):
@@ -8705,8 +9370,9 @@ def _news_scene(surf, t, beat, f):
             img.blit(dark, (0, 0), None, pygame.BLEND_RGBA_MULT)
             img.set_alpha(int(150 + 105 * on))
             surf.blit(img, img.get_rect(midbottom=(x0 + i * 150, 540)))
-        text(surf, f"and {len(KITTENS) - len(show)} more", 14,
-             (W // 2, 560), MUTED, center=True, kind="mono")
+        if len(cats) > len(show):
+            text(surf, f"and {len(cats) - len(show)} more", 14,
+                 (W // 2, 560), MUTED, center=True, kind="mono")
 
 
 def _browser(surf, title, host="meowrder.example"):
@@ -8757,36 +9423,47 @@ class ShopMixin:
         # Nine products do not fit one page at a size anybody can read,
         # and the four odd ones are not rungs on the ladder anyway: they
         # are things you go looking for when you want a particular thing.
-        tabs = [("catalogue", "CATALOGUE"), ("specials", "SPECIALS")]
-        if st.kittens:
-            tabs.append(("kitten", "KITTENS"))
-        tabs += [("home", "THE FLAT"), ("merch", "MERCH"),
-                 ("room", "THE ROOM"), ("orders", "ORDERS"),
-                 ("club", "THE CLUB")]
-        tx = x
-        for key, label in tabs:
-            lab = label + (f" ({len(st.orders)})" if key == "orders"
-                           and st.orders else "")
-            wdt = font(16, False, "mono").size(lab)[0] + 20
-            r = pygame.Rect(tx, y + 60, wdt, 30)
-            on = self.tab == key
-            if on:
-                pygame.draw.rect(s, mix(SCREEN_HI, EMBER, 0.2), r,
-                                 border_radius=6)
-            self.buttons.append(Button(r, lab, ("tab", key),
-                                       "link" if not on else "hit", 16,
-                                       kind="mono",
-                                       colour=CREAM if on else TEA))
-            if on:
-                text(s, lab, 16, r.center, warm(CREAM, 0.2), center=True,
-                     kind="mono", shadow=False)
-            tx += wdt + 5
-        self.buttons.append(Button((PAGE_R.right - 124, y + 60, 116, 30),
+        # Two rows: the pages that sell cards, and the pages that do
+        # not. One row held five of these and then seven; at four
+        # collections it would be ten, and the last of them printed
+        # straight through the link back to the room. A row each means a
+        # fifth series costs the shop nothing.
+        cards_row = [("catalogue", "CATALOGUE"), ("specials", "SPECIALS")]
+        cards_row += [(x.shelf, SERIES_TAB.get(x.key, x.key.upper()))
+                      for x in st.series if x.key != "cat"]
+        rest_row = [("home", "THE FLAT"), ("merch", "MERCH"),
+                    ("room", "THE ROOM"), ("orders", "ORDERS"),
+                    ("club", "THE CLUB")]
+        for row, items in ((0, cards_row), (1, rest_row)):
+            tx = x
+            for key, label in items:
+                lab = label + (f" ({len(st.orders)})" if key == "orders"
+                               and st.orders else "")
+                wdt = font(15, False, "mono").size(lab)[0] + 18
+                r = pygame.Rect(tx, y + 58 + row * 32, wdt, 28)
+                on = self.tab == key
+                if on:
+                    pygame.draw.rect(s, mix(SCREEN_HI, EMBER, 0.2), r,
+                                     border_radius=6)
+                self.buttons.append(Button(r, lab, ("tab", key),
+                                           "link" if not on else "hit", 15,
+                                           kind="mono",
+                                           colour=CREAM if on else TEA))
+                if on:
+                    text(s, lab, 15, r.center, warm(CREAM, 0.2), center=True,
+                         kind="mono", shadow=False)
+                tx += wdt + 5
+        self.buttons.append(Button((PAGE_R.right - 124, y + 90, 116, 28),
                                    "< the room", ("scene", "room"),
                                    "link", 15, kind="mono", colour=TEA))
 
-        body = pygame.Rect(PAGE_R.x + 18, y + 102, PAGE_R.w - 36,
-                           PAGE_R.bottom - (y + 102) - 8)
+        body = pygame.Rect(PAGE_R.x + 18, y + 126, PAGE_R.w - 36,
+                           PAGE_R.bottom - (y + 126) - 8)
+        shown = next((x for x in SERIES if x.shelf == self.tab
+                      and x.key != "cat"), None)
+        if shown is not None and shown.key not in st.out:
+            self.tab, shown = "catalogue", None
+
         # The product page wins over the tab it was opened from.
         #
         # It used to be the LAST branch of this chain, below every tab
@@ -8799,19 +9476,16 @@ class ShopMixin:
         # the sale; the page to make it simply never rendered.
         if self.product and self.product in BY_PACK:
             self.draw_product(s, body)
-        elif self.tab == "kitten":
-            if not st.kittens:
-                self.tab = "catalogue"
-            else:
-                text(s, "THE KITTEN SERIES", 22, (body.x, body.y),
-                     warm(CREAM, 0.2))
-                text(s, f"Twelve new cards, none of them in the old book. "
-                        f"You have {st.kittens_owned} of "
-                        f"{len(KITTENS)}.", 13, (body.x, body.y + 28),
-                     MUTED, kind="mono", max_w=body.w)
-                self.draw_catalogue(s, pygame.Rect(body.x, body.y + 46,
-                                                   body.w, body.h - 46),
-                                    "kitten")
+        elif shown is not None:
+            got = sum(1 for k in st.cards if k in shown.keys)
+            text(s, shown.name.upper(), 22, (body.x, body.y),
+                 warm(CREAM, 0.2))
+            text(s, f"{shown.blurb}  You have {got} of "
+                    f"{len(shown.cats)}.", 13, (body.x, body.y + 28),
+                 MUTED, kind="mono", max_w=body.w)
+            self.draw_catalogue(s, pygame.Rect(body.x, body.y + 46,
+                                               body.w, body.h - 46),
+                                shown.shelf)
         elif self.tab == "merch":
             self.draw_merch(s, body)
         elif self.tab == "room":
@@ -9007,8 +9681,10 @@ class ShopMixin:
         st = self.state
         p = BY_PACK[self.product]
         # back to the shelf it is actually on, not always the front page
-        back = {"special": "specials", "kitten": "kitten"}.get(p.shelf,
-                                                               "catalogue")
+        back = ("specials" if p.shelf == "special"
+                else p.shelf if any(x.shelf == p.shelf and x.key != "cat"
+                                    for x in SERIES)
+                else "catalogue")
         self.buttons.append(Button((body.x, body.y, 160, 24),
                                    "< everything else", ("tab", back),
                                    "link", 14, kind="mono", colour=TEA))
@@ -9679,8 +10355,8 @@ class BinderMixin:
         elif st.complete:
             note = "every breed retired - the catalogue has nothing left"
         elif left:
-            note = (f"{len(left)} still to find, the rarest of them a "
-                    f"{rarity_name(max(b.rarity for b in left)).lower()}")
+            note = (f"{len(left)} still to find, the rarest of them "
+                    f"{a_rarity(max(b.rarity for b in left))}")
         else:
             note = (f"{len(book) - st.retired} still to take to level 10")
         text(s, note, 15, (inner.centerx, inner.bottom - 36), TEA,
@@ -9933,10 +10609,16 @@ class MenuMixin:
                                        "link", 14, kind="mono", colour=TEA))
 
     def draw_news(self, s):
-        """The three screens that say there is a second collection."""
+        """The three screens that announce a collection. Which collection
+        is `news_for`; the screens are its own."""
+        show = BY_SERIES.get(self.news_for)
+        if show is None or not show.news:
+            self.go("room")
+            return
+        NEWS = show.news
         beat = int(clamp(self.beat, 0, len(NEWS) - 1))
         f = min(1.0, self.beat_t / 1.4)
-        _news_scene(s, self.t, beat, f)
+        _news_scene(s, self.t, beat, f, show.cats)
         dim = pygame.Surface((W, H), pygame.SRCALPHA)
         dim.fill((8, 6, 6, 96))
         s.blit(dim, (0, 0))
@@ -9962,7 +10644,9 @@ class MenuMixin:
                                        "link", 14, kind="mono", colour=TEA))
 
     def news_next(self):
-        if self.beat >= len(NEWS) - 1:
+        show = BY_SERIES.get(self.news_for)
+        NEWS = show.news if show else ()
+        if not NEWS or self.beat >= len(NEWS) - 1:
             self.end_news()
             return
         self.beat += 1
@@ -9970,12 +10654,16 @@ class MenuMixin:
         self.beep("page")
 
     def end_news(self):
-        self.state.seen_news = True
+        show = BY_SERIES.get(self.news_for)
+        if show is not None:
+            self.state.told.add(show.key)
+            self.toast(f"{show.name} is up",
+                       f"a new page on the website, and {len(show.cats)} "
+                       f"empty slots in the binder",
+                       mix(LAMP, CREAM, 0.3), 14.0)
+        self.news_for = None
         self.go("room")
         self.go_area("study", quiet=True)
-        self.toast("the kitten series is up",
-                   f"a new page on the website, and {len(KITTENS)} empty "
-                   f"slots in the binder", mix(LAMP, CREAM, 0.3), 14.0)
         self.save()
 
     def intro_next(self):

@@ -455,6 +455,16 @@ def sameness():
         print(f"  {len(cc.ALL_BREEDS) - len(cc.BY_KEY)} cats cannot be "
               f"looked up at all")
         ok = False
+    # A shared NAME does not break anything, which is why it lasted: two
+    # cards called Chausie in one binder just look like a mistake, for
+    # ever. Four went in under names already in the book before this
+    # checked for it.
+    names = [b.name for b in cc.ALL_BREEDS]
+    if len(set(names)) != len(names):
+        for nm in sorted({x for x in names if names.count(x) > 1}):
+            keys = [b.key for b in cc.ALL_BREEDS if b.name == nm]
+            print(f"  two cats are both called {nm!r}: {keys}")
+        ok = False
 
     masks = {}
     # Every cat in the game, not just the catalogue. The five off the
@@ -1134,12 +1144,15 @@ def buyable():
     screen = pygame.display.set_mode((cc.W, cc.H))
     g = cc.Game(screen)
     g.state = cc.State()
-    g.state.kittens = True
-    g.state.seen_news = True
+    g.state.out = {x.key for x in cc.SERIES}
+    g.state.told = set(g.state.out)
     g.state.money = 10 ** 9
     g.state.club = len(cc.CLUB)
     g.go("shop")
-    tabs = {"standard": "catalogue", "special": "specials", "kitten": "kitten"}
+    tabs = {"standard": "catalogue", "special": "specials"}
+    for x in cc.SERIES:
+        if x.key != "cat":
+            tabs[x.shelf] = x.shelf
     for shelf, tab in tabs.items():
         on = cc.packs_on(shelf)
         if not on:
@@ -1483,8 +1496,9 @@ def layout():
                          ("shop", lambda: setattr(g, "site", "meowrder")),
                          # with the second series out, which is the row at
                          # its longest - eight tabs and a link beside them
-                         ("shop", lambda: (setattr(g.state, "kittens", True),
-                                           setattr(g, "tab", "kitten"))),
+                         ("shop", lambda: (g.state.out.update(
+                             x.key for x in cc.SERIES),
+                             setattr(g, "tab", "old"))),
                          ("shop", lambda: setattr(g, "tab", "catalogue")),
                          ("binder", None), ("open", None)):
         if scene == "open":
@@ -2440,7 +2454,7 @@ def kittens():
     if st3.owned or st3.retired or st3.catalogue_full or st3.complete:
         print("  the kittens count before the series has been announced")
         ok = False
-    st3.kittens = True
+    st3.out.add("kitten")
     print(f"  ... and once it is: {st3.owned} of {len(st3.book)}, "
           f"{st3.retired} retired")
     if st3.owned != len(cc.KITTENS) or st3.retired != len(cc.KITTENS):
@@ -2460,7 +2474,7 @@ def kittens():
                   f"{want}")
             ok = False
     st5 = cc.State()
-    st5.kittens = True
+    st5.out.add("kitten")
     print(f"  the book goes from {len(cc.BREEDS)} to {len(st5.book)}")
     if len(st5.book) != len(cc.BREEDS) + len(cc.KITTENS):
         print("  the two books did not add up")
@@ -2476,7 +2490,7 @@ def kittens():
         ok = False
     # and finishing it means finishing all of it
     full = cc.State()
-    full.kittens = True
+    full.out.add("kitten")
     for b in cc.BREEDS:
         full.cards[b.key] = cc.Card(level=cc.MAX_LEVEL)
     if full.complete:
@@ -2560,7 +2574,7 @@ def kittens():
     g2.update(0.05)
     print(f"  finishing the book mid-parcel: still in {g2.scene!r}, "
           f"series {'out' if g2.state.kittens else 'not out'}, "
-          f"announced {g2.state.seen_news}")
+          f"announced {'kitten' in g2.state.told}")
     if g2.scene != "open":
         print("  the cutscene cut into a pack that was being opened")
         ok = False
@@ -2591,7 +2605,7 @@ def kittens():
     if presses != len(cc.NEWS) or g2.scene != "room":
         print("  it does not end after its own screens")
         ok = False
-    if not g2.state.seen_news:
+    if "kitten" not in g2.state.told:
         print("  it did not record that it had played")
         ok = False
     g2.update(0.05)
@@ -2623,6 +2637,65 @@ def kittens():
     if not back.kittens:
         print("  the series was forgotten when the game was saved")
         ok = False
+
+    # -- and the chain of them -------------------------------------------
+    # Four collections, each unlocked by finishing the one before it,
+    # each with three screens of its own. The failure this is for is a
+    # series that unlocks but is never announced, or one that announces
+    # somebody else's screens.
+    g5 = cc.Game(screen)
+    g5.state = cc.State()
+    seen = []
+    for x in cc.SERIES:
+        for b in x.cats:
+            g5.state.cards[b.key] = cc.Card(level=1)
+        for _ in range(25):
+            g5.update(0.05)
+            if g5.scene == "news":
+                break
+        nxt = next((y for y in cc.SERIES if y.after == x.key), None)
+        if nxt is None:
+            if g5.scene == "news":
+                print(f"  something was announced after the last series")
+                ok = False
+            break
+        if g5.scene != "news":
+            print(f"  finishing {x.key} announced nothing")
+            ok = False
+            continue
+        if g5.news_for != nxt.key:
+            print(f"  finishing {x.key} announced {g5.news_for}, not "
+                  f"{nxt.key}")
+            ok = False
+        beats = 0
+        while g5.scene == "news" and beats < 12:
+            g5.draw()
+            g5.press(("news", "next"))
+            beats += 1
+        seen.append((x.key, nxt.key, beats, len(g5.state.book)))
+        if beats != len(nxt.news):
+            print(f"  {nxt.key} took {beats} screens, not {len(nxt.news)}")
+            ok = False
+    for a, b, beats, size in seen:
+        print(f"    finishing {a:<8} announced {b:<8} in {beats} screens, "
+              f"book -> {size}")
+    if len(g5.state.out) != len(cc.SERIES):
+        print(f"  only {len(g5.state.out)} of {len(cc.SERIES)} series ever "
+              f"came out")
+        ok = False
+    # every series must be able to fill every tier its products advertise
+    for x in cc.SERIES:
+        for pk in cc.PACKS:
+            if pk.series != x.key:
+                continue
+            gap = [cc.rarity_name(r) for r in range(cc.SOLD_RARITIES)
+                   if pk.weights[r] and not x.by_rarity[r]]
+            if gap:
+                print(f"  {pk.name} sells {gap} and {x.name} has none")
+                ok = False
+        if x.key != "cat" and not any(p.series == x.key for p in cc.PACKS):
+            print(f"  nothing on the website sells {x.name}")
+            ok = False
 
     print("  kittens:", "ok" if ok else "FAILED")
     return ok
