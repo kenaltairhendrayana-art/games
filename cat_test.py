@@ -707,7 +707,7 @@ def behaviour(minutes=20, big=False):
     rng = random.Random(3)
     for b in cc.BREEDS:                   # one of everything, levelled up
         st.cards[b.key] = cc.Card(level=rng.randint(3, 10))
-    st.big_room = big
+    st.wings = len(cc.WINGS) if big else 0
     cap = cc.room_cap(st)
     nspots = cc.room_spot_count(st)
     room = cc.CatRoom()
@@ -753,7 +753,7 @@ def behaviour(minutes=20, big=False):
     every = set()
     for d in seen.values():
         every |= set(d)
-    back_acts = {"climb", "hide", "chatter"}
+    back_acts = {"climb", "hide", "chatter", "sniff"}
     want_acts = set(cc.ACT_WORD) if big else set(cc.ACT_WORD) - back_acts
     missing = want_acts - every
     if missing:
@@ -1844,119 +1844,124 @@ def _play_mini(g, win):
 
 
 def bigroom():
-    """Taking the flat next door.
+    """The four rooms, bought in order.
 
-    One button changes three numbers and the width of a surface, and a
-    resident holds its spot as an INDEX into a tuple that just got
-    longer. The failure that would not raise is a cat left sitting on
-    furniture that is no longer at that index - so the indices are
-    checked, not just the counts.
+    A resident holds its spot as an INDEX into one long table, so each
+    wing's places are APPENDED and the count of reachable ones moves with
+    the ladder. If that slips, a cat is asleep on furniture that is not
+    where it thinks it is - which does not raise, it just draws wrong.
     """
     ok = True
     screen = pygame.display.set_mode((cc.W, cc.H))
 
-    # the back room is bolted on the end, and nothing before it moved
-    base = cc.ROOM_SPOTS[:cc.ROOM_BASE]
-    if len(cc.ROOM_SPOTS) <= cc.ROOM_BASE:
-        print("  there is no back room in the spot table")
+    st = cc.State()
+    last = (0, 0, 0)
+    for i in range(len(cc.WINGS) + 1):
+        st.wings = i
+        now = (cc.room_cap(st), cc.room_spot_count(st), cc.cats_wide(st))
+        nm = cc.WINGS[i - 1].name if i else "the flat as it comes"
+        print(f"    {nm:<34} {now[0]:>2} cats  {now[1]:>2} places  "
+              f"{now[2]:>4}px")
+        if i and not all(b > a for a, b in zip(last, now)):
+            print(f"  {nm} did not add cats, places and room")
+            ok = False
+        last = now
+    if cc.room_spot_count(st) != len(cc.ROOM_SPOTS):
+        print(f"  with every wall down {cc.room_spot_count(st)} places are "
+              f"reachable out of {len(cc.ROOM_SPOTS)}")
         ok = False
-    small = cc.State()
-    big = cc.State()
-    big.big_room = True
-    print(f"  wall up: {cc.room_cap(small)} cats, "
-          f"{cc.room_spot_count(small)} places, {cc.cats_wide(small)} wide")
-    print(f"  wall down: {cc.room_cap(big)} cats, "
-          f"{cc.room_spot_count(big)} places, {cc.cats_wide(big)} wide")
-    for name, a, b in (("cats", cc.room_cap(small), cc.room_cap(big)),
-                       ("places", cc.room_spot_count(small),
-                        cc.room_spot_count(big)),
-                       ("width", cc.cats_wide(small), cc.cats_wide(big))):
-        if b <= a:
-            print(f"  knocking the wall through did not add {name}")
-            ok = False
-    # every back-room place has to be somewhere a cat can get to, and
-    # somewhere the room is actually drawn
-    for i in range(cc.ROOM_BASE, len(cc.ROOM_SPOTS)):
-        kind, x, y, face, size, label = cc.ROOM_SPOTS[i]
-        if not cc.CATS_W < x < cc.CATS_W_BIG:
-            print(f"  {label} is at x={x}, outside the back room")
-            ok = False
-        if kind not in cc.SPOT_ACTS:
-            print(f"  {label} is a '{kind}', which nothing can do")
-            ok = False
+    if cc.cats_wide(st) != cc.CATS_W_BIG:
+        print("  the full room is not as wide as the table says")
+        ok = False
+
+    # every place has to be inside the wing that paid for it, and named
+    # something nothing else is called
+    base = cc.ROOM_BASE
+    for i, w in enumerate(cc.WINGS):
+        lo, hi = cc.wing_x(i), cc.wing_x(i) + w.wide
+        for sp in cc.ROOM_SPOTS[base:base + w.spots]:
+            if not lo <= sp[1] < hi:
+                print(f"  {sp[5]!r} is at x={sp[1]}, outside {w.name}")
+                ok = False
+            if sp[0] not in cc.SPOT_ACTS:
+                print(f"  {sp[5]!r} is a {sp[0]!r}, which nothing can do")
+                ok = False
+        base += w.spots
     names = [sp[5] for sp in cc.ROOM_SPOTS]
     if len(set(names)) != len(names):
-        dupe = sorted({x for x in names if names.count(x) > 1})
-        print(f"  two places share a name: {dupe}")
+        print(f"  two places share a name: "
+              f"{sorted({x for x in names if names.count(x) > 1})}")
         ok = False
 
-    # -- buying it -------------------------------------------------------
+    # -- buying them, in order and no other -------------------------------
     g = cc.Game(screen)
     g.state = cc.State()
-    g.state.money = cc.BIG_ROOM_PRICE - 1
+    g.state.money = cc.WINGS[0].price - 1
     g.press(("bigroom", None))
-    if g.state.big_room:
-        print("  you can take the flat next door without paying for it")
+    if g.state.wings:
+        print("  a wall came down without being paid for")
         ok = False
-    g.state.money = cc.BIG_ROOM_PRICE + 500
+    spent = 0
+    for i, w in enumerate(cc.WINGS):
+        g.state.money = w.price + 10
+        g.press(("bigroom", None))
+        spent += w.price
+        if g.state.wings != i + 1:
+            print(f"  paying for {w.name} did not get it")
+            ok = False
+            break
+        if abs(g.state.money - 10) > 0.01:
+            print(f"  {w.name} cost the wrong amount")
+            ok = False
+    g.state.money = 10 ** 9
     g.press(("bigroom", None))
-    if not g.state.big_room:
-        print("  paying for the flat next door did not get you it")
+    if g.state.wings != len(cc.WINGS):
+        print("  there is a fifth room nobody mentioned")
         ok = False
-    if abs(g.state.money - 500) > 0.01:
-        print(f"  it cost {cc.BIG_ROOM_PRICE + 500 - g.state.money}, not "
-              f"{cc.BIG_ROOM_PRICE}")
+    print(f"    the whole flat comes to {cc.money(spent)}")
+
+    # -- it survives being put down, and an old save comes up the ladder --
+    back = cc.State.from_dict(g.state.to_dict())
+    if back.wings != len(cc.WINGS):
+        print("  the walls went back up when the game was saved")
         ok = False
-    before = g.state.money
-    g.press(("bigroom", None))            # and not twice
-    if g.state.money != before:
-        print("  you can buy the same wall twice")
+    older = cc.State.from_dict({"big_room": True, "cards": {}})
+    if older.wings != 1:
+        print(f"  a save from before the ladder came up at {older.wings}")
         ok = False
 
-    # -- it survives being put down and picked up ------------------------
-    d = g.state.to_dict()
-    back = cc.State.from_dict(d)
-    if not back.big_room:
-        print("  the wall went back up when the game was saved")
-        ok = False
-
-    # -- and the room fills out ------------------------------------------
+    # -- and the room fills out -------------------------------------------
     rng = random.Random(8)
-    for b in rng.sample(list(cc.BREEDS), 60):
+    for b in rng.sample(list(cc.BREEDS), 90):
         g.state.cards[b.key] = cc.Card(level=rng.randint(4, 9))
     room = cc.CatRoom()
-    for _ in range(40):
+    for _ in range(60):
         room.update(0.1, g.state, cc.room_cap(g.state))
-    print(f"  {len(room.res)} cats in the room, {len(cc.cats_in(g.state, 'study'))}"
-          f" on the desk, {len(cc.cats_in(g.state, 'hall'))} in the hall")
-    if len(room.res) != cc.BIG_CAP:
-        print(f"  the big room holds {len(room.res)}, not {cc.BIG_CAP}")
+    if len(room.res) != cc.room_cap(g.state):
+        print(f"  the full flat holds {len(room.res)}, not "
+              f"{cc.room_cap(g.state)}")
         ok = False
-    # let them settle, then make sure the back room is not a showroom
-    for _ in range(6000):
-        room.update(0.1, g.state, cc.room_cap(g.state), 1780.0)
-    back_room = [r for r in room.res if r.x > cc.CATS_W]
-    print(f"  standing at the far end: {len(back_room)} of {len(room.res)} "
-          f"cats are through the wall")
-    if len(back_room) < 4:
-        print("  nobody uses the room you just paid for")
-        ok = False
+    for _ in range(9000):
+        room.update(0.1, g.state, cc.room_cap(g.state),
+                    cc.cats_wide(g.state) - cc.W)
+    for i, w in enumerate(cc.WINGS):
+        lo, hi = cc.wing_x(i), cc.wing_x(i) + w.wide
+        n_in = sum(1 for r in room.res if lo <= r.x < hi)
+        print(f"    {w.name:<34} {n_in:>2} cats in it")
+        if not n_in:
+            print(f"  nobody ever goes in {w.name}")
+            ok = False
 
-    # -- and the wall going up does not strand anybody -------------------
-    # (it cannot happen in play - but sync is the only place that knows
-    # both numbers, so it is the only place that can be sure)
-    g.state.big_room = False
+    # -- and taking a wall back does not strand anybody -------------------
+    g.state.wings = 1
     room.update(0.1, g.state, cc.room_cap(g.state))
     stuck = [r for r in room.res if r.spot >= cc.room_spot_count(g.state)]
     if stuck:
         print(f"  {len(stuck)} cats left sitting through a wall")
         ok = False
-    else:
-        print("  putting the wall back brings everybody with it")
 
     print("  bigroom:", "ok" if ok else "FAILED")
     return ok
-
 
 
 def resale():
@@ -2956,7 +2961,7 @@ def main():
     if cmd in ("behaviour", "all"):
         ok &= behaviour(20)
         print()
-        ok &= behaviour(20, big=True)
+        ok &= behaviour(50, big=True)
         print()
     if cmd in ("grades", "all"):
         ok &= grades()

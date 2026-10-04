@@ -693,7 +693,7 @@ TEMPERS = {
     "sleeper": dict(
         label="sleeps through most of it",
         acts={"sleep": 7, "loaf": 3, "groom": 2, "watch": 1, "sit": 1,
-              "scratch": 1, "drink": 1, "eat": 1, "hide": 2},
+              "scratch": 1, "drink": 1, "eat": 1, "hide": 2, "sniff": 1},
         likes=("bed", "warm", "perch"), speed=0.62, stay=(22, 50)),
     "hunter": dict(
         label="hunts everything that moves",
@@ -708,28 +708,28 @@ TEMPERS = {
     "glutton": dict(
         label="is never far from the bowls",
         acts={"eat": 5, "drink": 2, "sleep": 4, "loaf": 3, "prowl": 1,
-              "scratch": 1, "groom": 1, "hide": 1},
+              "scratch": 1, "groom": 1, "hide": 1, "sniff": 2},
         likes=("food", "water", "bed"), speed=0.85, stay=(10, 24)),
     "groomer": dict(
         label="washes, and washes again",
         acts={"groom": 6, "loaf": 3, "watch": 2, "sleep": 2, "sit": 2,
-              "scratch": 1, "drink": 1, "eat": 1, "hide": 1, "chatter": 1},
+              "scratch": 1, "drink": 1, "eat": 1, "hide": 1, "chatter": 1, "sniff": 2},
         likes=("perch", "bed"), speed=0.9, stay=(12, 26)),
     "shadow": dict(
         label="keeps to the edges of the room",
         acts={"prowl": 5, "watch": 3, "sleep": 3, "groom": 2,
-              "scratch": 2, "eat": 1, "drink": 1, "hide": 4, "climb": 1, "chatter": 1},
+              "scratch": 2, "eat": 1, "drink": 1, "hide": 4, "climb": 1, "chatter": 1, "sniff": 2},
         likes=("box", "floor", "perch", "tunnel"), speed=1.05,
         stay=(9, 20)),
     "lap": dict(
         label="wants to be where you are",
         acts={"loaf": 5, "sit": 3, "groom": 2, "sleep": 2, "play": 2,
-              "scratch": 1, "eat": 1, "drink": 1, "hide": 1, "chatter": 1},
+              "scratch": 1, "eat": 1, "drink": 1, "hide": 1, "chatter": 1, "sniff": 2},
         likes=("chair", "bed", "floor"), speed=1.0, stay=(14, 30)),
     "busy": dict(
         label="has a list and is working through it",
         acts={"scratch": 5, "play": 4, "prowl": 3, "eat": 2, "watch": 2,
-              "drink": 1, "groom": 1, "climb": 2, "chatter": 2},
+              "drink": 1, "groom": 1, "climb": 2, "chatter": 2, "sniff": 3},
         likes=("post", "toy", "floor"), speed=1.25, stay=(6, 14)),
     "warmth": dict(
         label="finds the warmest thing in the room",
@@ -5090,7 +5090,7 @@ class State:
         self.seen_end = False
         self.club = 0               # memberships bought, 0 to 3
         self.things = set()         # furnishings bought for the flat
-        self.big_room = False       # the wall through to the back room
+        self.wings = 0              # how many walls have come down
         self.spares = 0             # copies of retired breeds, for swapping
         self.out = {"cat"}          # the collections that exist
         self.told = set()           # ... and the ones announced to you
@@ -5167,6 +5167,15 @@ class State:
     @property
     def kittens_owned(self):
         return sum(1 for k in self.cards if k in KITTEN_KEYS)
+
+    @property
+    def big_room(self):
+        """Kept because a good deal of this file still asks it."""
+        return self.wings > 0
+
+    @property
+    def next_wing(self):
+        return WINGS[self.wings] if self.wings < len(WINGS) else None
 
     @property
     def kittens(self):
@@ -5616,7 +5625,7 @@ class State:
             "seen_end": self.seen_end,
             "club": self.club,
             "things": sorted(self.things),
-            "big_room": self.big_room,
+            "wings": self.wings,
             "spares": self.spares,
             "out": sorted(self.out),
             "told": sorted(self.told),
@@ -5671,7 +5680,9 @@ class State:
         s.seen_end = bool(d.get("seen_end", False))
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
         s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
-        s.big_room = bool(d.get("big_room"))
+        s.wings = int(clamp(int(d.get("wings", 0)), 0, len(WINGS)))
+        if d.get("big_room") and not s.wings:   # saved before it was a ladder
+            s.wings = 1
         s.spares = int(d.get("spares", 0))
         s.out = {k for k in (d.get("out") or ()) if k in BY_SERIES}
         s.told = {k for k in (d.get("told") or ()) if k in BY_SERIES}
@@ -6745,6 +6756,10 @@ TREE2_X = 1880
 SPOT_ACTS = {
     "perch": ("watch", "loaf", "sleep", "groom"),
     "wall": ("climb", "watch", "loaf", "sleep"),
+    "plant": ("sniff", "watch", "loaf"),
+    "beam": ("climb", "watch", "sleep", "loaf"),
+    "hay": ("sleep", "hide", "loaf"),
+    "run": ("prowl", "play", "watch"),
     "tunnel": ("hide", "play", "sleep"),
     "bird": ("chatter", "watch", "sit"),
     "bed": ("sleep", "loaf", "groom"),
@@ -6814,25 +6829,128 @@ BACK_SPOTS = (
 )
 ROOM_SPOTS = ROOM_SPOTS + BACK_SPOTS
 
-CATS_W_BIG = 2960          # ... and how wide the pair of them are
-BIG_CAP = 20               # how many live in here once the wall is down
-BIG_ROOM_PRICE = 120000
-BIG_ROOM_NAME = "Knock Through to the Back Room"
+# The garden room, 2960 to 3860. Glass, flagstones and too many plants.
+GARDEN_SPOTS = (
+    ("post", 3002, 556, -1, 126, "the post by the step"),
+    ("plant", 3012, 616, 1, 124, "the big fern"),
+    ("perch", 3094, 420, -1, 112, "the plant shelf"),
+    ("perch", 3200, 288, 1, 106, "the top of the trellis"),
+    ("floor", 3180, 740, 1, 134, "the warm flagstones"),
+    ("plant", 3262, 648, -1, 122, "the herb pots"),
+    ("perch", 3348, 352, 1, 110, "the glass ledge"),
+    ("chair", 3444, 556, -1, 138, "the wicker chair"),
+    ("bed", 3540, 628, 1, 130, "the cushion by the door"),
+    ("toy", 3626, 732, -1, 128, "the ball of twine"),
+    ("water", 3712, 718, -1, 122, "the watering can"),
+    ("food", 3790, 740, 1, 128, "the bowl by the garden door"),
+)
+
+# The loft, 3860 to 4760. Beams, two skylights and other people's boxes.
+LOFT_SPOTS = (
+    ("floor", 3960, 742, -1, 132, "the top of the ladder"),
+    ("beam", 3922, 300, 1, 104, "the low beam"),
+    ("beam", 4040, 236, -1, 102, "the high beam"),
+    ("perch", 4140, 470, 1, 108, "the water tank"),
+    ("beam", 4160, 300, 1, 104, "the cross beam"),
+    ("warm", 4250, 640, -1, 120, "the flue"),
+    ("perch", 4262, 420, -1, 110, "the skylight ledge"),
+    ("box", 4352, 560, 1, 128, "the tea chest"),
+    ("box", 4452, 620, -1, 126, "the suitcase"),
+    ("bed", 4542, 600, 1, 130, "the old eiderdown"),
+    ("food", 4640, 738, 1, 128, "the saucer by the hatch"),
+    ("post", 4700, 560, 1, 128, "the roof post"),
+)
+
+# The sanctuary, 4760 to 5960. A barn with a stove in it.
+SANCT_SPOTS = (
+    ("hay", 4822, 620, 1, 132, "the hay bales"),
+    ("food", 4872, 718, -1, 124, "the long trough"),
+    ("hay", 4930, 548, -1, 128, "the top bale"),
+    ("water", 4962, 718, 1, 124, "the water trough"),
+    ("warm", 5040, 600, 1, 124, "the stove"),
+    ("post", 5470, 556, 1, 128, "the post by the beds"),
+    ("bed", 5142, 652, -1, 130, "the first bed in the row"),
+    ("toy", 5182, 734, -1, 128, "the rope"),
+    ("bed", 5232, 652, 1, 130, "the second bed"),
+    ("tunnel", 5302, 700, -1, 124, "the straw tunnel"),
+    ("bed", 5322, 652, -1, 130, "the third bed"),
+    ("bed", 5412, 652, 1, 130, "the fourth bed"),
+    ("perch", 5502, 420, -1, 112, "the hay loft"),
+    ("chair", 5600, 596, -1, 136, "the keeper's chair"),
+    ("perch", 5604, 336, 1, 108, "the rafters"),
+    ("post", 5700, 560, 1, 130, "the barn post"),
+    ("run", 5800, 742, -1, 134, "the outdoor run"),
+    ("run", 5892, 742, 1, 132, "the far end of the run"),
+)
+
+ROOM_SPOTS = ROOM_SPOTS + GARDEN_SPOTS + LOFT_SPOTS + SANCT_SPOTS
+
+# ---------------------------------------------------------------------------
+# WHAT THE FLAT BECOMES
+#
+# Four of these, bought in order, each one a wall taken out or a door
+# unlocked. They are the only thing in the game that money buys purely to
+# look at: not one of them earns a penny. What they buy is room, and cats
+# to put in it, and places for those cats to be.
+#
+# The last one is not in the flat at all. By the time anybody can afford
+# it there is nothing left in the shop worth wanting and a great deal of
+# money doing nothing, which is exactly the point at which somebody
+# starts looking at outbuildings.
+# ---------------------------------------------------------------------------
+class Wing:
+    __slots__ = ("key", "name", "price", "wide", "cap", "spots", "blurb")
+
+    def __init__(self, key, name, price, wide, cap, spots, blurb):
+        self.key = key
+        self.name = name
+        self.price = price
+        self.wide = wide        # pixels of room it adds
+        self.cap = cap          # cats it adds
+        self.spots = spots      # how many places, appended in this order
+        self.blurb = blurb
+
+
+WINGS = (
+    Wing("back", "Knock Through to the Back Room", 120000, 960, 8, 14,
+         "The flat next door has been empty for a year and the landlord "
+         "would rather have one tenant than none. Take it and take the "
+         "wall out."),
+    Wing("garden", "The Garden Room", 400000, 900, 6, 12,
+         "A glass lean-to on the back, with a door that is never quite "
+         "shut and flagstones that hold the heat until ten at night."),
+    Wing("loft", "The Loft Conversion", 1200000, 900, 6, 12,
+         "A ladder, two skylights and eighty years of other people's "
+         "boxes. They are up there within a minute of the hatch opening."),
+    Wing("sanct", "The Sanctuary", 3000000, 1200, 14, 18,
+         "The barn at the end of the lane, a stove in it, and room for "
+         "every cat that turns up at the door for as long as there are "
+         "cats that turn up at doors."),
+)
+BY_WING = {w.key: w for w in WINGS}
+CATS_W_BIG = CATS_W + sum(w.wide for w in WINGS)
+
+
+def wing_x(i):
+    """Where a wing starts, along the room."""
+    return CATS_W + sum(w.wide for w in WINGS[:i])
 
 ACT_POSE = {"sleep": "curl", "loaf": "sit", "sit": "sit", "watch": "sit",
             "groom": "sit", "eat": "stand", "drink": "stand",
             "play": "stand", "scratch": "stand", "prowl": "stand",
-            "climb": "stand", "hide": "curl", "chatter": "sit"}
+            "climb": "stand", "hide": "curl", "chatter": "sit",
+            "sniff": "sit"}
 ACT_WORD = {"sleep": "asleep", "loaf": "loafing", "sit": "sitting",
             "watch": "watching", "groom": "washing", "eat": "eating",
             "drink": "drinking", "play": "playing", "scratch": "scratching",
             "prowl": "prowling", "climb": "climbing", "hide": "hiding",
-            "chatter": "chattering"}
+            "chatter": "chattering", "sniff": "sniffing"}
 # The preposition was picked off the pose - "on" for anything sitting,
 # "at" for anything standing - which reads right for every act there was
 # and wrong for all three of the new ones. A cat is not hiding ON a
 # tunnel.
-ACT_PREP = {"climb": "up", "hide": "in", "chatter": "at", "prowl": "along"}
+ACT_PREP = {"climb": "up", "hide": "in", "chatter": "at", "prowl": "along",
+            "sniff": "at"}
 
 
 class Resident:
@@ -7053,7 +7171,8 @@ class CatRoom:
 
     def draw(self, surf, t):
         for r in self.res:
-            self._draw_one(surf, r, t)
+            if in_view(r.x - 120, r.x + 120):
+                self._draw_one(surf, r, t)
 
     def _draw_one(self, surf, r, t):
         ph = t * 1.4 + r.seed
@@ -7323,6 +7442,256 @@ def _backroom_front(surf):
                      (arm.x + 44, arm.bottom - 48, arm.w - 88, 30),
                      border_radius=8)
 
+def _plant(surf, x, y, h, col, seed=0):
+    """A pot with something green coming out of it."""
+    rng = random.Random(seed)
+    pot = pygame.Rect(x - h * 0.22, y - h * 0.26, h * 0.44, h * 0.26)
+    for i in range(9):
+        a = -2.6 + i * 0.36 + rng.uniform(-0.12, 0.12)
+        ln = h * rng.uniform(0.45, 0.80)
+        tip = (pot.centerx + math.cos(a) * ln * 0.7,
+               pot.y - abs(math.sin(a)) * ln)
+        pygame.draw.line(surf, mix(col, INK, 0.1 + 0.2 * (i % 3)),
+                         (pot.centerx, pot.y), tip, 3)
+        pygame.draw.circle(surf, col, (round(tip[0]), round(tip[1])), 5)
+    pygame.draw.rect(surf, mix(EMBER, WOOD, 0.35), pot, border_radius=3)
+    pygame.draw.rect(surf, mix(EMBER, LAMP, 0.2),
+                     (pot.x, pot.y, pot.w, 7), border_radius=2)
+
+
+def _garden(surf, state, t):
+    """Glass on three sides, flagstones, and far too many plants."""
+    x0 = wing_x(1)
+    pygame.draw.rect(surf, mix(DEEP, (46, 56, 58), 0.6),
+                     (x0, 0, 900, CATS_FLOOR))
+    # the glass roof and wall, with the night behind it
+    for i in range(7):
+        gx = x0 + 40 + i * 120
+        pane = pygame.Rect(gx, 90, 104, CATS_FLOOR - 170)
+        pygame.draw.rect(surf, (20, 26, 32), pane)
+        sh = pygame.Surface(pane.size, pygame.SRCALPHA)
+        pygame.draw.polygon(sh, (*mix(CREAM, LAMP, 0.4), 16),
+                            [(0, pane.h), (pane.w * 0.7, 0),
+                             (pane.w, 0), (pane.w * 0.3, pane.h)])
+        surf.blit(sh, pane.topleft)
+        pygame.draw.rect(surf, mix(WOOD, TEA, 0.3), pane, width=4)
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.3), (x0, 74, 900, 20))
+    glow(surf, (x0 + 450, 300), 520, mix(LAMP, CREAM, 0.2), 0.09)
+
+    # flagstones, which hold the heat until ten at night
+    pygame.draw.rect(surf, mix(WOOD_LO, TEA, 0.18),
+                     (x0, CATS_FLOOR, 900, H - CATS_FLOOR))
+    rng = random.Random(21)
+    for row in range(5):
+        for col in range(8):
+            fx = x0 + 10 + col * 112 + (56 if row % 2 else 0)
+            fy = CATS_FLOOR + 8 + row * 42
+            if fy < H:
+                pygame.draw.rect(surf, mix(WOOD_LO, CREAM,
+                                           0.10 + rng.random() * 0.07),
+                                 (fx, fy, 104, 36), border_radius=4)
+
+    # the trellis, up the near wall
+    for i in range(9):
+        pygame.draw.line(surf, mix(WOOD, RUG, 0.4),
+                         (x0 + 150 + i * 14, 250), (x0 + 220 + i * 14, 560), 3)
+        pygame.draw.line(surf, mix(WOOD, RUG, 0.4),
+                         (x0 + 220 - i * 14, 250), (x0 + 150 - i * 14, 560), 3)
+    pygame.draw.rect(surf, WOOD_HI, (x0 + 76, 436, 120, 12),
+                     border_radius=2)   # the plant shelf
+    pygame.draw.rect(surf, WOOD_HI, (x0 + 330, 368, 110, 12),
+                     border_radius=2)   # the glass ledge
+
+    _plant(surf, x0 + 52, 632, 150, (104, 148, 96), 1)
+    _plant(surf, x0 + 302, 664, 120, (122, 160, 104), 2)
+    _plant(surf, x0 + 136, 436, 96, (96, 142, 102), 3)
+    _plant(surf, x0 + 240, 304, 86, (112, 152, 98), 4)
+
+    # the wicker chair, the cushion and the watering can
+    ch = pygame.Rect(x0 + 426, 560, 150, 110)
+    pygame.draw.rect(surf, mix(WOOD, PAPER, 0.3), ch, border_radius=12)
+    for i in range(7):
+        hairline(surf, ch.x + 6, ch.y + 10 + i * 13, ch.right - 6,
+                 shade(WOOD, 0.7), 40)
+    pygame.draw.ellipse(surf, mix(RUG, LAMP, 0.1),
+                        (x0 + 556, 636, 120, 44))
+    can = pygame.Rect(x0 + 736, 692, 44, 34)
+    pygame.draw.rect(surf, mix(TEA, CREAM, 0.25), can, border_radius=4)
+    pygame.draw.line(surf, mix(TEA, CREAM, 0.25), (can.right, can.y + 8),
+                     (can.right + 22, can.bottom), 5)
+    # the post by the step
+    gp = pygame.Rect(x0 + 28, 556, 30, CAT_WALK_Y - 556 + 14)
+    pygame.draw.rect(surf, mix(WOOD, PAPER, 0.26), gp, border_radius=3)
+    for i in range(int(gp.h / 7)):
+        hairline(surf, gp.x, gp.y + i * 7, gp.right, shade(WOOD, 0.72), 40)
+    pygame.draw.ellipse(surf, mix(RUG, WOOD, 0.3),
+                        (gp.centerx - 40, gp.y - 14, 80, 26))
+
+    # the door that is never quite shut
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.2), (x0 + 820, 230, 70, 326))
+    pygame.draw.rect(surf, shade(WOOD, 0.7), (x0 + 820, 230, 70, 326),
+                     width=3)
+    pygame.draw.rect(surf, mix(RUG, WOOD, 0.3), (x0 + 756, 736, 110, 22),
+                     border_radius=4)
+
+
+def _loft(surf, state, t):
+    """A ladder, two skylights and eighty years of other people's boxes."""
+    x0 = wing_x(2)
+    pygame.draw.rect(surf, mix(INK, WOOD, 0.22), (x0, 0, 900, CATS_FLOOR))
+    # the roof, sloping in from both sides
+    pygame.draw.polygon(surf, shade(WOOD_LO, 0.74),
+                        [(x0, 0), (x0 + 240, 0), (x0, 330)])
+    pygame.draw.polygon(surf, shade(WOOD_LO, 0.74),
+                        [(x0 + 900, 0), (x0 + 660, 0), (x0 + 900, 330)])
+    for bx, by, bw in ((x0 + 60, 312, 240), (x0 + 178, 248, 240),
+                       (x0 + 298, 312, 240)):
+        pygame.draw.rect(surf, mix(WOOD, RUG, 0.18), (bx, by, bw, 16),
+                         border_radius=2)
+        pygame.draw.rect(surf, shade(WOOD, 0.72), (bx, by + 11, bw, 5))
+    # two skylights, and the only light in here
+    for sx in (x0 + 330, x0 + 610):
+        sk = pygame.Rect(sx, 110, 150, 110)
+        pygame.draw.rect(surf, (22, 28, 38), sk)
+        rng = random.Random(sx)
+        for i in range(10):
+            pygame.draw.circle(surf, mix(CREAM, INK, 0.3),
+                               (sk.x + rng.randrange(8, sk.w - 8),
+                                sk.y + rng.randrange(8, sk.h - 8)), 1)
+        pygame.draw.rect(surf, mix(WOOD, TEA, 0.3), sk, width=5)
+        glow(surf, (sk.centerx, sk.bottom + 120), 300,
+             mix(LAMP, CREAM, 0.3), 0.10)
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.9),
+                     (x0, CATS_FLOOR, 900, H - CATS_FLOOR))
+    for i in range(9):
+        hairline(surf, x0, CATS_FLOOR + 12 + i * 26, x0 + 900, WOOD_HI, 24)
+
+    # the hatch and the top of the ladder
+    pygame.draw.rect(surf, shade(INK, 1.4), (x0 + 110, CAT_WALK_Y + 4, 110,
+                                             H - CAT_WALK_Y - 4))
+    for i in range(3):
+        pygame.draw.rect(surf, mix(WOOD, PAPER, 0.2),
+                         (x0 + 116, CAT_WALK_Y + 10 + i * 16, 98, 7),
+                         border_radius=2)
+    # the water tank, the flue and a stack of boxes
+    pygame.draw.rect(surf, mix(TEA, WOOD, 0.4), (x0 + 240, 486, 120, 74),
+                     border_radius=5)
+    pygame.draw.rect(surf, shade(TEA, 0.7), (x0 + 240, 486, 120, 74),
+                     width=3, border_radius=5)
+    pygame.draw.rect(surf, mix(WOOD, INK, 0.3), (x0 + 374, 400, 34, 260))
+    rng = random.Random(9)
+    for bx, by, bw, bh in ((x0 + 470, 576, 130, 92), (x0 + 486, 500, 100, 76),
+                           (x0 + 580, 622, 120, 86)):
+        face = mix(WOOD, PAPER, 0.16)
+        pygame.draw.rect(surf, face, (bx, by, bw, bh), border_radius=3)
+        pygame.draw.rect(surf, shade(face, 0.74), (bx, by, bw, bh), width=2,
+                         border_radius=3)
+        tape = pygame.Rect(bx + 8, by + bh // 2 - 6, bw - 16, 12)
+        pygame.draw.rect(surf, mix(face, LAMP, 0.22), tape, border_radius=2)
+    # the eiderdown, and the roof post
+    pygame.draw.ellipse(surf, mix(RUG, LAMP, 0.08), (x0 + 636, 614, 150, 56))
+    pygame.draw.rect(surf, mix(WOOD, PAPER, 0.24),
+                     (x0 + 826, 556, 30, CAT_WALK_Y - 556 + 14),
+                     border_radius=3)
+
+
+def _sanctuary(surf, state, t):
+    """The barn at the end of the lane, with a stove in it."""
+    x0 = wing_x(3)
+    pygame.draw.rect(surf, mix(INK, WOOD, 0.3), (x0, 0, 1200, CATS_FLOOR))
+    # stone, up to the eaves
+    rng = random.Random(33)
+    for row in range(11):
+        for col in range(14):
+            sx = x0 + 8 + col * 86 + (43 if row % 2 else 0)
+            sy = 40 + row * 46
+            if sy < CATS_FLOOR - 20:
+                pygame.draw.rect(surf, mix(shade(WOOD_LO, 0.62), CREAM,
+                                           0.02 + rng.random() * 0.045),
+                                 (sx, sy, 80, 40), border_radius=5)
+    # the roof trusses
+    for i in range(4):
+        tx = x0 + 150 + i * 300
+        pygame.draw.polygon(surf, mix(WOOD, RUG, 0.12),
+                            [(tx - 150, 304), (tx, 146), (tx + 150, 304),
+                             (tx + 130, 304), (tx, 176), (tx - 130, 304)])
+        pygame.draw.line(surf, shade(WOOD, 0.74), (tx, 176), (tx, 300), 7)
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.18), (x0, 296, 1200, 18))
+    pygame.draw.rect(surf, shade(WOOD, 0.66), (x0, 310, 1200, 5))
+    glow(surf, (x0 + 280, 600), 420, mix(LAMP, EMBER, 0.45), 0.16)
+    glow(surf, (x0 + 820, 420), 420, mix(LAMP, CREAM, 0.25), 0.09)
+
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.84),
+                     (x0, CATS_FLOOR, 1200, H - CATS_FLOOR))
+    for i in range(9):
+        hairline(surf, x0, CATS_FLOOR + 12 + i * 26, x0 + 1200, WOOD_HI, 20)
+
+    # hay, stacked
+    for hx, hy, hw, hh in ((x0 + 40, 636, 140, 92), (x0 + 120, 564, 130, 84)):
+        pygame.draw.rect(surf, mix((176, 150, 88), WOOD, 0.25),
+                         (hx, hy, hw, hh), border_radius=4)
+        for i in range(6):
+            hairline(surf, hx + 6, hy + 10 + i * 13, hx + hw - 6,
+                     mix((214, 190, 120), LAMP, 0.2), 34)
+        pygame.draw.rect(surf, shade(WOOD, 0.7), (hx, hy + hh // 2 - 4, hw, 8))
+
+    # the stove, which is the warmest thing in the game
+    st_r = pygame.Rect(x0 + 240, 584, 104, 144)
+    pygame.draw.rect(surf, shade(INK, 1.5), st_r, border_radius=6)
+    pygame.draw.rect(surf, shade(TEA, 0.5), st_r, width=3, border_radius=6)
+    door = pygame.Rect(st_r.x + 18, st_r.y + 40, 68, 60)
+    pygame.draw.rect(surf, mix(EMBER, LAMP, 0.6), door, border_radius=4)
+    glow(surf, door.center, 230, mix(EMBER, LAMP, 0.55), 0.42)
+    pygame.draw.rect(surf, mix(LAMP, CREAM, 0.3), door, width=2,
+                     border_radius=4)
+    pygame.draw.rect(surf, shade(INK, 1.6), (st_r.centerx - 11, 300, 22, 300))
+
+    # the row of beds
+    for i in range(4):
+        bx = x0 + 330 + i * 90
+        pygame.draw.ellipse(surf, mix(RUG, WOOD, 0.3), (bx, 648, 84, 46))
+        pygame.draw.ellipse(surf, mix(RUG, LAMP, 0.1), (bx + 8, 654, 68, 34))
+
+    # the hay loft and the rafters
+    pygame.draw.rect(surf, WOOD_HI, (x0 + 690, 436, 180, 14),
+                     border_radius=2)
+    pygame.draw.rect(surf, shade(WOOD, 0.7), (x0 + 690, 446, 180, 6))
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.2), (x0 + 760, 348, 220, 14),
+                     border_radius=2)
+    # the keeper's chair and the barn post
+    ch = pygame.Rect(x0 + 770, 596, 140, 110)
+    pygame.draw.rect(surf, mix(RUG, WOOD, 0.3), ch, border_radius=10)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.06),
+                     (ch.x + 12, ch.y + 12, ch.w - 24, ch.h - 50),
+                     border_radius=8)
+    pygame.draw.rect(surf, mix(WOOD, PAPER, 0.22),
+                     (x0 + 926, 560, 32, CAT_WALK_Y - 560 + 14),
+                     border_radius=3)
+
+    # the post by the beds
+    sp = pygame.Rect(x0 + 696, 556, 32, CAT_WALK_Y - 556 + 14)
+    pygame.draw.rect(surf, mix(WOOD, PAPER, 0.22), sp, border_radius=3)
+    for i in range(int(sp.h / 7)):
+        hairline(surf, sp.x, sp.y + i * 7, sp.right, shade(WOOD, 0.7), 40)
+    pygame.draw.ellipse(surf, mix(RUG, WOOD, 0.28),
+                        (sp.centerx - 42, sp.y - 14, 84, 26))
+
+    # the door to the run, standing open, and the night outside
+    door = pygame.Rect(x0 + 1000, 300, 180, 256)
+    pygame.draw.rect(surf, (16, 20, 28), door)
+    rngs = random.Random(5)
+    for i in range(16):
+        pygame.draw.circle(surf, mix(CREAM, INK, 0.35),
+                           (door.x + rngs.randrange(8, door.w - 8),
+                            door.y + rngs.randrange(8, door.h - 8)), 1)
+    pygame.draw.rect(surf, shade(WOOD, 0.6), door, width=6)
+    for i in range(7):
+        pygame.draw.line(surf, mix(TEA, WOOD, 0.4),
+                         (door.x + 14 + i * 24, door.y + 6),
+                         (door.x + 14 + i * 24, door.bottom - 6), 2)
+    text(surf, "THE RUN", 13, (door.centerx, door.bottom + 16), TEA,
+         center=True, kind="mono")
+
 def _catroom_front(surf, state, t):
     """The parts of the room that are in FRONT of the cats.
 
@@ -7354,7 +7723,7 @@ def _catroom_front(surf, state, t):
     pygame.draw.rect(surf, mix(RUG, LAMP, 0.06),
                      (ch.x + 46, ch.bottom - 54, ch.w - 92, 34),
                      border_radius=8)
-    if state.big_room:
+    if state.wings >= 1:
         _backroom_front(surf)
 
 
@@ -7384,8 +7753,10 @@ def _catroom(surf, state, t):
             hairline(surf, 0, y, wide, WOOD_HI, 30)
     pygame.draw.rect(surf, shade(WOOD_HI, 0.55), (0, CATS_FLOOR - 10,
                                                   wide, 10))
-    if state.big_room:
-        _backroom(surf, state, t)
+    for i, draw in enumerate((_backroom, _garden, _loft, _sanctuary)):
+        if state.wings > i and in_view(wing_x(i),
+                                       wing_x(i) + WINGS[i].wide):
+            draw(surf, state, t)
     _rug(surf, pygame.Rect(120, 626, 420, 150), mix(RUG, WOOD, 0.3))
     _rug(surf, pygame.Rect(760, 640, 500, 170), mix(RUG, EMBER, 0.12))
     _rug(surf, pygame.Rect(1560, 636, 420, 150), mix(RUG, WOOD, 0.22))
@@ -7611,23 +7982,24 @@ SPOTS = (
     ("study", 414, 606, "sit", 124),      # the near edge of the rug
 )
 ROOM_CAP = 12                 # how many cats live in the cat room itself
+BIG_CAP = ROOM_CAP + sum(w.cap for w in WINGS)   # ... with every wall down
 
 
 def room_cap(state):
     """How many of them the cat room holds - which is the whole point of
     knocking the wall through, and the reason this is a question and not
     a constant any more."""
-    return BIG_CAP if state.big_room else ROOM_CAP
+    return ROOM_CAP + sum(w.cap for w in WINGS[:state.wings])
 
 
 def room_spot_count(state):
     """How much of ROOM_SPOTS is reachable. The back room's places are
     appended, so this is a count rather than a filter."""
-    return len(ROOM_SPOTS) if state.big_room else ROOM_BASE
+    return ROOM_BASE + sum(w.spots for w in WINGS[:state.wings])
 
 
 def cats_wide(state):
-    return CATS_W_BIG if state.big_room else CATS_W
+    return CATS_W + sum(w.wide for w in WINGS[:state.wings])
 
 
 def area_wide(area, state):
@@ -8291,6 +8663,13 @@ _scratch = None
 _wide = None
 
 
+_VIEW = (-10 ** 6, 10 ** 6)     # the slice of a wide room on screen
+
+
+def in_view(lo, hi):
+    return hi > _VIEW[0] and lo < _VIEW[1]
+
+
 def draw_area(surf, area, state, t, cam=0.0, room=None):
     """Draw a room into `surf`, taking the camera into account.
 
@@ -8304,14 +8683,19 @@ def draw_area(surf, area, state, t, cam=0.0, room=None):
     if wide <= W:
         _AREA_DRAW[area](surf, state, t)
         return
-    global _wide
+    global _wide, _VIEW
     if _wide is None or _wide.get_width() != wide:
         _wide = pygame.Surface((wide, H))
+    _VIEW = (cam - 60, cam + W + 60)
+    old_clip = _wide.get_clip()
+    _wide.set_clip(pygame.Rect(int(cam) - 60, 0, W + 120, H))
     _AREA_DRAW[area](_wide, state, t)
     if room is not None:
         room.draw(_wide, t)
     if area == "cats":
         _catroom_front(_wide, state, t)
+    _wide.set_clip(old_clip)
+    _VIEW = (-10 ** 6, 10 ** 6)
     surf.blit(_wide, (-int(cam), 0))
 
 
@@ -8849,17 +9233,21 @@ class GameBase:
         self.save()
 
     def take_the_room(self):
+        """Buy the next room along. They only come in order."""
         st = self.state
-        if st.big_room or st.money < BIG_ROOM_PRICE:
+        w = st.next_wing
+        if w is None or st.money < w.price:
             return
-        st.money -= BIG_ROOM_PRICE
-        st.spent += BIG_ROOM_PRICE
-        st.big_room = True
+        st.money -= w.price
+        st.spent += w.price
+        st.wings += 1
         self.room.sync(st, room_cap(st))
         self.beep("shiny")
-        self.toast("the wall is down",
-                   f"the cat room runs to {CATS_W_BIG} now, and holds "
-                   f"{BIG_CAP}", mix(LAMP, CREAM, 0.3), 12.0)
+        last = st.next_wing is None
+        self.toast(w.name.lower() + ", then",
+                   f"room for {room_cap(st)} of them now"
+                   + (" - and nowhere left to grow" if last else ""),
+                   mix(LAMP, CREAM, 0.3), 12.0)
         self.save()
 
     def let_in(self):
@@ -10245,47 +10633,53 @@ class ShopMixin:
 
     # -- the wall at the end of the cat room ---------------------------
     def draw_room_page(self, s, body):
-        """The one thing in the shop that is not for the cats to use but
-        for you to watch them use."""
+        """Four rooms, in order, and the only things in the shop that are
+        not for the cats to use but for you to watch them use."""
         st = self.state
-        done = st.big_room
-        text(s, "THE FLAT NEXT DOOR", 24, (body.x, body.y), warm(CREAM, 0.2))
-        paragraph(s, "The flat next door has been empty for a year and the "
-                     "landlord would rather have one tenant than none. Take "
-                     "it, take the wall out, and the cat room runs on for "
-                     "another room\'s worth - a bird window, three steps up "
-                     "the wall, a tunnel, a hammock, a sofa and a post that "
-                     "goes to the ceiling.", 14,
-                  (body.x, body.y + 34), MUTED, body.w - 20, 5, kind="mono")
-
-        r = pygame.Rect(body.x, body.y + 128, body.w - 8, 150)
-        panel(s, r, mix(SCREEN_HI, EMBER, 0.14 if done else 0.04),
-              shade(EMBER, 0.7) if done else shade(SCREEN_HI, 1.4),
-              radius=10, shadow=False)
-        text(s, BIG_ROOM_NAME, 22, (r.x + 20, r.y + 16),
-             warm(CREAM, 0.2) if done else CREAM)
-        facts = ((f"cats in the room", f"{ROOM_CAP}", f"{BIG_CAP}"),
-                 ("places to be", f"{ROOM_BASE}", f"{len(ROOM_SPOTS)}"),
-                 ("things to do", f"{len(ACT_WORD) - 3}", f"{len(ACT_WORD)}"))
-        fy = r.y + 56
-        for label, before, after in facts:
-            text(s, label, 13, (r.x + 24, fy), MUTED, kind="mono")
-            text(s, f"{before}  ->  {after}", 14, (r.x + 220, fy),
-                 GOOD if done else mix(TEA, CREAM, 0.3), kind="mono")
-            fy += 24
-        if done:
-            text(s, "THE WALL IS DOWN", 14, (r.right - 20, r.bottom - 30),
-                 GOOD, right=True, kind="mono")
-        else:
-            text(s, money(BIG_ROOM_PRICE), 26, (r.right - 160, r.bottom - 52),
-                 warm(EMBER, 0.2), right=True)
-            self.buttons.append(Button(
-                (r.right - 150, r.bottom - 60, 130, 38), "TAKE IT",
-                ("bigroom", None), "solid", 17, kind="mono",
-                enabled=st.money >= BIG_ROOM_PRICE))
-        text(s, "It earns you nothing. There is simply more of it, and "
-                "more of them in it.", 13, (body.x, r.bottom + 20), TEA,
-             kind="mono", max_w=body.w - 20)
+        text(s, "WHAT THE FLAT BECOMES", 22, (body.x, body.y),
+             warm(CREAM, 0.2))
+        text(s, "Bought in order, one wall at a time. Not one of them "
+                "earns a penny; what they buy is room, and cats to put in "
+                "it.", 13, (body.x, body.y + 28), MUTED, kind="mono",
+             max_w=body.w - 20)
+        top = body.y + 56
+        rowh = (body.bottom - top) // len(WINGS)
+        for i, w in enumerate(WINGS):
+            r = pygame.Rect(body.x, top + i * rowh, body.w - 8, rowh - 8)
+            have = i < st.wings
+            nxt = i == st.wings
+            panel(s, r, mix(SCREEN_HI, EMBER,
+                            0.14 if have else 0.06 if nxt else 0.02),
+                  shade(EMBER, 0.7) if have else
+                  shade(SCREEN_HI, 1.4) if nxt else shade(SCREEN_HI, 1.1),
+                  radius=9, shadow=False)
+            head = warm(CREAM, 0.2) if have else CREAM if nxt else MUTED
+            text(s, w.name, 19, (r.x + 18, r.y + 10), head, max_w=r.w - 230)
+            paragraph(s, w.blurb, 12, (r.x + 18, r.y + 34),
+                      MUTED if nxt or have else shade(MUTED, 0.75),
+                      r.w - 260, 3, kind="mono")
+            cap_to = ROOM_CAP + sum(x.cap for x in WINGS[:i + 1])
+            text(s, f"+{w.cap} cats, to {cap_to}    +{w.spots} places"
+                    f"    +{w.wide} across", 12,
+                 (r.x + 18, r.bottom - 22),
+                 GOOD if have else mix(TEA, CREAM, 0.25) if nxt
+                 else shade(MUTED, 0.8), kind="mono")
+            if have:
+                text(s, "DONE", 15, (r.right - 20, r.y + 16), GOOD,
+                     right=True, kind="mono")
+            elif nxt:
+                text(s, money(w.price), 22, (r.right - 150, r.y + 22),
+                     warm(EMBER, 0.2), right=True)
+                self.buttons.append(Button(
+                    (r.right - 140, r.y + 10, 120, 36), "TAKE IT",
+                    ("bigroom", None), "solid", 16, kind="mono",
+                    enabled=st.money >= w.price))
+            else:
+                text(s, money(w.price), 16, (r.right - 20, r.y + 20),
+                     shade(MUTED, 0.85), right=True, kind="mono")
+                text(s, "the one above first", 11,
+                     (r.right - 20, r.y + 40), shade(MUTED, 0.7),
+                     right=True, kind="mono")
 
     # -- the club -----------------------------------------------------------
     def draw_club(self, s, body):
