@@ -300,16 +300,20 @@ def _affordable(state, policy):
     # Each one shops the new page by its own rule about price, which is
     # the thing each of them is actually there to test, and waits rather
     # than spending if it cannot afford one yet.
-    kit_all = [p for p in cc.packs_on("kitten") if state.sellable(p)]
-    if state.kittens and kit_all:
-        kit = [p for p in kit_all if p.price <= state.money]
-        if not kit:
-            return None
+    for x in cc.SERIES:
+        if x.key == "cat" or x.key not in state.out:
+            continue
+        on = [p for p in cc.packs_on(x.shelf) if state.sellable(p)]
+        if not on:
+            continue                      # that collection is finished
+        afford = [p for p in on if p.price <= state.money]
+        if not afford:
+            return None                   # save up for one
         if policy == "cheap":
-            return kit[0]
+            return afford[0]
         if policy == "dear":
-            return kit[-1]
-        return max(kit, key=lambda p: p.cards / p.ship)
+            return afford[-1]
+        return max(afford, key=lambda p: p.cards / p.ship)
     ladder = [p for p in cc.packs_on("standard") if p.price <= state.money
               and state.sellable(p)]
     if policy in ("cheap", "dear"):
@@ -2701,6 +2705,169 @@ def kittens():
     return ok
 
 
+
+def swaps():
+    """The swap board: copies for copies, and no money anywhere near it.
+
+    The thing that must hold is the bookkeeping. A level is made of
+    copies, so handing copies over has to come off levels EXACTLY - the
+    same arithmetic as taking them in, run backwards. If that drifts,
+    every trade either quietly mints progress or quietly eats it, and
+    neither shows up as an error.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+
+    # -- a copy out is the exact reverse of a copy in --------------------
+    def copies(c):
+        return c.dupes + sum(cc.dupes_for(lv) for lv in range(1, c.level))
+
+    for start in (1, 4, 8, 10):
+        for take in (1, 3, 11, 40):
+            c = cc.Card(level=start)
+            for _ in range(take):
+                c.add_dupe()
+            held = copies(c)
+            gave = sum(1 for _ in range(take) if c.give_one())
+            if copies(c) != held - gave:
+                print(f"  level {start}: gave {gave} copies and the card "
+                      f"lost {held - copies(c)}")
+                ok = False
+            if gave > held:
+                print(f"  level {start}: gave {gave} copies out of {held}")
+                ok = False
+    c = cc.Card(level=1)
+    if c.give_one():
+        print("  a level one card with nothing behind it gave a copy away")
+        ok = False
+    print("  copies in and copies out agree at every level")
+
+    # -- what the board posts --------------------------------------------
+    empty = cc.State()
+    empty.played = cc.DAY * 2
+    empty.refresh_swaps()
+    print(f"  an empty binder gets {len(empty.swaps)} posts")
+    if empty.swaps:
+        print("  somebody is offering to swap with a binder that is empty")
+        ok = False
+
+    st = cc.State()
+    rng = random.Random(5)
+    for b in list(cc.BREEDS)[:70]:
+        st.cards[b.key] = cc.Card(level=rng.randint(2, 7))
+    st.played = cc.DAY * 3
+    st.refresh_swaps()
+    print(f"  {len(st.swaps)} posts, "
+          f"{sum(1 for w in st.swaps if st.can_swap(w))} of them takeable")
+    if not st.swaps:
+        print("  nothing on the board at all")
+        print("  swaps:", "FAILED")
+        return False
+    for w in st.swaps:
+        if w.want not in st.cards:
+            print(f"  somebody wants {cc.BY_KEY[w.want].name}, which is not "
+                  f"in the binder - nobody could take that")
+            ok = False
+        if w.give == w.want:
+            print("  somebody is offering to swap a card for itself")
+            ok = False
+        if w.cost < 1:
+            print(f"  a post asks for {w.cost} copies")
+            ok = False
+    # dearer cards cost more copies, which is the whole negotiation
+    cheap = cc.swap_price(cc.BY_RARITY[0][0], cc.BY_RARITY[0][0])
+    dear = cc.swap_price(cc.BY_RARITY[0][0], cc.BY_RARITY[cc.R_FOUNDATION][0])
+    print(f"  a common for a common costs {cheap}; a common for a "
+          f"foundation costs {dear}")
+    if dear <= cheap:
+        print("  a foundation card costs no more than a common one")
+        ok = False
+
+    # -- taking one -------------------------------------------------------
+    w = next((x for x in st.swaps if st.can_swap(x)), None)
+    if w is None:
+        print("  not one of the posts could be taken")
+        print("  swaps:", "FAILED")
+        return False
+    money_before = st.money
+    had = st.copies_of(w.want)
+    got = st.take_swap(w)
+    now = st.copies_of(w.want)
+    print(f"  gave {w.cost} x {cc.BY_KEY[w.want].name} "
+          f"({had} copies -> {now}), got {got.breed.name} [{got.kind}]")
+    if had - now != w.cost:
+        print(f"  the swap cost {had - now} copies, not {w.cost}")
+        ok = False
+    if st.money != money_before:
+        print("  money changed hands on the swap board")
+        ok = False
+    if w.give not in st.cards:
+        print("  the card that was offered did not arrive")
+        ok = False
+    if not w.done or st.can_swap(w):
+        print("  the same post can be taken twice")
+        ok = False
+    if st.take_swap(w) is not None:
+        print("  taking a finished post again did something")
+        ok = False
+
+    # -- and you cannot pay with copies you have not got -----------------
+    poor = cc.State()
+    poor.played = cc.DAY * 3
+    poor.cards[cc.BREEDS[0].key] = cc.Card(level=1)
+    poor.refresh_swaps()
+    for x in poor.swaps:
+        if poor.copies_of(x.want) < x.cost and poor.can_swap(x):
+            print(f"  a post can be taken {x.cost} copies short")
+            ok = False
+    # a card at level one is the card itself and is not currency
+    only = cc.State()
+    only.cards["dsh"] = cc.Card(level=1)
+    if only.copies_of("dsh"):
+        print("  a card at level one counts as a spare copy of itself")
+        ok = False
+
+    # -- the board is the day's, and survives being put down -------------
+    a = cc.State()
+    for b in list(cc.BREEDS)[:40]:
+        a.cards[b.key] = cc.Card(level=4)
+    a.played = cc.DAY * 6 + 10
+    a.refresh_swaps()
+    later = cc.State.from_dict(a.to_dict())
+    later.refresh_swaps()
+    if [x.to_row() for x in later.swaps] != [x.to_row() for x in a.swaps]:
+        print("  loading a save rerolls the board")
+        ok = False
+    b2 = cc.State.from_dict(a.to_dict())
+    b2.played = cc.DAY * 7 + 10
+    b2.swaps = []
+    b2.refresh_swaps()
+    if [x.to_row() for x in b2.swaps] == [x.to_row() for x in a.swaps]:
+        print("  the board is the same every day")
+        ok = False
+
+    # -- and it is reachable, and drawn -----------------------------------
+    g = cc.Game(screen)
+    g.state = st
+    g.go("shop")
+    g.press(("site", "swap"))
+    if g.site != "swap":
+        print("  the swap board has no bookmark")
+        ok = False
+    g.draw()
+    keys = {b.key for b in g.buttons}
+    if not any(isinstance(k, tuple) and k[0] == "swap" for k in keys):
+        print("  nothing on the board can be pressed")
+        ok = False
+    for other in ("meowrder", "purrbay"):
+        if ("site", other) not in keys:
+            print(f"  no way from the board back to {other}")
+            ok = False
+
+    print("  swaps:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -2776,6 +2943,9 @@ def main():
         print()
     if cmd in ("merch", "all"):
         ok &= merch()
+        print()
+    if cmd in ("swaps", "all"):
+        ok &= swaps()
         print()
     if cmd in ("resale", "all"):
         ok &= resale()

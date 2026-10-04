@@ -2621,6 +2621,10 @@ KITTEN_BY_RARITY = tuple(tuple(b for b in KITTENS if b.rarity == r)
 KITTEN_KEYS = frozenset(b.key for b in KITTENS)
 
 
+_BOOKS = {}
+_BOOK_KEYS = {}
+
+
 class Series:
     """One collection: a set of cats, a shelf in the shop, and the series
     that has to be finished before it is announced.
@@ -4084,6 +4088,28 @@ class Card:
     def need(self):
         return dupes_for(self.level)
 
+    def give_one(self):
+        """Hand one copy of this card to somebody else - the exact
+        reverse of taking one in.
+
+        A level is made of copies, so giving one back either comes off
+        the duplicates in hand or, if there are none, drops a level and
+        leaves the duplicates one short of the level you came down from.
+        Returns False when there is nothing to give: a card at level one
+        with no duplicates behind it is the card itself, and the swap
+        board does not take those.
+        """
+        if self.dupes > 0:
+            self.dupes -= 1
+            self.pulled -= 1
+            return True
+        if self.level <= 1:
+            return False
+        self.level -= 1
+        self.dupes = max(0, dupes_for(self.level) - 1)
+        self.pulled -= 1
+        return True
+
     def add_dupe(self):
         """Take one duplicate. Returns the new level, or 0 for no change."""
         self.pulled += 1
@@ -4765,6 +4791,98 @@ MERCH = (
 BY_MERCH = {m.key: m for m in MERCH}
 
 
+# ---------------------------------------------------------------------------
+# THE SWAP BOARD
+#
+# The third website, and the only one that does not take money.
+#
+# People post what they have and what they want. You give copies of
+# something you have too many of and you get something you have none of,
+# which is what everybody who has ever collected anything has done. A
+# level is made of copies, so paying in copies comes off your levels -
+# that is the price, and it is a real one: you go backwards on a cat you
+# have been feeding for an hour to go forwards on one you have never
+# seen.
+#
+# Nothing here is for sale and nothing here can be rushed. The board
+# turns over with the day, like the resale site, and is seeded the same
+# way so a reload is not a reroll.
+# ---------------------------------------------------------------------------
+SWAPPERS = (
+    ("a steady trader", 1.0,
+     "Posts what they have, says what they want, and does not haggle."),
+    ("completist_1994", 1.15,
+     "Four cards off a full set for nine years running."),
+    ("THE SWAP KING", 1.5,
+     "Calls every deal generous. None of them are generous."),
+    ("a nervous first-timer", 0.85,
+     "Has read the rules twice and would rather not get this wrong."),
+)
+SWAPS_ON_BOARD = 5
+
+
+def swap_price(want, give):
+    """How many copies of `want` a trader asks for one `give`.
+
+    Priced off the gap between the two tiers, because that is the whole
+    negotiation: nobody gives up a Foundation card for one common, and
+    nobody wants nine commons for a common.
+    """
+    gap = give.rarity - want.rarity
+    return int(clamp(round(2 + gap * 1.6), 1, 12))
+
+
+class Swap:
+    """One post on the board: copies of theirs for copies of yours."""
+    __slots__ = ("give", "want", "cost", "who", "done")
+
+    def __init__(self, give, want, cost, who, done=False):
+        self.give = give        # breed key they are offering
+        self.want = want        # breed key they want copies of
+        self.cost = cost        # how many copies
+        self.who = who
+        self.done = done
+
+    def to_row(self):
+        return [self.give, self.want, self.cost, self.who, int(self.done)]
+
+    @staticmethod
+    def from_row(r):
+        try:
+            sw = Swap(r[0], r[1], int(r[2]), int(r[3]), bool(r[4]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        if sw.give not in BY_KEY or sw.want not in BY_KEY:
+            return None
+        return sw
+
+
+def roll_swaps(state, rng):
+    """A day of posts, built against the binder as it stands.
+
+    An offer nobody could take is not an offer, so what they ask for is
+    always something you own and what they give is weighted towards
+    something you do not. On an empty binder there is nothing to trade
+    with and the board says so rather than inventing something.
+    """
+    book = state.book
+    mine = [b for b in book if b.key in state.cards]
+    if not mine:
+        return []
+    missing = [b for b in book if b.key not in state.cards]
+    out = []
+    for _ in range(SWAPS_ON_BOARD):
+        want = rng.choice(mine)
+        pool = missing if (missing and rng.random() < 0.75) else book
+        give = rng.choice(pool)
+        if give.key == want.key:
+            continue
+        who = rng.randrange(len(SWAPPERS))
+        cost = max(1, round(swap_price(want, give) * SWAPPERS[who][1]))
+        out.append(Swap(give.key, want.key, cost, who))
+    return out
+
+
 MAX_IN_TRANSIT = 4
 
 # The post will carry four parcels at a time, and no amount of money
@@ -4973,10 +5091,14 @@ class State:
         self.club = 0               # memberships bought, 0 to 3
         self.things = set()         # furnishings bought for the flat
         self.big_room = False       # the wall through to the back room
+        self.spares = 0             # copies of retired breeds, for swapping
         self.out = {"cat"}          # the collections that exist
         self.told = set()           # ... and the ones announced to you
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
+        self.swaps = []             # what is on the swap board today
+        self.swaps_day = -1
+        self.swapped = 0            # how many deals you have done
         self.lots = []              # what is on the resale site today
         self.lots_day = -1          # ... and which day that was
         self.conv_done = set()      # stalls played at this convention
@@ -5059,21 +5181,26 @@ class State:
     def book(self):
         """The binder, as it stands: every collection that exists, in one
         order, which is what the cover counts."""
-        if len(self.out) == 1:
-            return BREEDS
-        cats = []
-        for x in self.series:
-            cats += list(x.cats)
-        return tuple(sorted(cats, key=lambda b: (b.rarity, b.name)))
+        key = frozenset(self.out)
+        got = _BOOKS.get(key)
+        if got is None:
+            cats = []
+            for x in SERIES:
+                if x.key in key:
+                    cats += list(x.cats)
+            got = tuple(sorted(cats, key=lambda b: (b.rarity, b.name)))
+            _BOOKS[key] = got
+        return got
 
     @property
     def book_keys(self):
-        if len(self.out) == 1:
-            return LISTED
-        keys = set()
-        for x in self.series:
-            keys |= x.keys
-        return keys
+        key = frozenset(self.out)
+        got = _BOOK_KEYS.get(key)
+        if got is None:
+            got = frozenset().union(*(x.keys for x in SERIES
+                                      if x.key in key))
+            _BOOK_KEYS[key] = got
+        return got
 
     def series_full(self, key):
         """Every cat in that collection, owned.
@@ -5191,6 +5318,57 @@ class State:
         self.lots_day = day
         self.lots = roll_lots(self, rng or random.Random(day * 7919 + 13))
         return True
+
+    # -- the swap board ------------------------------------------------
+    def refresh_swaps(self, rng=None):
+        day = day_of(self.played)
+        if self.swaps_day == day and self.swaps:
+            return False
+        self.swaps_day = day
+        self.swaps = roll_swaps(self, rng or random.Random(day * 6151 + 29))
+        return True
+
+    def copies_of(self, key):
+        """How many copies of a card you could hand over without giving
+        away the card itself."""
+        c = self.cards.get(key)
+        if c is None:
+            return 0
+        n = c.dupes
+        for lv in range(1, c.level):
+            n += dupes_for(lv)
+        return n
+
+    def can_swap(self, sw):
+        return (not sw.done and sw.want in self.cards
+                and self.copies_of(sw.want) >= sw.cost)
+
+    def take_swap(self, sw):
+        """Hand over the copies, take the card.
+
+        What comes back is a Pull, the same as a card out of a packet,
+        because as far as the binder is concerned that is what it is.
+        """
+        if not self.can_swap(sw):
+            return None
+        card = self.cards[sw.want]
+        for _ in range(sw.cost):
+            if not card.give_one():
+                return None
+        sw.done = True
+        self.swapped += 1
+        b = BY_KEY[sw.give]
+        got = self.cards.get(sw.give)
+        if got is None:
+            coat = roll_coat(b, random.Random(sw.give), None, False)
+            got = Card(coat=coat)
+            got.saw(coat)
+            self.cards[sw.give] = got
+            return Pull(b, "new", 1, 0, False, coat, False, True)
+        before = got.level
+        lv = got.add_dupe()
+        return Pull(b, "level" if lv else "dupe", got.level, before,
+                    False, got.coat, False, False)
 
     def lot_cost(self, lot):
         """What it comes to. A box still has to be posted."""
@@ -5402,8 +5580,12 @@ class State:
                         card.shiny = True     # it keeps the better coat
                         card.coat = coat
                     before = card.level
+                    spare = card.maxed      # another copy of a finished one
                     lv = card.add_dupe()
-                    out.append(Pull(b, "level" if lv else "dupe", card.level,
+                    if spare:
+                        self.spares += 1
+                    out.append(Pull(b, "maxed" if spare else
+                                    "level" if lv else "dupe", card.level,
                                     before, sub, coat, first_shiny, fresh))
                 self.cards_pulled += 1
                 if shiny:
@@ -5435,10 +5617,14 @@ class State:
             "club": self.club,
             "things": sorted(self.things),
             "big_room": self.big_room,
+            "spares": self.spares,
             "out": sorted(self.out),
             "told": sorted(self.told),
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
+            "swaps": [w.to_row() for w in self.swaps],
+            "swaps_day": self.swaps_day,
+            "swapped": self.swapped,
             "lots": [lot.to_row() for lot in self.lots],
             "lots_day": self.lots_day,
             "conv_done": sorted(self.conv_done),
@@ -5486,6 +5672,7 @@ class State:
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
         s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
         s.big_room = bool(d.get("big_room"))
+        s.spares = int(d.get("spares", 0))
         s.out = {k for k in (d.get("out") or ()) if k in BY_SERIES}
         s.told = {k for k in (d.get("told") or ()) if k in BY_SERIES}
         if d.get("kittens"):        # saved before there were four of them
@@ -5495,6 +5682,11 @@ class State:
         s.out.add("cat")
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
+        s.swaps = [x for x in (Swap.from_row(r)
+                               for r in (d.get("swaps") or ()))
+                   if x is not None]
+        s.swaps_day = int(d.get("swaps_day", -1))
+        s.swapped = int(d.get("swapped", 0))
         s.lots = [x for x in (Lot.from_row(r) for r in (d.get("lots") or ()))
                   if x is not None]
         s.lots_day = int(d.get("lots_day", -1))
@@ -5535,6 +5727,21 @@ def load_state():
 
 
 def save_state(state):
+    """Write the collection, unless this process has no business writing.
+
+    cat_test.py stubs this out, with a comment about how a harness
+    quietly eats a save file. Throwaway scripts - rendering a screen,
+    driving a scene to look at it - do not, and one of them overwrote a
+    real collection with seventy-four synthetic cards: a Game loads the
+    save in its constructor, and anything that then presses a button
+    which calls `save` writes whatever is in memory straight over it.
+
+    Discipline did not work, so this does not rely on it. A headless
+    process is a process with no window, which this game cannot be
+    played in, so it is a process that must not save.
+    """
+    if os.environ.get("SDL_VIDEODRIVER") == "dummy"             or os.environ.get("CATALOGUE_READONLY"):
+        return
     try:
         path = os.path.join(_save_dir(), SAVE_NAME)
         tmp = path + ".tmp"
@@ -8426,6 +8633,8 @@ class GameBase:
             self.beep("page")
         elif name == "lot":
             self.buy_lot(val)
+        elif name == "swap":
+            self.do_swap(val)
         elif name == "news":
             if val == "skip":
                 self.end_news()
@@ -8584,6 +8793,24 @@ class GameBase:
             st.conv_take(m.stall, None)
             self.toast("that is the lot", "the table is cleared out until "
                                           "next week", TEA, 8.0)
+        self.save()
+
+    def do_swap(self, i):
+        st = self.state
+        if not 0 <= i < len(st.swaps):
+            return
+        w = st.swaps[i]
+        gave = BY_KEY[w.want].name
+        got = st.take_swap(w)
+        if got is None:
+            return
+        self.beep("shiny" if got.kind == "new" else "level")
+        word = ("that is a new one" if got.kind == "new" else
+                f"up to level {got.level}" if got.kind == "level"
+                else "one you already had")
+        self.toast(f"swapped for {got.breed.name}",
+                   f"{w.cost} copies of {gave} gone - {word}",
+                   mix(LAMP, CREAM, 0.3), 10.0)
         self.save()
 
     def buy_lot(self, i):
@@ -9155,7 +9382,8 @@ def _stars(surf, n, pos, size=13, colour=None):
 
 
 SITES = (("meowrder", "MEOWRDER", "meowrder.example"),
-         ("purrbay", "PURRBAY", "purrbay.example"))
+         ("purrbay", "PURRBAY", "purrbay.example"),
+         ("swap", "THE SWAP BOARD", "catswap.example"))
 
 
 # ---------------------------------------------------------------------------
@@ -9399,6 +9627,11 @@ class ShopMixin:
         dim.fill((8, 6, 6, 188))
         s.blit(dim, (0, 0))
         st = self.state
+        if self.site == "swap":
+            _browser(s, "board", "catswap.example")
+            self._bookmarks(s)
+            self.draw_swaps(s)
+            return
         if self.site == "purrbay":
             _browser(s, "listings", "purrbay.example")
             self._bookmarks(s)
@@ -9521,6 +9754,86 @@ class ShopMixin:
                 text(s, label, 12, r.center, warm(CREAM, 0.2), center=True,
                      kind="mono", shadow=False)
             bx += wdt + 6
+
+    # -- the swap board ----------------------------------------------------
+    def draw_swaps(self, s):
+        """Five posts. Nothing here costs money and nothing can be rushed."""
+        st = self.state
+        st.refresh_swaps()
+        x, y = PAGE_R.x + 18, PAGE_R.y + 6
+        tr = text(s, "THE SWAP BOARD", 30, (x, y), mix(GOOD, CREAM, 0.35))
+        text(s, "copies for copies, no money", 13, (tr.right + 14, y + 16),
+             DIM, kind="mono", left=True, shadow=False)
+        text(s, f"{st.swapped} swaps done", 14,
+             (PAGE_R.right - 18, y + 16), mix(CREAM, TEA, 0.3), right=True,
+             kind="mono")
+        hairline(s, x, y + 50, PAGE_R.right - 18, TEA, 60)
+        text(s, "A level is made of copies, so what you hand over comes off "
+                "your levels. Nobody here posts twice.", 12, (x, y + 60),
+             MUTED, kind="mono", max_w=PAGE_R.w - 220)
+        text(s, f"the board changes in {clock_str(until_midnight(st.played))}",
+             12, (PAGE_R.right - 18, y + 60), TEA, right=True, kind="mono",
+             shadow=False)
+        self.buttons.append(Button((PAGE_R.right - 124, y + 82, 116, 26),
+                                   "< the room", ("scene", "room"),
+                                   "link", 15, kind="mono", colour=TEA))
+
+        body = pygame.Rect(PAGE_R.x + 18, y + 114, PAGE_R.w - 36,
+                           PAGE_R.bottom - (y + 114) - 8)
+        if not st.swaps:
+            text(s, "nothing on the board", 20, (body.centerx, body.y + 40),
+                 MUTED, center=True, kind="mono")
+            text(s, "you need a card of your own before anybody will swap "
+                    "with you", 13, (body.centerx, body.y + 72), DIM,
+                 center=True, kind="mono")
+            return
+        rowh = body.h // max(1, len(st.swaps))
+        for i, w in enumerate(st.swaps):
+            self._swap_row(s, pygame.Rect(body.x, body.y + i * rowh,
+                                          body.w, rowh - 8), w, i)
+
+    def _swap_row(self, s, r, w, i):
+        st = self.state
+        give, want = BY_KEY[w.give], BY_KEY[w.want]
+        have = st.copies_of(w.want)
+        can = st.can_swap(w)
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.10 if w.done else 0.03),
+              shade(EMBER, 0.7) if w.done else shade(SCREEN_HI, 1.4),
+              radius=8, shadow=False)
+        name, greed, blurb = SWAPPERS[w.who]
+        text(s, name, 15, (r.x + 14, r.y + 8),
+             mix(TEA, CREAM, 0.3), kind="mono", max_w=260)
+        text(s, blurb, 11, (r.x + 14, r.y + 28), shade(MUTED, 0.9),
+             kind="mono", max_w=270)
+        # what they want, in the middle
+        wx = r.x + 300
+        text(s, "WANTS", 11, (wx, r.y + 8), MUTED, kind="mono")
+        text(s, f"{w.cost} x {want.name}", 17, (wx, r.y + 24),
+             rarity_colour(want.rarity), max_w=230)
+        text(s, f"you have {have} spare" + ("" if have == 1 else "s"), 12,
+             (wx, r.y + 48), GOOD if have >= w.cost else BAD, kind="mono")
+        # what they give
+        gx = r.x + 560
+        text(s, "GIVES", 11, (gx, r.y + 8), MUTED, kind="mono")
+        text(s, give.name, 17, (gx, r.y + 24), rarity_colour(give.rarity),
+             max_w=230)
+        text(s, rarity_name(give.rarity).lower()
+             + ("" if give.key in st.cards else " - not in your binder"), 12,
+             (gx, r.y + 48), mix(LAMP, CREAM, 0.3)
+             if give.key not in st.cards else MUTED, kind="mono", max_w=230)
+        if w.done:
+            text(s, "SWAPPED", 14, (r.right - 24, r.centery), GOOD,
+                 right=True, kind="mono")
+        else:
+            why = ("" if w.want in st.cards else "you have not got one")
+            if not why and have < w.cost:
+                why = f"{w.cost - have} copies short"
+            if why:
+                text(s, why, 11, (r.right - 24, r.bottom - 16), BAD,
+                     right=True, kind="mono")
+            self.buttons.append(Button(
+                (r.right - 130, r.centery - 18, 110, 36), "SWAP",
+                ("swap", i), "solid", 16, kind="mono", enabled=can))
 
     # -- the resale site ---------------------------------------------------
     def draw_resale(self, s):
