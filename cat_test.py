@@ -186,19 +186,29 @@ def shelves():
         if len(on) > 6:
             print(f"  {len(on)} products on one page is more than it holds")
             ok = False
-    hall = cc.packs_on("convention")
-    print(f"    {'convention':<9} {len(hall)}: "
-          + ", ".join(p.name for p in hall) + "   (not for sale)")
-    if sum(len(cc.packs_on(sh)) for sh in cc.SHELVES) + len(hall) \
-            != len(cc.PACKS):
-        print("  a pack is on no shelf at all")
+    # Not every shelf is a page in the shop any more. The hall hands
+    # three of them out and the resale site lists the rest second hand.
+    # What must stay true is that no pack is on NO shelf, and that none
+    # of the off-site ones can be ordered from the website - the day a
+    # convention pack quietly appears on a shelf tab is the day the
+    # convention stops being worth leaving the flat for.
+    off = {}
+    for pk in cc.PACKS:
+        if pk.shelf not in cc.SHELVES:
+            off.setdefault(pk.shelf, []).append(pk)
+    for shelf in sorted(off):
+        print("    {:<9} {}: ".format(shelf, len(off[shelf]))
+              + ", ".join(p.name for p in off[shelf]) + "   (not for sale)")
+    counted = (sum(len(cc.packs_on(sh)) for sh in cc.SHELVES)
+               + sum(len(v) for v in off.values()))
+    if counted != len(cc.PACKS):
+        print(f"  {len(cc.PACKS) - counted} packs are on no shelf at all")
         ok = False
-    if any(p.shelf in cc.SHELVES for p in cc.CONV_PACKS):
-        print("  a convention pack can be ordered off the website")
-        ok = False
-    if not hall:
-        print("  the convention has nothing to give out")
-        ok = False
+    for want in ("convention", "resale"):
+        if not off.get(want):
+            print(f"  nothing is on the {want} shelf")
+            ok = False
+
     # the ladder has to keep going up, on every axis
     last = None
     for p in cc.packs_on("standard"):
@@ -410,7 +420,11 @@ def sameness():
     pygame.display.set_mode((64, 64))
     SZ = 72
     masks = {}
-    for b in cc.BREEDS:
+    # Every cat in the game, not just the catalogue. The five off the
+    # street and the five printed for the hall were never compared
+    # against anything - which is exactly how a new one ends up being a
+    # breed that is already in the book with a different name on it.
+    for b in cc.ALL_BREEDS:
         img = cc.cat_surface(b, "sit", 150)
         # the mask IS the shape with the colour thrown away; scaling it to
         # one box throws the size away too, which is the other half of it
@@ -421,8 +435,8 @@ def sameness():
         masks[b.key] = [1 if small.get_at((x, y))[0] > 110 else 0
                         for y in range(SZ) for x in range(SZ)]
     worst = []
-    for i, a in enumerate(cc.BREEDS):
-        for b in cc.BREEDS[i + 1:]:
+    for i, a in enumerate(cc.ALL_BREEDS):
+        for b in cc.ALL_BREEDS[i + 1:]:
             ma, mb = masks[a.key], masks[b.key]
             inter = sum(1 for x, y in zip(ma, mb) if x and y)
             union = sum(1 for x, y in zip(ma, mb) if x or y)
@@ -436,7 +450,7 @@ def sameness():
     CLOSE_SHARE = 0.01         # one pair in a hundred
     BLAND = 0.84               # the whole book, averaged
 
-    print(f"  {len(cc.BREEDS)} breeds, {total} pairs, mean overlap "
+    print(f"  {len(cc.ALL_BREEDS)} cats, {total} pairs, mean overlap "
           f"{mean:.3f}")
     print("  the eight most alike, by overlap of outline:")
     for same, a, b in worst[:8]:
@@ -628,7 +642,7 @@ def numbers():
     return ok
 
 
-def behaviour(minutes=20):
+def behaviour(minutes=20, big=False):
     """Run the cat room for an hour of cat-time and watch what happens.
 
     Three things can go wrong here and none of them raise: a cat can get
@@ -643,15 +657,18 @@ def behaviour(minutes=20):
     rng = random.Random(3)
     for b in cc.BREEDS:                   # one of everything, levelled up
         st.cards[b.key] = cc.Card(level=rng.randint(3, 10))
+    st.big_room = big
+    cap = cc.room_cap(st)
+    nspots = cc.room_spot_count(st)
     room = cc.CatRoom()
-    room.update(0.1, st, cc.ROOM_CAP)
+    room.update(0.1, st, cap)
     seen = {r.breed.key: {} for r in room.res}
     spots_used = set()
     moved = {r.breed.key: 0.0 for r in room.res}
     last_x = {r.breed.key: r.x for r in room.res}
     steps = int(minutes * 60 / 0.1)
     for _ in range(steps):
-        room.update(0.1, st, cc.ROOM_CAP)
+        room.update(0.1, st, cap)
         for r in room.res:
             d = seen.setdefault(r.breed.key, {})
             if r.state == "rest":
@@ -686,12 +703,21 @@ def behaviour(minutes=20):
     every = set()
     for d in seen.values():
         every |= set(d)
-    missing = set(cc.ACT_WORD) - every
+    back_acts = {"climb", "hide", "chatter"}
+    want_acts = set(cc.ACT_WORD) if big else set(cc.ACT_WORD) - back_acts
+    missing = want_acts - every
     if missing:
         print(f"  never happened at all: {sorted(missing)}")
         ok = False
-    print(f"  {len(spots_used)} of {len(cc.ROOM_SPOTS)} spots were used, "
-          f"{len(every)} of {len(cc.ACT_WORD)} activities happened")
+    leaked = (every - want_acts) | {i for i in spots_used if i >= nspots}
+    if leaked:
+        print(f"  happened through a wall that is not down: {sorted(leaked)}")
+        ok = False
+    print(f"  {len(spots_used)} of {nspots} spots were used, "
+          f"{len(every)} of {len(want_acts)} activities happened")
+    if len(spots_used) < nspots * 0.8:
+        print(f"  {nspots - len(spots_used)} places nobody ever went")
+        ok = False
 
     # The complaint this is written against was "the cats are not
     # moving", with three cats in a room twice as wide as the window.
@@ -699,6 +725,9 @@ def behaviour(minutes=20):
     # had settled for fifty seconds. So: with a small collection and the
     # camera where you come in, most of them have to be on screen and
     # something has to be happening.
+    if big:
+        print("  behaviour (the back room):", "ok" if ok else "FAILED")
+        return ok
     small = cc.State()
     for k, lv in (("dsh", 2), ("ben", 1), ("per", 3)):
         small.cards[k] = cc.Card(level=lv)
@@ -992,8 +1021,16 @@ def score():
         return True
     from array import array
 
+    # The mixer may well have come up in stereo whether it was asked to
+    # or not, in which case the raw buffer is interleaved pairs and every
+    # length read off it is double. Take one channel and measure that -
+    # reading the raw bytes as if they were mono is the same mistake the
+    # game itself was making.
+    chans = (pygame.mixer.get_init() or (0, 0, 1))[2]
+    print(f"  the mixer came up {pygame.mixer.get_init()}")
+
     def samples(snd):
-        return array("h", snd.get_raw())
+        return array("h", snd.get_raw())[::chans]
 
     def rms(block):
         if not block:
@@ -1312,6 +1349,13 @@ def layout():
                          ("room", lambda: setattr(g, "area", "cats")),
                          ("shop", None),
                          ("shop", lambda: setattr(g, "product", "crate")),
+                         ("shop", lambda: (setattr(g, "product", None),
+                                           setattr(g, "tab", "room"))),
+                         ("shop", lambda: setattr(g, "tab", "home")),
+                         ("shop", lambda: setattr(g, "tab", "club")),
+                         ("shop", lambda: (setattr(g, "site", "purrbay"),
+                                           setattr(g.state, "money", 10 ** 9))),
+                         ("shop", lambda: setattr(g, "site", "meowrder")),
                          ("binder", None), ("open", None)):
         if scene == "open":
             g.open_pack_key, g.open_qty = "crate", 1
@@ -1415,6 +1459,66 @@ def convention():
         if left <= 0 or not cc.convention_open(t + left + 0.5):
             print(f"  day {d}: {left:.0f}s to go does not reach a convention")
             ok = False
+
+    # -- the five they print for the hall --------------------------------
+    # The whole claim being made is "nowhere else", so the test is the
+    # negative one: open a great many of everything that is not a
+    # convention pack and prove not one of them can produce one.
+    rng = random.Random(21)
+    loose = 0
+    for pk in cc.PACKS:
+        if pk.shelf == "convention":
+            continue
+        st = cc.State()
+        for _ in range(200):
+            for pull in st.open_pack(pk, 1, rng):
+                if pull.breed.rarity == cc.R_EXPO:
+                    loose += 1
+    print(f"  {len(cc.EXPO_BREEDS)} printed for the hall; {loose} of them "
+          f"came out of a pack that is not from it")
+    if loose:
+        ok = False
+    # nor off the resale site, at any price, on any day
+    full = cc.State()
+    for br in cc.ALL_BREEDS:
+        full.cards[br.key] = cc.Card(level=4)
+    for day in range(200):
+        full.played = cc.DAY * day
+        full.lots = []
+        full.refresh_lots()
+        for lot in full.lots:
+            if lot.kind == "card" and cc.BY_KEY[lot.key].rarity == cc.R_EXPO:
+                print(f"  day {day}: {cc.BY_KEY[lot.key].name} is on the "
+                      f"resale site")
+                ok = False
+    # ... and they DO come out of the hall's own packs
+    st = cc.State()
+    seen = {}
+    for _ in range(300):
+        for pk in ("expo", "judge", "scalp"):
+            for pull in st.open_pack(cc.BY_PACK[pk], 1, rng):
+                if pull.breed.rarity == cc.R_EXPO:
+                    seen[pull.breed.key] = seen.get(pull.breed.key, 0) + 1
+    rate = sum(seen.values()) / 300.0
+    print(f"  {rate:.2f} of them per convention, if you win all three tables")
+    missed = [b.name for b in cc.EXPO_BREEDS if b.key not in seen]
+    if missed:
+        print(f"  never came out of anything: {missed}")
+        ok = False
+    if not 1.0 <= rate <= 4.0:
+        print(f"  {rate:.2f} a convention is the wrong side of a chase")
+        ok = False
+    # the binder counts them on their own, or it reads "104 of 100"
+    st2 = cc.State()
+    for br in cc.EXPO_BREEDS:
+        st2.cards[br.key] = cc.Card(level=cc.MAX_LEVEL)
+    if st2.owned or st2.retired:
+        print(f"  five from the hall count as {st2.owned} of the catalogue "
+              f"and {st2.retired} retired")
+        ok = False
+    if st2.expo_owned != len(cc.EXPO_BREEDS):
+        print("  the hall counter does not count them")
+        ok = False
 
     # -- the door --------------------------------------------------------
     g = cc.Game(screen)
@@ -1580,6 +1684,554 @@ def _play_mini(g, win):
     return presses
 
 
+
+def bigroom():
+    """Taking the flat next door.
+
+    One button changes three numbers and the width of a surface, and a
+    resident holds its spot as an INDEX into a tuple that just got
+    longer. The failure that would not raise is a cat left sitting on
+    furniture that is no longer at that index - so the indices are
+    checked, not just the counts.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+
+    # the back room is bolted on the end, and nothing before it moved
+    base = cc.ROOM_SPOTS[:cc.ROOM_BASE]
+    if len(cc.ROOM_SPOTS) <= cc.ROOM_BASE:
+        print("  there is no back room in the spot table")
+        ok = False
+    small = cc.State()
+    big = cc.State()
+    big.big_room = True
+    print(f"  wall up: {cc.room_cap(small)} cats, "
+          f"{cc.room_spot_count(small)} places, {cc.cats_wide(small)} wide")
+    print(f"  wall down: {cc.room_cap(big)} cats, "
+          f"{cc.room_spot_count(big)} places, {cc.cats_wide(big)} wide")
+    for name, a, b in (("cats", cc.room_cap(small), cc.room_cap(big)),
+                       ("places", cc.room_spot_count(small),
+                        cc.room_spot_count(big)),
+                       ("width", cc.cats_wide(small), cc.cats_wide(big))):
+        if b <= a:
+            print(f"  knocking the wall through did not add {name}")
+            ok = False
+    # every back-room place has to be somewhere a cat can get to, and
+    # somewhere the room is actually drawn
+    for i in range(cc.ROOM_BASE, len(cc.ROOM_SPOTS)):
+        kind, x, y, face, size, label = cc.ROOM_SPOTS[i]
+        if not cc.CATS_W < x < cc.CATS_W_BIG:
+            print(f"  {label} is at x={x}, outside the back room")
+            ok = False
+        if kind not in cc.SPOT_ACTS:
+            print(f"  {label} is a '{kind}', which nothing can do")
+            ok = False
+    names = [sp[5] for sp in cc.ROOM_SPOTS]
+    if len(set(names)) != len(names):
+        dupe = sorted({x for x in names if names.count(x) > 1})
+        print(f"  two places share a name: {dupe}")
+        ok = False
+
+    # -- buying it -------------------------------------------------------
+    g = cc.Game(screen)
+    g.state = cc.State()
+    g.state.money = cc.BIG_ROOM_PRICE - 1
+    g.press(("bigroom", None))
+    if g.state.big_room:
+        print("  you can take the flat next door without paying for it")
+        ok = False
+    g.state.money = cc.BIG_ROOM_PRICE + 500
+    g.press(("bigroom", None))
+    if not g.state.big_room:
+        print("  paying for the flat next door did not get you it")
+        ok = False
+    if abs(g.state.money - 500) > 0.01:
+        print(f"  it cost {cc.BIG_ROOM_PRICE + 500 - g.state.money}, not "
+              f"{cc.BIG_ROOM_PRICE}")
+        ok = False
+    before = g.state.money
+    g.press(("bigroom", None))            # and not twice
+    if g.state.money != before:
+        print("  you can buy the same wall twice")
+        ok = False
+
+    # -- it survives being put down and picked up ------------------------
+    d = g.state.to_dict()
+    back = cc.State.from_dict(d)
+    if not back.big_room:
+        print("  the wall went back up when the game was saved")
+        ok = False
+
+    # -- and the room fills out ------------------------------------------
+    rng = random.Random(8)
+    for b in rng.sample(list(cc.BREEDS), 60):
+        g.state.cards[b.key] = cc.Card(level=rng.randint(4, 9))
+    room = cc.CatRoom()
+    for _ in range(40):
+        room.update(0.1, g.state, cc.room_cap(g.state))
+    print(f"  {len(room.res)} cats in the room, {len(cc.cats_in(g.state, 'study'))}"
+          f" on the desk, {len(cc.cats_in(g.state, 'hall'))} in the hall")
+    if len(room.res) != cc.BIG_CAP:
+        print(f"  the big room holds {len(room.res)}, not {cc.BIG_CAP}")
+        ok = False
+    # let them settle, then make sure the back room is not a showroom
+    for _ in range(6000):
+        room.update(0.1, g.state, cc.room_cap(g.state), 1780.0)
+    back_room = [r for r in room.res if r.x > cc.CATS_W]
+    print(f"  standing at the far end: {len(back_room)} of {len(room.res)} "
+          f"cats are through the wall")
+    if len(back_room) < 4:
+        print("  nobody uses the room you just paid for")
+        ok = False
+
+    # -- and the wall going up does not strand anybody -------------------
+    # (it cannot happen in play - but sync is the only place that knows
+    # both numbers, so it is the only place that can be sure)
+    g.state.big_room = False
+    room.update(0.1, g.state, cc.room_cap(g.state))
+    stuck = [r for r in room.res if r.spot >= cc.room_spot_count(g.state)]
+    if stuck:
+        print(f"  {len(stuck)} cats left sitting through a wall")
+        ok = False
+    else:
+        print("  putting the wall back brings everybody with it")
+
+    print("  bigroom:", "ok" if ok else "FAILED")
+    return ok
+
+
+
+def resale():
+    """The second website.
+
+    This is the one feature in the game that can turn money straight
+    into binder, so the things that matter are the ones that stop it
+    doing that too fast: the stock has to be fixed for the day and the
+    same after a reload, a sealed box has to take a slot on the round
+    like every other box, and the prices have to stay high enough that
+    buying a collection is worse value than ordering one.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+
+    # -- most of them are scalpers ---------------------------------------
+    honest = sum(sl[2] for sl in cc.SELLERS[:cc.SELLER_HONEST])
+    total = sum(sl[2] for sl in cc.SELLERS)
+    print(f"  {len(cc.SELLERS)} sellers, {honest / total * 100:.0f}% of "
+          f"listings from somebody not taking the mick")
+    if honest / total > 0.35:
+        print("  most of them are supposed to be scalpers")
+        ok = False
+    if min(sl[1] for sl in cc.SELLERS) < 1.0:
+        print("  somebody is selling below face value")
+        ok = False
+
+    # -- nothing off the books, ever -------------------------------------
+    # Worst case for this is a player who has already found all five: the
+    # first version kept them out of the breeds you are missing and let
+    # them back in through the ones you own.
+    full = cc.State()
+    for br in cc.ALL_BREEDS:
+        full.cards[br.key] = cc.Card(level=4)
+    listed = 0
+    for day in range(300):
+        full.played = cc.DAY * day
+        full.lots = []
+        full.refresh_lots()
+        for lot in full.lots:
+            if lot.kind != "card":
+                continue
+            listed += 1
+            if cc.BY_KEY[lot.key].rarity == cc.R_UNLISTED:
+                print(f"  day {day}: {cc.BY_KEY[lot.key].name} is for sale")
+                ok = False
+    print(f"  {listed} cards listed over 300 days, none of them unlisted")
+
+    # -- the stock is the day's, not the roll's --------------------------
+    a = cc.State()
+    a.played = cc.DAY * 4 + 30
+    a.refresh_lots()
+    b = cc.State()
+    b.played = cc.DAY * 4 + 300          # same day, much later
+    b.refresh_lots()
+    if [l.to_row() for l in a.lots] != [l.to_row() for l in b.lots]:
+        print("  the listings change within the day")
+        ok = False
+    c = cc.State()
+    c.played = cc.DAY * 5 + 30
+    c.refresh_lots()
+    if [l.to_row() for l in a.lots] == [l.to_row() for l in c.lots]:
+        print("  the listings are the same every day")
+        ok = False
+    # and they survive the round trip, so a reload is not a reroll
+    a.money = 10.0
+    back = cc.State.from_dict(a.to_dict())
+    if [l.to_row() for l in back.lots] != [l.to_row() for l in a.lots]:
+        print("  the listings do not survive being saved")
+        ok = False
+    back.refresh_lots()
+    if [l.to_row() for l in back.lots] != [l.to_row() for l in a.lots]:
+        print("  loading a save rerolls the listings")
+        ok = False
+    print(f"  {len(a.lots)} listings a day, fixed until the day turns")
+
+    # -- a box takes a slot, a card does not -----------------------------
+    st = cc.State()
+    st.played = cc.DAY * 4 + 30
+    st.money = 10 ** 9
+    st.refresh_lots()
+    cards = [l for l in st.lots if l.kind == "card"]
+    packs = [l for l in st.lots if l.kind == "pack"]
+    if not cards or not packs:
+        print(f"  a day with {len(cards)} cards and {len(packs)} boxes on it")
+        ok = False
+        print("  resale:", "FAILED")
+        return False
+    before = len(st.orders)
+    st.take_lot(packs[0])
+    if len(st.orders) != before + 1:
+        print("  a sealed box did not go in the post")
+        ok = False
+    # Not one of them may land instantly. The three the convention hands
+    # out are posted in zero seconds because they are not posted at all,
+    # and a listing for one of those went straight past the round.
+    for pk in cc.PACKS:
+        for qty in (1, 2):
+            if cc.resale_ship(pk, qty) < cc.RESALE_MIN_SHIP - 0.01:
+                print(f"  {pk.name} x{qty} arrives in "
+                      f"{cc.resale_ship(pk, qty):.0f}s off the site")
+                ok = False
+            if cc.resale_ship(pk, qty) < cc.ship_time(pk, cc.POST, qty):
+                print(f"  {pk.name} comes faster second hand than new")
+                ok = False
+    before = len(st.orders)
+    got = st.take_lot(cards[0])
+    if len(st.orders) != before:
+        print("  a single card went in the post")
+        ok = False
+    if cards[0].key not in st.cards:
+        print("  buying a card did not put it in the binder")
+        ok = False
+    elif st.cards[cards[0].key].level != cards[0].level:
+        print(f"  bought a level {cards[0].level} and got a level "
+              f"{st.cards[cards[0].key].level}")
+        ok = False
+    print(f"  bought {got.breed.name} at level {got.level} off "
+          f"{cc.SELLERS[cards[0].seller][0]}")
+    if st.take_lot(cards[0]) is not None:
+        print("  the same listing sold twice")
+        ok = False
+
+    # the round filling up stops the boxes and nothing else
+    st2 = cc.State()
+    st2.played = cc.DAY * 4 + 30
+    st2.money = 10 ** 9
+    st2.refresh_lots()
+    pk = [l for l in st2.lots if l.kind == "pack"][0]
+    cd = [l for l in st2.lots if l.kind == "card"][0]
+    while len(st2.orders) < st2.slots:
+        st2.orders.append(cc.Order(0, "sack", 1, 99.0, 0.0, 0))
+    if st2.can_take(pk):
+        print("  a box went on a full round")
+        ok = False
+    if not st2.can_take(cd):
+        print("  a full round stopped you buying a single card")
+        ok = False
+
+    # -- and you cannot buy what you cannot afford -----------------------
+    st3 = cc.State()
+    st3.played = cc.DAY * 4 + 30
+    st3.refresh_lots()
+    st3.money = min(st3.lot_cost(l) for l in st3.lots) - 1
+    if any(st3.can_take(l) for l in st3.lots):
+        print("  you can buy something you cannot afford")
+        ok = False
+
+    # -- it is a money hole, not a shortcut ------------------------------
+    # The cheapest route to a card through the post, against the cheapest
+    # route to one through the site. The site has to lose, and lose
+    # badly, or there is no reason for the shop to exist.
+    best = 0.0
+    for pk in cc.PACKS:
+        if pk.shelf not in cc.SHELVES or not pk.price:
+            continue
+        tot = sum(pk.weights)
+        ev = sum(pk.weights[r] / tot * cc.RARITY[r][2]
+                 for r in range(cc.SOLD_RARITIES))
+        best = max(best, ev * pk.cards / pk.price)
+    worst_site = 0.0
+    for b in cc.BREEDS:
+        for lv in (1, 5, 10):
+            w = cc.card_worth(b, lv, False) * min(sl[1] for sl in cc.SELLERS)
+            worst_site = max(worst_site, b.rate_at(lv) / w)
+    print(f"  per pound: the shop buys {best:.5f}/s, the site at its "
+          f"kindest {worst_site:.5f}/s  ({best / worst_site:.0f}x worse)")
+    if worst_site > best:
+        print("  the resale site is better value than the shop")
+        ok = False
+
+    # -- the page draws, and the two sites are both reachable ------------
+    g = cc.Game(screen)
+    g.state = st
+    g.go("shop")
+    g.press(("site", "purrbay"))
+    if g.site != "purrbay":
+        print("  the bookmark did not change site")
+        ok = False
+    g.draw()
+    keys = {b.key for b in g.buttons}
+    if ("site", "meowrder") not in keys:
+        print("  there is no way back to the shop")
+        ok = False
+    if not any(k[0] == "lot" for k in keys if isinstance(k, tuple)):
+        print("  nothing on the site can be bought")
+        ok = False
+    g.press(("site", "meowrder"))
+    g.draw()
+    if ("site", "purrbay") not in {b.key for b in g.buttons}:
+        print("  there is no way to the resale site from the shop")
+        ok = False
+
+    print("  resale:", "ok" if ok else "FAILED")
+    return ok
+
+
+
+def merch():
+    """Six things for the cards, and the loft on the resale site.
+
+    Every one of these is a multiplier applied somewhere else in the
+    game, which is the quietest kind of thing to get wrong: a bonus that
+    is read but never applied looks exactly like a bonus that is applied,
+    right up until somebody measures it. So each one is measured against
+    the same state without it.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    rng = random.Random(5)
+
+    def stocked(keys=()):
+        st = cc.State()
+        for b in list(cc.BREEDS)[:40]:
+            st.cards[b.key] = cc.Card(level=5)
+        st.kit = set(keys)
+        return st
+
+    bare = stocked()
+    print(f"  {len(cc.MERCH)} things, "
+          f"{sum(1 for m in cc.MERCH if m.income)} of them income")
+    if len({m.key for m in cc.MERCH}) != len(cc.MERCH):
+        print("  two of them share a key")
+        ok = False
+
+    # -- income ----------------------------------------------------------
+    gain = [m for m in cc.MERCH if m.income]
+    with_all = stocked(m.key for m in gain)
+    want = 1.0 + sum(m.income for m in gain)
+    got = with_all.income / bare.income
+    print(f"  all the paper: {bare.income:.2f}/s -> {with_all.income:.2f}/s "
+          f"(x{got:.3f}, wanted x{want:.3f})")
+    if abs(got - want) > 0.002:
+        print("  the income bonuses do not reach the income")
+        ok = False
+    # and they stack with the flat rather than replacing it
+    both = stocked(m.key for m in gain)
+    both.things = {u.key for u in cc.UPGRADES}
+    if abs(both.income / bare.income - want * both.comfort) > 0.01:
+        print("  the flat and the paper do not stack")
+        ok = False
+
+    # -- shinies ---------------------------------------------------------
+    tops = next(m for m in cc.MERCH if m.shiny != 1.0)
+    a = stocked()
+    b = stocked((tops.key,))
+    pk = cc.BY_PACK["lot"]
+    na = sum(1 for _ in range(260)
+             for pull in a.open_pack(pk, 1, rng) if pull.shiny)
+    nb = sum(1 for _ in range(260)
+             for pull in b.open_pack(pk, 1, rng) if pull.shiny)
+    cards = 260 * pk.cards
+    print(f"  shinies in {cards} cards: {na} bare, {nb} with toploaders "
+          f"(x{tops.shiny:.2f} on the dial)")
+    if nb <= na:
+        print("  the toploaders did not change the odds")
+        ok = False
+
+    # -- the price guide -------------------------------------------------
+    guide = next(m for m in cc.MERCH if m.resale != 1.0)
+    a = cc.State()
+    a.played = cc.DAY * 3
+    a.refresh_lots()
+    b = cc.State.from_dict(a.to_dict())
+    b.kit = {guide.key}
+    pairs = [(a.lot_cost(x), b.lot_cost(y)) for x, y in zip(a.lots, b.lots)]
+    worst = max(abs(q / p - guide.resale) for p, q in pairs if p)
+    print(f"  the guide takes {(1 - guide.resale) * 100:.0f}% off every "
+          f"listing (worst miss {worst * 100:.2f}%)")
+    if worst > 0.02:
+        print("  the price guide does not come off the price")
+        ok = False
+
+    # -- the loupe -------------------------------------------------------
+    loupe = next(m for m in cc.MERCH if m.loupe)
+    for kit, spare in ((set(), 0), ({loupe.key}, 1)):
+        g = cc.Game(screen)
+        g.state = cc.State()
+        g.state.kit = set(kit)
+        g.state.played = next(cc.DAY * d + 60 for d in range(14)
+                              if cc.convention_open(cc.DAY * d + 60))
+        g.go_area("conv")
+        g.state.conv_refresh()
+        g.press(("stall", "fake"))
+        if g.mini.spare != spare:
+            print(f"  loupe {bool(kit)}: {g.mini.spare} spare answers, "
+                  f"wanted {spare}")
+            ok = False
+        # get it wrong once on purpose
+        wrong = (g.mini.real_index() + 1) % len(g.mini.cards)
+        g.press(("mini", wrong))
+        if bool(kit) and g.mini.done:
+            print("  the loupe did not cover a wrong answer")
+            ok = False
+        if not kit and not g.mini.done:
+            print("  a wrong answer at the desk cost nothing")
+            ok = False
+    print("  the loupe is worth exactly one wrong answer at the desk")
+
+    # -- the loft --------------------------------------------------------
+    attic = cc.BY_PACK["attic"]
+    days = 400
+    seen = []
+    for d in range(days):
+        st = cc.State()
+        st.played = cc.DAY * d
+        st.refresh_lots()
+        for lot in st.lots:
+            if lot.key == "attic":
+                seen.append((st.lot_cost(lot), lot.seller))
+    print(f"  the loft is on {len(seen)} days in {days} "
+          f"({len(seen) / days * 100:.0f}%), "
+          f"${min(c for c, _ in seen):,.0f} to ${max(c for c, _ in seen):,.0f}")
+    if not 0.04 <= len(seen) / days <= 0.25:
+        print("  the loft is either never there or always there")
+        ok = False
+    if any(sel >= cc.SELLER_HONEST for _, sel in seen):
+        print("  a scalper is selling their own childhood")
+        ok = False
+    # it must be a lot of cards and mostly cheap ones
+    low = sum(attic.weights[r] for r in (cc.R_COMMON, cc.R_UNCOMMON))
+    print(f"  {attic.cards} cards, {low * 100 // sum(attic.weights)}% of "
+          f"them common or uncommon")
+    if attic.cards < 100 or low / sum(attic.weights) < 0.8:
+        print("  it is supposed to be a lot of cards and mostly rubbish")
+        ok = False
+    # and it must never be ordinary stock on either website
+    if attic.shelf in cc.SHELVES:
+        print("  the loft is on the website")
+        ok = False
+    # the real check: what it buys you is THROUGHPUT, not income
+    def per_slot(pk):
+        tot = sum(pk.weights)
+        ev = sum(pk.weights[r] / tot * cc.RARITY[r][2]
+                 for r in range(cc.SOLD_RARITIES))
+        return pk.cards / cc.resale_ship(pk), ev * pk.cards / cc.resale_ship(pk)
+    ac, ai = per_slot(attic)
+    sc, si = per_slot(cc.BY_PACK["shelf"])
+    print(f"  per second of a parcel slot: {ac:.3f} cards and {ai:.4f}/s, "
+          f"against the Whole Shelf at {sc:.3f} and {si:.4f}/s")
+    if ac <= sc:
+        print("  the loft is not even a lot of cards")
+        ok = False
+    if ai >= si:
+        print("  the loft is a better way to buy income than the shop")
+        ok = False
+
+    print("  merch:", "ok" if ok else "FAILED")
+    return ok
+
+
+
+def intro():
+    """The four screens before the first pack.
+
+    Two ways this goes wrong and neither raises: it plays again every
+    time the game is opened, or it plays once and leaves you somewhere
+    that is not the desk with no idea what to press. Both are checked by
+    walking it rather than by reading the flag.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+    fresh = cc.load_state
+    cc.load_state = lambda: cc.State()      # a brand new collection
+    try:
+        g = cc.Game(screen)
+        if g.scene != "intro":
+            print(f"  a new collection opens on {g.scene!r}, not the intro")
+            ok = False
+        # every screen has to say something, and say it in full
+        for i, (head, body) in enumerate(cc.INTRO):
+            g.beat, g.beat_t = i, 2.0
+            g.update(0.05)
+            g.draw()
+            if not head.strip() or not body.strip():
+                print(f"  screen {i + 1} is blank")
+                ok = False
+            if "{" in head.format(money=cc.money(cc.START_MONEY)):
+                print(f"  screen {i + 1} has an unfilled slot in it")
+                ok = False
+        print(f"  {len(cc.INTRO)} screens, and the last one is "
+              f"{cc.INTRO[-1][0].format(money=cc.money(cc.START_MONEY))!r}")
+
+        # walking it all the way through lands you at the desk
+        g = cc.Game(screen)
+        presses = 0
+        while g.scene == "intro" and presses < 20:
+            g.draw()
+            g.press(("intro", "next"))
+            presses += 1
+        print(f"  {presses} presses to the end, landing in {g.area!r}")
+        if presses != len(cc.INTRO):
+            print(f"  {presses} presses for {len(cc.INTRO)} screens")
+            ok = False
+        if g.scene != "room" or g.area != "study":
+            print(f"  it ends in {g.scene}/{g.area}, not at the desk")
+            ok = False
+        if not g.state.seen_intro:
+            print("  it did not record that it had been seen")
+            ok = False
+        # ... and the desk it lands on has the laptop on it
+        g.draw()
+        if ("laptop", None) not in {b.key for b in g.buttons}:
+            print("  it leaves you somewhere with nothing to press")
+            ok = False
+
+        # skipping does the same, from the first frame
+        g = cc.Game(screen)
+        g.draw()
+        if ("intro", "skip") not in {b.key for b in g.buttons}:
+            print("  the first screen cannot be skipped")
+            ok = False
+        g.press(("intro", "skip"))
+        if g.scene != "room" or not g.state.seen_intro:
+            print("  skipping did not get out of it")
+            ok = False
+
+        # and it never plays twice
+        saved = g.state.to_dict()
+        cc.load_state = lambda: cc.State.from_dict(saved)
+        again = cc.Game(screen)
+        if again.scene == "intro":
+            print("  it plays again every time the game is opened")
+            ok = False
+        else:
+            print("  a collection that has seen it opens at the room")
+    finally:
+        cc.load_state = fresh
+
+    print("  intro:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -1592,13 +2244,24 @@ def main():
     # ... and never READ it: a Game built here would otherwise start in
     # whatever room the player left theirs in, which is how `flow` came
     # to fail only when it was run after something else had been played.
-    cc.load_state = lambda: cc.State()
+    def _fresh():
+        # ... and a Game built on a brand new collection opens on the
+        # intro, which is four screens none of these tests are about.
+        # The one that IS about it turns this back off.
+        st = cc.State()
+        st.seen_intro = True
+        return st
+
+    cc.load_state = _fresh
     ok = True
     if cmd in ("smoke", "all"):
         ok &= smoke()
         print()
     if cmd in ("score", "all"):
         ok &= score()
+        print()
+    if cmd in ("intro", "all"):
+        ok &= intro()
         print()
     if cmd in ("flow", "all"):
         ok &= flow()
@@ -1636,8 +2299,19 @@ def main():
     if cmd in ("numbers", "all"):
         ok &= numbers()
         print()
+    if cmd in ("merch", "all"):
+        ok &= merch()
+        print()
+    if cmd in ("resale", "all"):
+        ok &= resale()
+        print()
+    if cmd in ("bigroom", "all"):
+        ok &= bigroom()
+        print()
     if cmd in ("behaviour", "all"):
         ok &= behaviour(20)
+        print()
+        ok &= behaviour(20, big=True)
         print()
     if cmd in ("grades", "all"):
         ok &= grades()

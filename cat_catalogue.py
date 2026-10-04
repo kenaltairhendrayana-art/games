@@ -107,9 +107,10 @@ RARITY = (
     ("LEGEND",    (240, 178, 86),  1.00),
     ("FOUNDATION", (72, 214, 170), 1.80),
     ("UNLISTED",  (206, 214, 228), 0.85),
+    ("CONVENTION", (238, 70, 174),  1.50),
 )
 (R_COMMON, R_UNCOMMON, R_RARE, R_PEDIGREE, R_CHAMPION, R_LEGEND,
- R_FOUNDATION, R_UNLISTED) = range(8)
+ R_FOUNDATION, R_UNLISTED, R_EXPO) = range(9)
 SOLD_RARITIES = 7          # the catalogue stocks the first seven of them
 
 MAX_LEVEL = 10
@@ -675,47 +676,47 @@ TEMPERS = {
     "sleeper": dict(
         label="sleeps through most of it",
         acts={"sleep": 7, "loaf": 3, "groom": 2, "watch": 1, "sit": 1,
-              "scratch": 1, "drink": 1, "eat": 1},
+              "scratch": 1, "drink": 1, "eat": 1, "hide": 2},
         likes=("bed", "warm", "perch"), speed=0.62, stay=(22, 50)),
     "hunter": dict(
         label="hunts everything that moves",
         acts={"play": 7, "prowl": 4, "watch": 2, "eat": 1, "sleep": 1,
-              "scratch": 3, "drink": 1},
+              "scratch": 3, "drink": 1, "climb": 2, "chatter": 3, "hide": 1},
         likes=("toy", "floor", "perch"), speed=1.35, stay=(7, 16)),
     "climber": dict(
         label="will be found somewhere high",
         acts={"watch": 6, "loaf": 3, "prowl": 2, "sleep": 2, "play": 1,
-              "scratch": 2, "eat": 1, "drink": 1},
+              "scratch": 2, "eat": 1, "drink": 1, "climb": 5, "chatter": 2},
         likes=("perch",), speed=1.15, stay=(12, 28)),
     "glutton": dict(
         label="is never far from the bowls",
         acts={"eat": 5, "drink": 2, "sleep": 4, "loaf": 3, "prowl": 1,
-              "scratch": 1, "groom": 1},
+              "scratch": 1, "groom": 1, "hide": 1},
         likes=("food", "water", "bed"), speed=0.85, stay=(10, 24)),
     "groomer": dict(
         label="washes, and washes again",
         acts={"groom": 6, "loaf": 3, "watch": 2, "sleep": 2, "sit": 2,
-              "scratch": 1, "drink": 1, "eat": 1},
+              "scratch": 1, "drink": 1, "eat": 1, "hide": 1, "chatter": 1},
         likes=("perch", "bed"), speed=0.9, stay=(12, 26)),
     "shadow": dict(
         label="keeps to the edges of the room",
         acts={"prowl": 5, "watch": 3, "sleep": 3, "groom": 2,
-              "scratch": 2, "eat": 1, "drink": 1},
+              "scratch": 2, "eat": 1, "drink": 1, "hide": 4, "climb": 1, "chatter": 1},
         likes=("box", "floor", "perch"), speed=1.05, stay=(9, 20)),
     "lap": dict(
         label="wants to be where you are",
         acts={"loaf": 5, "sit": 3, "groom": 2, "sleep": 2, "play": 2,
-              "scratch": 1, "eat": 1, "drink": 1},
+              "scratch": 1, "eat": 1, "drink": 1, "hide": 1, "chatter": 1},
         likes=("chair", "bed", "floor"), speed=1.0, stay=(14, 30)),
     "busy": dict(
         label="has a list and is working through it",
         acts={"scratch": 5, "play": 4, "prowl": 3, "eat": 2, "watch": 2,
-              "drink": 1, "groom": 1},
+              "drink": 1, "groom": 1, "climb": 2, "chatter": 2},
         likes=("post", "toy", "floor"), speed=1.25, stay=(6, 14)),
     "warmth": dict(
         label="finds the warmest thing in the room",
         acts={"sleep": 5, "loaf": 4, "groom": 2, "watch": 1, "sit": 2,
-              "scratch": 1, "eat": 1, "drink": 1},
+              "scratch": 1, "eat": 1, "drink": 1, "hide": 2},
         likes=("warm", "bed", "chair"), speed=0.8, stay=(20, 44)),
 }
 
@@ -1730,8 +1731,85 @@ SECRETS = (
           ("midnight", "charcoal", "smoke")),
 )
 
-ALL_BREEDS = BREEDS + SECRETS
+# ---------------------------------------------------------------------------
+# THE FIVE THEY PRINT FOR THE HALL
+#
+# Convention exclusives. They are not in the catalogue, they are not on
+# the resale site, and no amount of money will get you one: the only
+# place these are printed is the show, and the only way to a pack of
+# them is to stand in the queue, know a forgery when you see one, or
+# talk a man by a fire door down to a number he can live with.
+#
+# Unlike the five that turn up at the door, these are in the binder from
+# the start, as five empty slots with a heading over them. That is the
+# whole point of them - a thing you cannot have yet is only a reason to
+# go back on Saturday if you know it is there.
+# ---------------------------------------------------------------------------
+EXPO_BREEDS = (
+    Breed("bis", "Best In Show", R_EXPO, "the top table, every year",
+          "Has been brushed for four hours and would like you to know it.",
+          L(size=1.24, body=1.06, facew=1.14, faceh=0.96, cheek=1.22,
+            ear=0.78, legs=0.84, fluff=0.98, tail="plume",
+            coat=(238, 234, 228), mark=(196, 188, 180), belly=(252, 251, 249),
+            pat="smoke", eye=(126, 176, 206), eyeshape="round",
+            nose=(214, 164, 162)),
+          "groomer",
+          "Settles where the light is best and waits to be admired.",
+          ("show silver", "chocolate", "blue")),
+    Breed("hal", "The Hall Cat", R_EXPO, "behind the fire door",
+          "Lives in the venue. Hears the shutters go up from four "
+          "rooms away.",
+          # First draft of this was lean, long-legged and whip-tailed,
+          # which is the Brazilian Shorthair to within 0.967 of its own
+          # outline - the same cat twice, under two names. The shape it
+          # has now was picked by measuring six of them against all 109
+          # others and taking the one with the most room round it.
+          L(size=0.9, body=1.06, facew=1.12, faceh=0.94, cheek=1.1,
+            ear=1.42, legs=0.7, fluff=0.3, tail="pom",
+            coat=(88, 92, 98), mark=(58, 62, 68), belly=(132, 136, 142),
+            pat="ticked", eye=(214, 206, 92), eyeshape="almond"),
+          "shadow",
+          "Knows every door in the building and uses the ones you cannot.",
+          ("hall grey", "ivory", "red")),
+    Breed("jdg", "The Judge\'s Own", R_EXPO, "under the top table",
+          "Cannot be entered, for reasons everybody has agreed not to "
+          "discuss.",
+          L(size=1.02, body=1.24, facew=1.18, faceh=0.92, cheek=1.32,
+            ear=0.88, legs=0.78, fluff=0.34, tail="bob",
+            coat=(176, 140, 96), mark=(112, 84, 54), belly=(234, 216, 190),
+            pat="blotched", eye=(142, 182, 120), eyeshape="round",
+            collar=(206, 170, 84)),
+          "lap",
+          "Sits on the paperwork. The paperwork gets done round it.",
+          ("honey tabby", "charcoal", "silver")),
+    Breed("trs", "The Trestle Table Tabby", R_EXPO, "on the merchandise",
+          "Asleep on the thing you were going to buy.",
+          L(size=1.1, body=1.34, facew=1.0, faceh=1.0, cheek=1.04,
+            ear=1.02, legs=0.9, fluff=0.2, tail="plain",
+            coat=(142, 122, 100), mark=(86, 70, 56), belly=(206, 188, 164),
+            pat="tabby", eye=(170, 154, 86), eyeshape="almond"),
+          "sleeper",
+          "Finds the one flat surface anybody needed and takes it.",
+          ("table tabby", "blue", "white")),
+    Breed("que", "The Queue Cat", R_EXPO, "four hundred people deep",
+          "Works the line from the front to the back and back again.",
+          L(size=0.88, body=0.94, facew=0.96, faceh=1.12, cheek=0.9,
+            ear=1.18, legs=1.04, fluff=0.46, tail="pom",
+            coat=(214, 160, 98), mark=(238, 234, 230), belly=(246, 240, 232),
+            pat="van", eye=(196, 168, 72), eyeshape="round"),
+          "glutton",
+          "Has been fed by eleven strangers and is working on a twelfth.",
+          ("ginger and white", "black and white", "grey and white")),
+)
+
+ALL_BREEDS = BREEDS + SECRETS + EXPO_BREEDS
 BY_KEY = {b.key: b for b in ALL_BREEDS}
+# The two counters on the binder used to be "everything that is not a
+# stray" and "the strays". A third kind of cat that is neither breaks
+# that in the quietest possible way - "104 of 100 breeds" - so what
+# counts as a catalogue breed is now the catalogue, and not a process of
+# elimination.
+LISTED = frozenset(b.key for b in BREEDS)
 BY_RARITY = tuple(tuple(b for b in BREEDS if b.rarity == r)
                   for r in range(SOLD_RARITIES))
 
@@ -3125,11 +3203,11 @@ class Card:
 class Pack:
     __slots__ = ("key", "name", "price", "cards", "weights", "ship",
                  "floor", "blurb", "reviews", "shelf", "shiny_mult",
-                 "fresh_coats")
+                 "fresh_coats", "expo")
 
     def __init__(self, key, name, price, cards, weights, ship, floor,
                  blurb, reviews, shelf="standard", shiny_mult=1.0,
-                 fresh_coats=False):
+                 fresh_coats=False, expo=0.0):
         self.key = key
         self.name = name
         self.price = price
@@ -3142,6 +3220,7 @@ class Pack:
         self.shelf = shelf          # "standard" is the ladder; the rest
         self.shiny_mult = shiny_mult    # are on the other page
         self.fresh_coats = fresh_coats
+        self.expo = expo            # chance per card of one of the five
 
 
 PACKS = (
@@ -3242,21 +3321,21 @@ CONV_PACKS = (
          "post these and they never will.",
          (("queued an hour. would queue again.", 5),
           ("two foundation cards out of one pack", 5)),
-         shelf="convention"),
+         shelf="convention", expo=0.075),
     Pack("judge", "The Judge's Table", 0, 10, (0, 0, 10, 24, 30, 26, 10),
          0, R_LEGEND,
          "Ten cards the judges put aside at the end of the show, every one "
          "of them a cat that won something.",
          (("the only place a foundation card is a sure thing", 5),
           ("they check you know what you are looking at first", 4)),
-         shelf="convention"),
+         shelf="convention", expo=0.055),
     Pack("scalp", "The Scalped Pack", 4200, 15, (0, 10, 26, 24, 18, 18, 4),
          0, R_PEDIGREE,
          "Fifteen cards from a man by the fire door who will not say where "
          "he got them. Face value is four thousand two hundred.",
          (("he wanted twenty-one for this", 2),
           ("talked him down. felt like a win. was it a win?", 4)),
-         shelf="convention", shiny_mult=2.0),
+         shelf="convention", shiny_mult=2.0, expo=0.035),
 )
 for _p in CONV_PACKS:
     BY_PACK[_p.key] = _p
@@ -3282,6 +3361,7 @@ STALLS = (
 
 # Shipping. The cheap one is slow and the fast one is a luxury, which is
 # the only decision the shop ever asks you to make.
+POST = 0                    # the index of standard post in SHIPPING
 SHIPPING = (
     ("post", "Standard post", 0.00, 1.00, "it gets there when it gets there"),
     ("track", "Tracked courier", 0.12, 0.60, "a van, and a number to watch"),
@@ -3339,6 +3419,341 @@ UPGRADES = (
             "across the floor all day and they follow it round."),
 )
 BY_UPGRADE = {u.key: u for u in UPGRADES}
+
+
+# ---------------------------------------------------------------------------
+# THE RESALE SITE
+#
+# The other website. MEOWRDER sells sealed packs cheaply and slowly; this
+# one sells whatever somebody already opened, immediately, at whatever
+# they think they can get. Most of the people on it bought twenty of
+# something at retail on the day it came out and have been sitting on
+# them since, and they price accordingly.
+#
+# It exists because by the back half of a collection the thing you are
+# short of is not money, it is the four breeds you have never seen and
+# the post only carrying so many parcels an hour. This is the valve: you
+# can have exactly the card you want, right now, for an amount of money
+# that should make you think about it.
+#
+# Two rules keep it from eating the game it is bolted onto:
+#
+#   - A SEALED BOX GOES IN THE POST, like anything else in a box. It
+#     takes a slot on the round and it takes its time. Otherwise the
+#     throughput the whole economy is built on stops meaning anything -
+#     an instant thirty-four card lot at six times the price is still
+#     five times faster than the post, and the post is the game.
+#   - A SINGLE CARD IS HANDED OVER. One card cannot break throughput
+#     whatever it costs, and "they will not post a four-figure card" is
+#     true of every real version of this.
+#
+# The stock turns over once a day and is saved with everything else, so
+# you cannot reload until the listing you wanted is a reasonable price.
+# ---------------------------------------------------------------------------
+
+# name, what they add on, and what they are like about it
+SELLERS = (
+    ("a collector clearing a shelf", 1.35, 3,
+     "Downsizing. Priced to go and honest about the corners."),
+    ("the shop on the high street", 2.1, 4,
+     "A real shop with a real counter. They still want a margin."),
+    ("CARDB0ARD_K1NGD0M", 5.5, 9,
+     "Bought a case on release day. Has not opened one since."),
+    ("mint_only_1998", 7.0, 9,
+     "Everything is mint. Everything is sleeved. Everything is dear."),
+    ("@flipthiscat", 9.0, 8,
+     "Buys at the convention door and lists it before he gets home."),
+    ("THE VAULT (do not lowball)", 12.0, 6,
+     "Will not take offers. Will relist it next week for more."),
+)
+SELLER_HONEST = 2          # the first two are not scalpers, and are scarce
+
+LOTS_ON_SITE = 6           # how many listings there are at any one time
+
+# A private seller with a roll of tape is slower than a warehouse, and
+# never faster. This matters more than it looks: the three packs the
+# convention gives out are posted in NO time at all, because they are
+# handed to you at a table - and a listing for one of those went straight
+# into the parcels pile without ever being in the post. The best boxes in
+# the game, instantly, for money. Everything bought second hand waits.
+RESALE_SLOW = 1.5
+RESALE_MIN_SHIP = 220.0
+
+
+def card_worth(breed, level, shiny):
+    """What a card is worth before anybody marks it up.
+
+    Rarity is a ladder and so is level, but level is the steeper of the
+    two: a Legend at ten is most of a binder's worth of duplicates and is
+    priced like it. This is not the income it earns - a card that paid
+    for itself would make the whole site a money printer rather than a
+    money hole.
+    """
+    base = 420.0 * (1.85 ** breed.rarity)
+    base *= 1.0 + 0.42 * (level - 1) ** 1.3
+    if shiny:
+        base *= 5.0
+    return base
+
+
+def resale_ship(pack, qty=1):
+    """How long a box off the site takes to turn up."""
+    return max(RESALE_MIN_SHIP, ship_time(pack, POST, qty) * RESALE_SLOW)
+
+
+def pack_worth(pack):
+    """What a sealed pack is worth to the person reselling it.
+
+    The two the convention gives away have no price at all, which does
+    not stop anybody listing one - so a pack with no price is valued on
+    what is in it instead.
+    """
+    if pack.price:
+        return float(pack.price)
+    tot = sum(pack.weights) or 1
+    ev = sum(pack.weights[r] / tot * RARITY[r][2]
+             for r in range(SOLD_RARITIES))
+    return 2600.0 * ev * pack.cards
+
+
+# What turns up on the site is not what is easiest to get hold of: a
+# listing for a Shelf Box is a listing nobody reads. The boxes worth
+# reselling are the ones the website will not sell you.
+PACK_PULL = {"standard": 1, "special": 3, "convention": 6, "resale": 6}
+# ... except for the loft, which is not stock at all
+NEVER_STOCKED = ("attic",)
+ATTIC_ODDS = 0.11          # of a day having one on it
+
+
+class Lot:
+    """One listing. `kind` is "card" or "pack"."""
+    __slots__ = ("kind", "key", "level", "coat", "shiny", "qty", "seller",
+                 "price", "sold")
+
+    def __init__(self, kind, key, seller, price, level=1, coat=0,
+                 shiny=False, qty=1, sold=False):
+        self.kind = kind
+        self.key = key
+        self.seller = seller
+        self.price = price
+        self.level = level
+        self.coat = coat
+        self.shiny = shiny
+        self.qty = qty
+        self.sold = sold
+
+    def to_row(self):
+        return [self.kind, self.key, self.seller, round(self.price, 2),
+                self.level, self.coat, int(self.shiny), self.qty,
+                int(self.sold)]
+
+    @staticmethod
+    def from_row(r):
+        try:
+            lot = Lot(r[0], r[1], int(r[2]), float(r[3]), int(r[4]),
+                      int(r[5]), bool(r[6]), int(r[7]), bool(r[8]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        if lot.kind == "card" and lot.key not in BY_KEY:
+            return None
+        if lot.kind == "pack" and lot.key not in BY_PACK:
+            return None
+        return lot
+
+    @property
+    def markup(self):
+        return SELLERS[self.seller][1]
+
+    def words(self):
+        if self.kind == "pack":
+            pack = BY_PACK[self.key]
+            return f"{pack.name}" + (f" x{self.qty}" if self.qty > 1 else "")
+        b = BY_KEY[self.key]
+        return f"{b.name}, level {self.level}"
+
+
+# The packs that only ever turn up second hand: nobody sells these new
+# because nobody ever sold them new.
+RESALE_PACKS = (
+    Pack("shoebox", "A Shoebox From a House Clearance", 900, 26,
+         (54, 28, 12, 4, 1, 1, 0), 240, R_COMMON,
+         "Somebody's aunt kept these in a shoebox under a bed for twenty "
+         "years. Mostly moggies, one or two corners gone soft, and every "
+         "so often something nobody in that house knew they had.",
+         (("forty per cent of it is the same cat", 2),
+          ("found a Foundation card in the bottom. worth the lot.", 5)),
+         shelf="resale"),
+    Pack("hoard", "Somebody's Whole Collection", 9000, 72,
+         (22, 26, 24, 14, 8, 5, 1), 420, R_LEGEND,
+         "All of it, in one go, because they are moving and it will not "
+         "fit in the van. Seventy-two cards and no sorting.",
+         (("two hours to put away. no regrets.", 5),
+          ("he cried when he handed it over. so did i, later.", 4)),
+         shelf="resale"),
+    Pack("attic", "Everything I Had As A Kid", 6400, 160,
+         (72, 19, 6, 2, 1, 0, 0), 430, R_COMMON,
+         "Four carrier bags out of a loft, emptied into one box. A "
+         "hundred and sixty cards, most of them cats you could meet on "
+         "the way to the shop, and a great many of them twice - but it "
+         "comes as one parcel, and that is the part that matters.",
+         (("nine hours sorting it. found four i had never seen.", 5),
+          ("eleven ginger moggies. ELEVEN.", 2),
+          ("he said his mum wanted the loft back", 5)),
+         shelf="resale"),
+    Pack("graded", "One Card, Graded, Sealed", 5600, 1,
+         (0, 0, 0, 0, 26, 48, 26), 180, R_CHAMPION,
+         "One card in a hard case with a number on it. You are paying for "
+         "the number and the certainty, and you know it.",
+         (("the certainty is the product", 4),
+          ("paid five thousand for a cat i already had", 1)),
+         shelf="resale"),
+)
+for _p in RESALE_PACKS:
+    BY_PACK[_p.key] = _p
+PACKS = PACKS + RESALE_PACKS
+
+
+def _pick_seller(rng):
+    """Most of them are scalpers, because most of them are."""
+    weights = [sl[2] for sl in SELLERS]
+    total = sum(weights)
+    pick = rng.uniform(0, total)
+    acc = 0
+    for i, w in enumerate(weights):
+        acc += w
+        if pick <= acc:
+            return i
+    return len(SELLERS) - 1
+
+
+def roll_lots(state, rng):
+    """A day's stock. Four cards and two boxes, give or take.
+
+    The cards lean toward breeds you have not got, because a listing for
+    something already in your binder at a level below the one you have is
+    a listing nobody would read twice.
+    """
+    # Nothing off the books is ever for sale. The five that are not in
+    # the binder until one turns up are not in anybody's shop either -
+    # the whole point of them is that you cannot go and get one, and a
+    # scalper listing one is the one way round that. Both pools are cut
+    # from the same list so neither of them can drift: the first draft
+    # kept unlisted out of the breeds you are MISSING and let them
+    # straight back in through the ones you already own.
+    sellable = [b for b in BREEDS if b.rarity != R_UNLISTED]
+    missing = [b for b in sellable if b.key not in state.cards]
+    owned = [b for b in sellable if b.key in state.cards]
+    attic = rng.random() < ATTIC_ODDS
+    lots = []
+    for i in range(LOTS_ON_SITE):
+        seller = _pick_seller(rng)
+        mark = SELLERS[seller][1]
+        if i == LOTS_ON_SITE - 1 and attic:
+            # whoever is selling this is clearing a loft, not flipping:
+            # it comes off one of the two who are not taking the mick
+            seller = rng.randrange(SELLER_HONEST)
+            price = round(pack_worth(BY_PACK["attic"]) * SELLERS[seller][1]
+                          * rng.uniform(0.9, 1.15))
+            lots.append(Lot("pack", "attic", seller, price, qty=1))
+            continue
+        if i >= LOTS_ON_SITE - 2:                   # the boxes
+            pool = []
+            for pk in PACKS:
+                if pk.key in NEVER_STOCKED:
+                    continue
+                pool += [pk] * PACK_PULL.get(pk.shelf, 1)
+            pack = rng.choice(pool)
+            qty = rng.choice((1, 1, 1, 2))
+            price = round(pack_worth(pack) * qty * mark
+                          * rng.uniform(0.9, 1.15))
+            lots.append(Lot("pack", pack.key, seller, price, qty=qty))
+            continue
+        pool = missing if (missing and rng.random() < 0.62) else owned
+        if not pool:
+            pool = sellable
+        b = rng.choice(pool)
+        # a seller listing a level ten is a seller who finished one
+        level = min(MAX_LEVEL, 1 + int(rng.random() ** 2.4 * MAX_LEVEL))
+        shiny = rng.random() < 0.08
+        coat = rng.randrange(len(coat_colours(b)))
+        price = round(card_worth(b, level, shiny) * mark
+                      * rng.uniform(0.86, 1.19))
+        lots.append(Lot("card", b.key, seller, price, level, coat, shiny))
+    rng.shuffle(lots)
+    return lots
+
+
+# ---------------------------------------------------------------------------
+# THINGS FOR THE CARDS
+#
+# The flat page sells furniture, which is for the cats. This is for the
+# cards: sleeves, a binder, a loupe, a price guide. None of it is a
+# decision you agonise over - every one is a few per cent - and that is
+# deliberate. The point of a shelf like this is that it is always worth
+# buying the next one and never worth saving up for it.
+#
+# Three of them pay a little more per second, which is the same lever the
+# flat pulls. The other three pull levers nothing else touches: what the
+# shiny odds are, what the resale site costs you, and whether you are
+# allowed to be wrong once at the authentication desk. A page of six
+# income bonuses would not be a page, it would be a number with six
+# names.
+# ---------------------------------------------------------------------------
+class Merch:
+    __slots__ = ("key", "name", "price", "blurb", "income", "shiny",
+                 "resale", "loupe")
+
+    def __init__(self, key, name, price, blurb, income=0.0, shiny=1.0,
+                 resale=1.0, loupe=False):
+        self.key = key
+        self.name = name
+        self.price = price
+        self.blurb = blurb
+        self.income = income
+        self.shiny = shiny
+        self.resale = resale
+        self.loupe = loupe
+
+    @property
+    def effect(self):
+        if self.income:
+            return f"+{self.income * 100:.0f}% a second"
+        if self.shiny != 1.0:
+            return f"shinies x{self.shiny:.2f}"
+        if self.resale != 1.0:
+            return f"{(1 - self.resale) * 100:.0f}% off resale"
+        return "one wrong answer"
+
+
+MERCH = (
+    Merch("sleeves", "A Hundred Card Sleeves", 700,
+          "Acid free, and the exact size of the cards. They stop looking "
+          "like they have been in somebody's pocket, because they have.",
+          income=0.03),
+    Merch("binder", "A Four-Ring Binder", 2800,
+          "Nine pockets to a page and a strap that shuts. The shoebox has "
+          "done its bit and can go back under the bed.",
+          income=0.05),
+    Merch("tops", "Rigid Toploaders", 7500,
+          "For the ones you would be upset about. Somehow the good ones "
+          "turn up more often once there is somewhere to put them.",
+          shiny=1.20),
+    Merch("loupe", "A Jeweller's Loupe", 16000,
+          "Ten times, with a light in it. At the authentication desk it "
+          "buys you exactly one wrong answer, which is one more than you "
+          "get now.",
+          loupe=True),
+    Merch("guide", "The Price Guide, This Year's", 26000,
+          "Everything in it, with a number beside it. You stop being the "
+          "one in the conversation who does not know what things go for.",
+          resale=0.90),
+    Merch("case", "A Glass-Fronted Display Case", 44000,
+          "Lit from inside, on the wall where the television was. They "
+          "sit in front of it in the evenings, which cannot be a "
+          "coincidence.",
+          income=0.08),
+)
+BY_MERCH = {m.key: m for m in MERCH}
 
 
 MAX_IN_TRANSIT = 4
@@ -3419,6 +3834,12 @@ def until_convention(played):
     into = played - day_of(played) * DAY
     days = (CONVENTION_DAY - weekday_of(played)) % 7 or 7
     return days * DAY - into
+
+
+def until_midnight(played):
+    """Seconds left of today. The resale site restocks on the hour that
+    the day turns over, which is the same hour the convention ends."""
+    return DAY - (played - day_of(played) * DAY)
 
 
 def until_shut(played):
@@ -3542,6 +3963,11 @@ class State:
         self.seen_end = False
         self.club = 0               # memberships bought, 0 to 3
         self.things = set()         # furnishings bought for the flat
+        self.big_room = False       # the wall through to the back room
+        self.seen_intro = False     # the four screens before the first pack
+        self.kit = set()            # sleeves, binders, a loupe
+        self.lots = []              # what is on the resale site today
+        self.lots_day = -1          # ... and which day that was
         self.conv_done = set()      # stalls played at this convention
         self.conv_week = -1         # which convention that was
         self.conv_wins = 0
@@ -3559,21 +3985,51 @@ class State:
                          if k in BY_UPGRADE)
 
     @property
+    def gear(self):
+        """What the sleeves and the binder add, on top of the flat."""
+        return 1.0 + sum(BY_MERCH[k].income for k in self.kit
+                         if k in BY_MERCH)
+
+    @property
+    def shiny_gear(self):
+        out = 1.0
+        for k in self.kit:
+            if k in BY_MERCH:
+                out *= BY_MERCH[k].shiny
+        return out
+
+    @property
+    def resale_gear(self):
+        out = 1.0
+        for k in self.kit:
+            if k in BY_MERCH:
+                out *= BY_MERCH[k].resale
+        return out
+
+    @property
+    def has_loupe(self):
+        return any(BY_MERCH[k].loupe for k in self.kit if k in BY_MERCH)
+
+    @property
     def income(self):
         raw = sum(BY_KEY[k].rate_at(c.level) * (SHINY_BONUS if c.shiny else 1)
                   for k, c in self.cards.items())
-        return raw * self.comfort
+        return raw * self.comfort * self.gear
 
     @property
     def owned(self):
         """Breeds from the CATALOGUE. The strays are counted on their own,
         or thirty-two listed breeds and five cats off the street would
         add up to a finished binder."""
-        return sum(1 for k in self.cards if BY_KEY[k].rarity != R_UNLISTED)
+        return sum(1 for k in self.cards if k in LISTED)
 
     @property
     def strays_owned(self):
         return sum(1 for k in self.cards if BY_KEY[k].rarity == R_UNLISTED)
+
+    @property
+    def expo_owned(self):
+        return sum(1 for k in self.cards if BY_KEY[k].rarity == R_EXPO)
 
     @property
     def slots(self):
@@ -3583,7 +4039,7 @@ class State:
     @property
     def retired(self):
         return sum(1 for k, c in self.cards.items()
-                   if c.maxed and BY_KEY[k].rarity != R_UNLISTED)
+                   if c.maxed and k in LISTED)
 
     @property
     def complete(self):
@@ -3649,6 +4105,85 @@ class State:
         self.next_num += 1
         self.orders.append(o)
         return o
+
+    # -- the resale site ----------------------------------------------
+    def refresh_lots(self, rng=None):
+        """New stock when the day turns, and not before.
+
+        Seeded off the day and nothing else, so reloading the save you
+        made thirty seconds ago gets you the same six listings at the
+        same six prices. A market you can reroll is not a market, it is
+        a slot machine with no handle.
+        """
+        day = day_of(self.played)
+        if self.lots_day == day and self.lots:
+            return False
+        self.lots_day = day
+        self.lots = roll_lots(self, rng or random.Random(day * 7919 + 13))
+        return True
+
+    def lot_cost(self, lot):
+        """What it comes to. A box still has to be posted."""
+        if lot.kind == "pack":
+            return round(lot.price * self.resale_gear
+                         + ship_cost(BY_PACK[lot.key], lot.qty, POST))
+        return round(lot.price * self.resale_gear)
+
+    def can_take(self, lot):
+        if lot.sold or self.money + 1e-6 < self.lot_cost(lot):
+            return False
+        if lot.kind == "pack":
+            return len(self.orders) < self.slots
+        return True
+
+    def take_lot(self, lot, rng=None):
+        """Buy a listing.
+
+        A box joins the round like any other order. A single card is
+        handed over there and then - and if it is better than the one in
+        your binder, the binder takes the better of the two, which is
+        the entire reason anybody pays these prices.
+        """
+        if not self.can_take(lot):
+            return None
+        cost = self.lot_cost(lot)
+        self.money -= cost
+        self.spent += cost
+        lot.sold = True
+        if lot.kind == "pack":
+            pack = BY_PACK[lot.key]
+            o = Order(self.next_num, pack.key, lot.qty,
+                      resale_ship(pack, lot.qty), cost, POST)
+            self.next_num += 1
+            self.orders.append(o)
+            return o
+        b = BY_KEY[lot.key]
+        card = self.cards.get(lot.key)
+        if card is None:
+            card = Card(level=lot.level, coat=lot.coat, shiny=lot.shiny)
+            card.saw(lot.coat)
+            self.cards[lot.key] = card
+            self.cards_pulled += 1
+            if lot.shiny:
+                self.shinies += 1
+            return Pull(b, "new", card.level, 0, False, lot.coat, lot.shiny,
+                        True)
+        before = card.level
+        fresh = not (card.seen >> lot.coat & 1)
+        card.saw(lot.coat)
+        first_shiny = lot.shiny and not card.shiny
+        if first_shiny:
+            card.shiny = True
+            card.coat = lot.coat
+            self.shinies += 1
+        if lot.level > card.level:
+            card.level = lot.level
+            card.dupes = 0
+        else:
+            card.add_dupe()
+        self.cards_pulled += 1
+        return Pull(b, "level" if card.level > before else "dupe",
+                    card.level, before, False, lot.coat, first_shiny, fresh)
 
     # -- the convention -----------------------------------------------
     @property
@@ -3774,12 +4309,16 @@ class State:
         out = []
         for n in range(qty):
             for i in range(pack.cards):
-                b, sub = self.roll(pack, rng, last=(i == pack.cards - 1))
+                if pack.expo and rng.random() < pack.expo:
+                    b, sub = rng.choice(EXPO_BREEDS), False
+                else:
+                    b, sub = self.roll(pack, rng, last=(i == pack.cards - 1))
                 if b is None:
                     break
                 card = self.cards.get(b.key)
                 coat = roll_coat(b, rng, card, pack.fresh_coats)
-                shiny = rng.random() < pack.shiny_mult / SHINY_IN
+                shiny = (rng.random()
+                         < pack.shiny_mult * self.shiny_gear / SHINY_IN)
                 if card is None:
                     card = Card(coat=coat, shiny=shiny)
                     self.cards[b.key] = card
@@ -3824,6 +4363,11 @@ class State:
             "seen_end": self.seen_end,
             "club": self.club,
             "things": sorted(self.things),
+            "big_room": self.big_room,
+            "seen_intro": self.seen_intro,
+            "kit": sorted(self.kit),
+            "lots": [lot.to_row() for lot in self.lots],
+            "lots_day": self.lots_day,
             "conv_done": sorted(self.conv_done),
             "conv_week": self.conv_week,
             "conv_wins": self.conv_wins,
@@ -3868,6 +4412,12 @@ class State:
         s.seen_end = bool(d.get("seen_end", False))
         s.club = int(clamp(int(d.get("club", 0)), 0, len(CLUB)))
         s.things = {k for k in (d.get("things") or []) if k in BY_UPGRADE}
+        s.big_room = bool(d.get("big_room"))
+        s.seen_intro = bool(d.get("seen_intro"))
+        s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
+        s.lots = [x for x in (Lot.from_row(r) for r in (d.get("lots") or ()))
+                  if x is not None]
+        s.lots_day = int(d.get("lots_day", -1))
         s.conv_done = set(d.get("conv_done") or ())
         s.conv_week = int(d.get("conv_week", -1))
         s.conv_wins = int(d.get("conv_wins", 0))
@@ -3984,11 +4534,36 @@ def _noise(dur, vol=0.3, lo=0.2, decay=3.0, seed=1):
 
 
 def _to_sound(samples, gain=1.0):
+    """A list of floats, normalised, clipped and handed to the mixer in
+    whatever shape the mixer actually came up in.
+
+    pre_init ASKS for one channel. SDL is allowed to refuse, and on this
+    machine it does - get_init() comes back (22050, -16, 2). A mono
+    buffer handed to a stereo mixer is read as interleaved pairs: half
+    the samples go left, half go right, and the whole thing runs out in
+    half the time at twice the pitch. Nothing errors. It just sounds
+    thin and fast, which is easy to put down to it having been
+    synthesised in the first place, and it was true of every sound in
+    this game for as long as there have been sounds in it.
+
+    Telling SDL not to change the format would fix it here and break on
+    the next machine with no mono device, so the buffer is doubled to
+    match instead - with a strided slice assignment, because doing it a
+    sample at a time costs more than building the music did.
+    """
     peak = max(0.001, max(abs(v) for v in samples))
     k = min(1.0, 0.92 / peak) * gain
-    data = array("h", (int(clamp(v * k, -1, 1) * 32000) for v in samples))
-    snd = pygame.mixer.Sound(buffer=data.tobytes())
-    return snd
+    mono = array("h", (int(max(-32000, min(32000, v * k * 32000)))
+                       for v in samples))
+    got = pygame.mixer.get_init()
+    chans = got[2] if got else 1
+    if chans > 1:
+        data = array("h", bytes(len(mono) * 2 * chans))
+        for c in range(chans):
+            data[c::chans] = mono
+    else:
+        data = mono
+    return pygame.mixer.Sound(buffer=data.tobytes())
 
 
 def _build_sound(name):
@@ -4090,16 +4665,187 @@ def play(name, vol=1.0):
         s.play()
 
 
+MUSIC_GAIN = 0.30          # how hard the loop is built...
+MUSIC_VOL = 0.42           # ...and how far the fader is pushed up after
+
+
 # -- the music --------------------------------------------------------------
-# One loop, twenty seconds, four chords that do not resolve. It is the
-# sound of a room with the big light off; it is not supposed to be
-# noticed. The last chord's tail wraps round onto the start of the buffer
-# (see `_mix`), so the loop has no gap in it - the usual way a generated
-# loop goes wrong is a quarter second of silence at the seam.
-MUSIC_BARS = ((0, (220.00, 261.63, 329.63)),      # Am
-              (1, (174.61, 220.00, 261.63)),      # F
-              (2, (196.00, 246.94, 293.66)),      # G
-              (3, (164.81, 196.00, 246.94)))      # Em
+# Seventy-two to the minute, swung, with the big light off.
+#
+# Four jazz chords on an electric piano that has been through a tape
+# machine, brushes on the drums behind them, and a record crackling under
+# the lot of it. Everything is deliberately dull: the loop runs through a
+# one-pole lowpass at the end so nothing on it is bright, the hats sit
+# under the piano rather than on top, and the whole thing is mixed low
+# enough that you can hold a conversation over it. It is wallpaper. If
+# you can hum it back after an hour it is too loud.
+#
+# The four chords do not resolve, which is the same trick the old pad
+# used - you cannot loop a resolution twenty times without hearing the
+# join. The last chord's tail wraps onto the head of the buffer (see
+# `_mix`), so there is no gap at the seam either.
+BPM = 72.0
+BEAT = 60.0 / BPM                  # 0.833s
+BAR = BEAT * 4                     # 3.33s, and eight of them to the loop
+STEP = BAR / 16                    # a sixteenth
+SWING = 0.17                       # how late the off-beat eighth sits
+
+# A table beats math.sin by about three to one in a loop this size, and
+# at eleven bits the error it adds is quieter than the vinyl is. For this
+# of all genres that is not a compromise.
+_SIN_N = 2048
+_SIN = tuple(math.sin(TAU * i / _SIN_N) for i in range(_SIN_N))
+
+# name, the bass under it, and a voicing kept inside one octave in the
+# middle of the register - a chord spread over three octaves reads as
+# "piano", and this is meant to read as "somebody's record"
+LOFI_BARS = (
+    ("Am9",   110.00, (261.63, 329.63, 392.00, 493.88)),   # C  E  G  B
+    ("Dm7",    73.42, (293.66, 349.23, 440.00, 523.25)),   # D  F  A  C
+    ("Fmaj7",  87.31, (261.63, 329.63, 349.23, 440.00)),   # C  E  F  A
+    ("Em7",    82.41, (246.94, 293.66, 329.63, 392.00)),   # B  D  E  G
+)
+CHORD_BARS = 2                     # how long each one is held
+
+# Where the kit plays, on a sixteenth grid. Boom-bap: the kick leans on
+# the one and lands late in the bar, the snare is on two and four and is
+# brushed rather than hit, and the hats run in swung eighths.
+KICKS = (0, 6, 10)
+SNARES = (4, 12)
+HATS = (0, 2, 4, 6, 8, 10, 12, 14)
+
+
+def _rhodes(freq, dur, vol=0.3, seed=0):
+    """An electric piano: a sine with a bell on the front of it that dies
+    away long before the note does, a slow tremolo, and a tape machine
+    underneath drifting the pitch by a part in a thousand.
+
+    The drift is why the phase is accumulated rather than computed from
+    the sample index - you cannot wobble a note you are addressing by
+    multiplication.
+
+    Nine of these are six seconds each and the loop is built while the
+    player waits, so the inner loop has no math.exp in it: a decay is a
+    constant you multiply by, and calling exp a hundred and thirty-five
+    thousand times to find that constant again is most of the cost of the
+    whole piece of music. The tape LFO is stepped every sixty-four
+    samples for the same reason - it turns a third of a cycle a second
+    and nothing about it needs sample resolution.
+    """
+    n = int(dur * RATE)
+    out = [0.0] * n
+    rng = random.Random(seed)
+    step = freq * _SIN_N / RATE
+    det = step * 1.0015             # a second voice, barely apart
+    wob = TAU * rng.uniform(0.21, 0.34) / RATE
+    wph = rng.uniform(0, TAU)
+    tstep = 4.6 * _SIN_N / RATE     # the tremolo, in table steps
+    # decays, as the per-sample constant each one comes down to
+    d_bell = math.exp(-9.0 / n)
+    d_body = math.exp(-2.4 / n)
+    d_amp = math.exp(-2.1 / n)
+    e_bell = e_body = e_amp = 1.0
+    drift = 1.0
+    p = q = 0.0
+    sin_t = _SIN
+    for i in range(n):
+        if not i & 63:
+            drift = 1.0 + 0.0016 * math.sin(wph + wob * i)
+        p += step * drift
+        q += det * drift
+        ip = int(p)
+        a = sin_t[ip & 2047] + 0.55 * sin_t[int(q) & 2047]
+        # the bell on the attack, which is what makes it a Rhodes and not
+        # an organ, and the third harmonic under it for body
+        bell = 0.40 * sin_t[(ip << 2) & 2047] * e_bell
+        body = 0.16 * sin_t[(ip << 1) & 2047] * e_body
+        trem = 0.90 + 0.10 * sin_t[int(i * tstep) & 2047]
+        e = e_amp * trem
+        if i < 180:                 # a soft edge, or it clicks
+            e *= i / 180
+        out[i] = (a + bell + body) * e * vol
+        e_bell *= d_bell
+        e_body *= d_body
+        e_amp *= d_amp
+    return out
+
+
+def _kick(vol=0.9):
+    """A sine falling from a hundred and ten to forty in a tenth of a
+    second, which is the whole of a kick drum."""
+    n = int(0.34 * RATE)
+    out = [0.0] * n
+    p = 0.0
+    for i in range(n):
+        f = i / n
+        hz = 42.0 + 72.0 * math.exp(-18.0 * f)
+        p += hz * _SIN_N / RATE
+        out[i] = _SIN[int(p) & 2047] * math.exp(-7.5 * f) * vol
+    return out
+
+
+def _snare(vol=0.34):
+    """Brushes, not sticks: mostly a dull hiss with just enough tone
+    under it to say which drum it is."""
+    n = int(0.22 * RATE)
+    out = [0.0] * n
+    rng = random.Random(7)
+    last = 0.0
+    p = 0.0
+    for i in range(n):
+        f = i / n
+        last = last * 0.62 + rng.uniform(-1, 1) * 0.38
+        p += 186.0 * _SIN_N / RATE
+        tone = 0.35 * _SIN[int(p) & 2047] * math.exp(-16.0 * f)
+        out[i] = (last + tone) * math.exp(-9.0 * f) * vol
+    return out
+
+
+def _hat(vol=0.12, shut=True):
+    """Noise, filtered down until it is a tick rather than a hiss."""
+    n = int((0.07 if shut else 0.19) * RATE)
+    out = [0.0] * n
+    rng = random.Random(11)
+    hi = 0.0
+    prev = 0.0
+    for i in range(n):
+        v = rng.uniform(-1, 1)
+        hi = v - prev + hi * 0.55       # a dull highpass, so it is not bass
+        prev = v
+        out[i] = hi * math.exp(-(26.0 if shut else 9.0) * i / n) * vol
+    return out
+
+
+def _vinyl(n, vol=0.030, seed=3):
+    """The record this is supposedly coming off: a bed of surface noise
+    with the odd click in it. Nothing else on the loop says "lofi" as
+    plainly as this does, and it costs one pass of the buffer."""
+    rng = random.Random(seed)
+    out = [0.0] * n
+    last = 0.0
+    for i in range(n):
+        last = last * 0.86 + rng.uniform(-1, 1) * 0.14
+        out[i] = last * vol
+    # and the clicks, about ten a second, each one a dozen samples long
+    for _ in range(int(n / RATE * 11)):
+        at = rng.randrange(n)
+        amp = rng.uniform(0.3, 1.0) * vol * 9
+        for k in range(14):
+            if at + k < n:
+                out[at + k] += amp * math.exp(-0.45 * k) * rng.uniform(-1, 1)
+    return out
+
+
+def _lowpass(buf, a):
+    """One pole, in place. This is the single thing that turns a pile of
+    synthesis into something that sounds like it is in the next room."""
+    y = 0.0
+    for i, v in enumerate(buf):
+        y += a * (v - y)
+        buf[i] = y
+    return buf
+
+
 _music = None
 
 
@@ -4107,29 +4853,60 @@ def music_loop():
     global _music
     if _music is not None or not _audio:
         return _music
-    bar = 5.0
-    n = int(bar * len(MUSIC_BARS) * RATE)
+    bars = len(LOFI_BARS) * CHORD_BARS
+    n = int(bars * BAR * RATE)
     buf = [0.0] * n
+
+    kick, snare, hat = _kick(), _snare(), _hat()
     cache = {}
-    for idx, chord in MUSIC_BARS:
-        at = int(idx * bar * RATE)
-        for v, f in enumerate(chord):
-            key = (round(f, 2), "string")
-            note = cache.get(key)
+    for ci, (name, bass, voicing) in enumerate(LOFI_BARS):
+        at = int(ci * CHORD_BARS * BAR * RATE)
+        # the chord, rolled rather than struck - no two fingers land at
+        # the same moment on a record anybody wants to listen to
+        for v, f in enumerate(voicing):
+            note = cache.get(f)
             if note is None:
-                note = _note(f, bar * 1.7, "string", 0.30, 0.16, 0.42)
-                cache[key] = note
-            _mix(buf, at + int(v * 0.07 * RATE), note, 0.55)
-        low = cache.get((chord[0] / 2, "low"))
+                note = _rhodes(f, CHORD_BARS * BAR * 0.92, 0.26, seed=int(f))
+                cache[f] = note
+            _mix(buf, at + int(v * 0.035 * RATE), note, 0.52)
+            # and again, quietly, half a bar later, so the chord breathes
+            _mix(buf, at + int((BAR * 1.5 + v * 0.03) * RATE), note, 0.17)
+        low = cache.get(("bass", bass))
         if low is None:
-            low = _note(chord[0] / 2, bar * 1.25, "low", 0.5, 0.08, 0.5)
-            cache[(chord[0] / 2, "low")] = low
-        _mix(buf, at, low, 0.5)
-        # one high note per bar, off the beat, like a clock in another room
-        hi = _note(chord[-1] * 2, 1.1, "bell", 0.22, 0.01, 0.9)
-        _mix(buf, at + int(bar * 0.62 * RATE), hi, 0.5)
+            low = _note(bass, BAR * 0.85, "low", 0.52, 0.03, 0.55)
+            cache[("bass", bass)] = low
+        for b in range(CHORD_BARS):
+            _mix(buf, at + int(b * BAR * RATE), low, 0.46)
+            # the fifth, late in the bar, which is the whole bass part
+            fifth = cache.get(("bass", bass * 1.5))
+            if fifth is None:
+                fifth = _note(bass * 1.5, BAR * 0.35, "low", 0.5, 0.03, 0.6)
+                cache[("bass", bass * 1.5)] = fifth
+            _mix(buf, at + int((b * BAR + BEAT * 2.5) * RATE), fifth, 0.28)
+
+        # the kit, two bars of it per chord
+        for b in range(CHORD_BARS):
+            bar_at = at + int(b * BAR * RATE)
+            last = ci == len(LOFI_BARS) - 1 and b == CHORD_BARS - 1
+            for st in KICKS:
+                _mix(buf, bar_at + int(st * STEP * RATE), kick, 0.50)
+            if last:                 # a pickup into the top of the loop
+                _mix(buf, bar_at + int(14 * STEP * RATE), kick, 0.34)
+            for st in SNARES:
+                _mix(buf, bar_at + int(st * STEP * RATE), snare, 0.62)
+            for st in HATS:
+                late = SWING * STEP if (st // 2) % 2 else 0.0
+                quiet = 0.78 if (st // 2) % 2 else 1.0
+                _mix(buf, bar_at + int((st * STEP + late) * RATE), hat,
+                     0.55 * quiet)
+
+    _mix(buf, 0, _vinyl(n), 1.0)
+    # warm it: everything above a few kilohertz goes, which is most of
+    # what a listener would call "bright" and all of what they would call
+    # "a computer made this"
+    _lowpass(buf, 0.34)
     try:
-        _music = _to_sound(buf, 0.42)
+        _music = _to_sound(buf, MUSIC_GAIN)
     except (pygame.error, ValueError, MemoryError):
         _music = False
     return _music or None
@@ -4145,6 +4922,7 @@ def music(on):
     if m is None:
         return
     if on and not _music_on:
+        m.set_volume(MUSIC_VOL)
         m.play(loops=-1)
         _music_on = True
     elif not on and _music_on:
@@ -4153,10 +4931,23 @@ def music(on):
 
 
 def init_audio():
-    global _audio
+    """Open the mixer, and then believe what it says about itself.
+
+    pre_init is a request, not an instruction: SDL is allowed to hand
+    back a different rate and a different number of channels, and on a
+    machine with no mono device it will. Everything here is synthesised
+    against RATE, so the one thing that must not happen is RATE saying
+    22050 while the device runs at 44100 - every note would come out an
+    octave high and nobody would know why. Ask, then take what you are
+    given and build to that instead.
+    """
+    global _audio, RATE
     try:
         pygame.mixer.pre_init(RATE, -16, 1, 512)
         pygame.mixer.init()
+        got = pygame.mixer.get_init()
+        if got:
+            RATE = got[0]
         _audio = True
     except pygame.error:
         _audio = False
@@ -4702,6 +5493,9 @@ TREE2_X = 1880
 
 SPOT_ACTS = {
     "perch": ("watch", "loaf", "sleep", "groom"),
+    "wall": ("climb", "watch", "loaf", "sleep"),
+    "tunnel": ("hide", "play", "sleep"),
+    "bird": ("chatter", "watch", "sit"),
     "bed": ("sleep", "loaf", "groom"),
     "chair": ("sleep", "loaf", "groom", "sit"),
     "box": ("sleep", "loaf", "watch"),
@@ -4746,14 +5540,48 @@ ROOM_SPOTS = (
     ("chair", 1660, 604, -1, 130, "the arm of the chair"),
     ("bed", 1116, 700, 1, 136, "the folded blanket"),
 )
+ROOM_BASE = len(ROOM_SPOTS)      # everything past here is through the wall
+
+# The back room. These are APPENDED, and that is deliberate: a resident
+# holds its spot as an index into this tuple, so anything inserted in the
+# middle would move every cat in a saved room onto different furniture.
+BACK_SPOTS = (
+    ("bird", 2146, 316, 1, 112, "the bird window"),
+    ("wall", 2066, 468, 1, 104, "the bottom step"),
+    ("wall", 2182, 386, -1, 102, "the middle step"),
+    ("wall", 2298, 302, 1, 100, "the top step"),
+    ("floor", 2104, 736, 1, 136, "the new boards"),
+    ("toy", 2246, 730, 1, 130, "the spring"),
+    ("tunnel", 2338, 700, -1, 124, "the mouth of the tunnel"),
+    ("tunnel", 2532, 700, 1, 122, "the far end of the tunnel"),
+    ("post", 2596, 556, 1, 130, "the tall post"),
+    ("chair", 2706, 566, -1, 142, "the sofa"),
+    ("chair", 2870, 526, -1, 118, "the arm of the sofa"),
+    ("bed", 2462, 470, -1, 124, "the hammock"),
+    ("floor", 2634, 742, -1, 134, "the sunny patch"),
+    ("water", 2930, 716, -1, 118, "the second water bowl"),
+)
+ROOM_SPOTS = ROOM_SPOTS + BACK_SPOTS
+
+CATS_W_BIG = 2960          # ... and how wide the pair of them are
+BIG_CAP = 20               # how many live in here once the wall is down
+BIG_ROOM_PRICE = 120000
+BIG_ROOM_NAME = "Knock Through to the Back Room"
 
 ACT_POSE = {"sleep": "curl", "loaf": "sit", "sit": "sit", "watch": "sit",
             "groom": "sit", "eat": "stand", "drink": "stand",
-            "play": "stand", "scratch": "stand", "prowl": "stand"}
+            "play": "stand", "scratch": "stand", "prowl": "stand",
+            "climb": "stand", "hide": "curl", "chatter": "sit"}
 ACT_WORD = {"sleep": "asleep", "loaf": "loafing", "sit": "sitting",
             "watch": "watching", "groom": "washing", "eat": "eating",
             "drink": "drinking", "play": "playing", "scratch": "scratching",
-            "prowl": "prowling"}
+            "prowl": "prowling", "climb": "climbing", "hide": "hiding",
+            "chatter": "chattering"}
+# The preposition was picked off the pose - "on" for anything sitting,
+# "at" for anything standing - which reads right for every act there was
+# and wrong for all three of the new ones. A cat is not hiding ON a
+# tunnel.
+ACT_PREP = {"climb": "up", "hide": "in", "chatter": "at", "prowl": "along"}
 
 
 class Resident:
@@ -4789,9 +5617,9 @@ class Resident:
     def doing(self):
         if self.state != "rest":
             return "on its way to " + ROOM_SPOTS[self.spot][5]
-        return ACT_WORD[self.act] + " on " + ROOM_SPOTS[self.spot][5] \
-            if ACT_POSE[self.act] != "stand" else \
-            ACT_WORD[self.act] + " at " + ROOM_SPOTS[self.spot][5]
+        prep = ACT_PREP.get(self.act,
+                            "at" if ACT_POSE[self.act] == "stand" else "on")
+        return f"{ACT_WORD[self.act]} {prep} {ROOM_SPOTS[self.spot][5]}"
 
 
 def _elevated(spot):
@@ -4808,9 +5636,11 @@ class CatRoom:
         self.rng = random.Random(11)
         self.toy_t = 0.0
         self.view = 0.0        # where the camera is, so cats can prefer it
+        self.nspots = ROOM_BASE
 
     def sync(self, state, cap):
         """Rebuild the residents when the set of cats in here changes."""
+        self.nspots = room_spot_count(state)
         want = tuple(b.key for b in room_cats(state)[:cap])
         if want == self.keys:
             for r in self.res:                 # levels and coats move
@@ -4819,6 +5649,11 @@ class CatRoom:
                     r.level, r.coat, r.shiny = (card.level, card.coat,
                                                 card.shiny)
             return
+        for r in self.res:              # nothing may sit past the wall
+            if r.spot >= self.nspots:
+                r.spot = r.home = self.rng.randrange(self.nspots)
+                r.x = ROOM_SPOTS[r.spot][1]
+                r.y = ROOM_SPOTS[r.spot][2]
         taken = set()
         res = []
         for i, k in enumerate(want):
@@ -4848,7 +5683,8 @@ class CatRoom:
         """
         T = breed.temperament
         pool = []
-        for i, (kind, x, y, face, size, name) in enumerate(ROOM_SPOTS):
+        for i, (kind, x, y, face, size, name) in enumerate(
+                ROOM_SPOTS[:self.nspots]):
             if i in taken:
                 continue
             if act is not None and act not in SPOT_ACTS[kind]:
@@ -4858,7 +5694,7 @@ class CatRoom:
                 weight *= 3.5 if T is TEMPERS["lap"] else 2.2
             pool.append((i, weight))
         if not pool:
-            return self.rng.randrange(len(ROOM_SPOTS))
+            return self.rng.randrange(self.nspots)
         total = sum(wt for _, wt in pool)
         pick = self.rng.uniform(0, total)
         acc = 0.0
@@ -4873,7 +5709,7 @@ class CatRoom:
         taken = {o.spot for o in self.res if o is not r}
         acts = [(a, w) for a, w in T["acts"].items()
                 if any(a in SPOT_ACTS[ROOM_SPOTS[i][0]]
-                       for i in range(len(ROOM_SPOTS)) if i not in taken)]
+                       for i in range(self.nspots) if i not in taken)]
         if not acts:
             acts = [("loaf", 1)]
         total = sum(w for _, w in acts)
@@ -5073,7 +5909,170 @@ def _cat_window(surf, r, t, seed=4):
     return sill
 
 
-def _catroom_front(surf, t):
+# ---------------------------------------------------------------------------
+# THE BACK ROOM
+#
+# Everything from x=2000 on, and only drawn when the wall is down. It is
+# laid out against BACK_SPOTS the same way the front room is laid out
+# against the first twenty-seven: the hammock is drawn where the hammock
+# spot is, so a cat asleep in it is asleep in the thing you can see.
+# ---------------------------------------------------------------------------
+BACK_X = CATS_W            # where the old wall was
+
+
+def _feeder(surf, x, y, t):
+    """A feeder on a bracket outside the window, and whatever is on it.
+
+    The birds are the point of the window. A cat chattering at an empty
+    pane is a cat doing nothing."""
+    pygame.draw.line(surf, shade(WOOD, 0.6), (x, y - 54), (x, y), 3)
+    pygame.draw.polygon(surf, mix(WOOD, RUG, 0.3),
+                        [(x - 22, y), (x + 22, y), (x + 15, y + 26),
+                         (x - 15, y + 26)])
+    pygame.draw.line(surf, shade(WOOD, 0.5), (x - 26, y), (x + 26, y), 3)
+    for i in range(2):
+        # two of them, hopping about on their own clock
+        ph = t * 0.9 + i * 2.1
+        bx = x - 14 + i * 28 + math.sin(ph) * 5
+        by = y - 8 + (2 if math.sin(ph * 3) > 0.4 else 0)
+        col = (176, 150, 112) if i else (150, 128, 108)
+        pygame.draw.ellipse(surf, col, (bx - 7, by - 6, 14, 11))
+        pygame.draw.circle(surf, col, (round(bx + 5), round(by - 7)), 4)
+        pygame.draw.polygon(surf, shade(col, 0.7),
+                            [(bx - 6, by - 4), (bx - 13, by + 1),
+                             (bx - 5, by + 2)])
+
+
+def _hammock(surf, x, y):
+    """Slung between two brackets. The sag is drawn, not implied."""
+    lo, hi = x - 86, x + 86
+    for k, col in ((6, shade(RUG, 0.6)), (0, mix(RUG, WOOD, 0.35))):
+        pts = []
+        for i in range(17):
+            f = i / 16
+            px = lo + (hi - lo) * f
+            pts.append((px, y + 26 + k + 30 * math.sin(math.pi * f)))
+        pygame.draw.lines(surf, col, False, pts, 9)
+    for sx in (lo, hi):
+        pygame.draw.line(surf, shade(WOOD_HI, 0.8), (sx, y - 34),
+                         (sx, y + 30), 4)
+        pygame.draw.circle(surf, shade(WOOD, 0.7), (round(sx), round(y - 34)),
+                           5)
+
+
+def _sofa_back(surf, r):
+    """The part of the sofa the cats sit in front of or on top of."""
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.14), (r.x, r.y, r.w, r.h - 40),
+                     border_radius=16)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.04),
+                     (r.x + 18, r.y + 16, r.w - 36, r.h - 78),
+                     border_radius=12)
+    for i in range(3):               # three cushions, one of them sat on
+        cx = r.x + 40 + i * (r.w - 80) / 3
+        pygame.draw.rect(surf, mix(RUG, LAMP, 0.09),
+                         (cx, r.y + 24, (r.w - 80) / 3 - 10, r.h - 96),
+                         border_radius=10)
+    pygame.draw.rect(surf, mix(RUG, WOOD, 0.4),
+                     (r.x, r.bottom - 54, r.w, 30), border_radius=10)
+    # the far arm, which a cat can sit on because it is drawn behind them
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.11),
+                     (r.right - 44, r.y + 56, 44, 116), border_radius=14)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.16),
+                     (r.right - 42, r.y + 58, 40, 16), border_radius=8)
+
+
+def _backroom(surf, state, t):
+    """The room through the wall, drawn behind the cats in it."""
+    x0 = BACK_X
+    # the knocked-through opening: a reveal, a lintel, and the bricks
+    arch = pygame.Rect(x0 - 26, 92, 54, CATS_FLOOR - 92)
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.62), arch)
+    pygame.draw.rect(surf, mix(WOOD, RUG, 0.35), (x0 - 30, 78, 62, 22),
+                     border_radius=3)
+    for i in range(9):
+        hairline(surf, x0 - 24, 112 + i * 46, x0 + 24, WOOD_HI, 26)
+    # the back room is a touch lighter than the front: it has the window
+    glow(surf, (x0 + 180, 300), 420, mix(LAMP, CREAM, 0.25), 0.11)
+    glow(surf, (x0 + 760, 420), 360, mix(LAMP, EMBER, 0.3), 0.09)
+
+    _rug(surf, pygame.Rect(x0 + 520, 640, 420, 150), mix(RUG, EMBER, 0.18))
+
+    # the bird window, with the sill the cat sits on
+    win = pygame.Rect(x0 + 80, 180, 132, 136)
+    _cat_window(surf, win, t, seed=9)
+    _feeder(surf, x0 + 262, 236, t)
+
+    # the climbing steps, going up the wall away from the opening
+    for sx, sy in ((2066, 468), (2182, 386), (2298, 302)):
+        sh = pygame.Rect(sx - 52, sy, 104, 15)
+        pygame.draw.rect(surf, WOOD_HI, sh, border_radius=3)
+        pygame.draw.rect(surf, shade(WOOD, 0.74),
+                         (sh.x, sh.bottom - 5, sh.w, 5))
+        pygame.draw.rect(surf, mix(RUG, WOOD, 0.4),
+                         (sh.x + 10, sh.y - 5, sh.w - 20, 6),
+                         border_radius=2)
+        for bx in (sh.x + 12, sh.right - 16):
+            pygame.draw.line(surf, shade(WOOD, 0.6), (bx, sh.bottom),
+                             (bx, sh.bottom + 16), 3)
+
+    # the hammock, under the middle step
+    _hammock(surf, 2462, 470)
+
+    # the tall post: sisal all the way up, with a saucer on top
+    post = pygame.Rect(2596 - 17, 556, 34, CAT_WALK_Y - 556 + 14)
+    pygame.draw.rect(surf, mix(WOOD, PAPER, 0.28), post, border_radius=4)
+    for i in range(int(post.h / 7)):
+        hairline(surf, post.x, post.y + i * 7, post.right,
+                 shade(WOOD, 0.72), 40)
+    pygame.draw.ellipse(surf, mix(RUG, WOOD, 0.3),
+                        (post.centerx - 46, post.y - 16, 92, 28))
+
+    # the sofa
+    _sofa_back(surf, pygame.Rect(2628, 470, 264, 200))
+
+    # the second water bowl
+    bowl = pygame.Rect(2930 - 26, CAT_WALK_Y - 14, 52, 20)
+    pygame.draw.ellipse(surf, shade(TEA, 0.7), bowl)
+    pygame.draw.ellipse(surf, (74, 104, 140), bowl.inflate(-10, -7))
+
+    # the spring, which is the cheapest toy in the flat and the best
+    for i in range(6):
+        yy = CAT_WALK_Y - 4 - i * 7
+        pygame.draw.ellipse(surf, mix(EMBER, LAMP, 0.25 + i * 0.07),
+                            (2246 - 16 + (i % 2) * 5, yy, 32, 11), 3)
+
+    # the tunnel, back half - the front of it goes on after the cats
+    tun = pygame.Rect(2320, CAT_WALK_Y - 66, 230, 76)
+    pygame.draw.rect(surf, mix((96, 104, 112), LAMP, 0.18), tun,
+                     border_radius=30)
+    pygame.draw.rect(surf, mix((120, 128, 134), LAMP, 0.2),
+                     (tun.x, tun.y, tun.w, 16), border_radius=8)
+    for sx in (tun.x + 14, tun.right - 14):
+        pygame.draw.ellipse(surf, shade(INK, 1.5),
+                            (sx - 26, tun.y + 6, 52, 64))
+
+
+def _backroom_front(surf):
+    """The near wall of the tunnel and the near arm of the sofa, drawn
+    after the cats so they are inside them rather than behind them."""
+    tun = pygame.Rect(2320, CAT_WALK_Y - 66, 230, 76)
+    body = pygame.Rect(tun.x + 44, tun.y + 20, tun.w - 88, tun.h - 20)
+    pygame.draw.rect(surf, mix((96, 104, 112), LAMP, 0.16), body,
+                     border_radius=18)
+    pygame.draw.rect(surf, mix((120, 128, 134), LAMP, 0.2),
+                     (body.x, body.y, body.w, 12), border_radius=6)
+    for i in range(3):
+        hx = body.x + 22 + i * (body.w - 44) / 2
+        pygame.draw.arc(surf, mix((136, 144, 150), LAMP, 0.22),
+                        (hx - 15, body.y - 2, 30, body.h * 2), 4.0, 5.42, 6)
+    arm = pygame.Rect(2628, 470, 264, 200)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.11),
+                     (arm.x, arm.y + 56, 44, 116), border_radius=14)
+    pygame.draw.rect(surf, mix(RUG, LAMP, 0.04),
+                     (arm.x + 44, arm.bottom - 48, arm.w - 88, 30),
+                     border_radius=8)
+
+def _catroom_front(surf, state, t):
     """The parts of the room that are in FRONT of the cats.
 
     Drawn after them, which is the whole difference between a cat in a
@@ -5104,29 +6103,38 @@ def _catroom_front(surf, t):
     pygame.draw.rect(surf, mix(RUG, LAMP, 0.06),
                      (ch.x + 46, ch.bottom - 54, ch.w - 92, 34),
                      border_radius=8)
+    if state.big_room:
+        _backroom_front(surf)
 
 
 def _catroom(surf, state, t):
     """The whole room, drawn at its full width; the camera takes a window
     onto it. Everything is laid out against ROOM_SPOTS, so a cat asleep
-    on the armchair is asleep on the armchair that is drawn here."""
+    on the armchair is asleep on the armchair that is drawn here.
+
+    It is drawn at one of two widths: the room on its own, or the room
+    with the wall at the far end taken out.
+    """
+    wide = surf.get_width()
     surf.fill(INK)
     for y in range(0, CATS_FLOOR, 4):
         f = y / CATS_FLOOR
         pygame.draw.rect(surf, mix((28, 21, 20), (46, 34, 30), f ** 0.7),
-                         (0, y, CATS_W, 4))
-    for x in range(0, CATS_W, 52):
+                         (0, y, wide, 4))
+    for x in range(0, wide, 52):
         s = pygame.Surface((2, CATS_FLOOR), pygame.SRCALPHA)
         s.fill((*WOOD_HI, 16))
         surf.blit(s, (x, 0))
-    pygame.draw.rect(surf, shade(WOOD_LO, 0.78), (0, CATS_FLOOR, CATS_W,
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.78), (0, CATS_FLOOR, wide,
                                                   H - CATS_FLOOR))
     for i in range(8):
         y = CATS_FLOOR + 12 + i * 30
         if y < H:
-            hairline(surf, 0, y, CATS_W, WOOD_HI, 30)
+            hairline(surf, 0, y, wide, WOOD_HI, 30)
     pygame.draw.rect(surf, shade(WOOD_HI, 0.55), (0, CATS_FLOOR - 10,
-                                                  CATS_W, 10))
+                                                  wide, 10))
+    if state.big_room:
+        _backroom(surf, state, t)
     _rug(surf, pygame.Rect(120, 626, 420, 150), mix(RUG, WOOD, 0.3))
     _rug(surf, pygame.Rect(760, 640, 500, 170), mix(RUG, EMBER, 0.12))
     _rug(surf, pygame.Rect(1560, 636, 420, 150), mix(RUG, WOOD, 0.22))
@@ -5354,11 +6362,32 @@ SPOTS = (
 ROOM_CAP = 12                 # how many cats live in the cat room itself
 
 
+def room_cap(state):
+    """How many of them the cat room holds - which is the whole point of
+    knocking the wall through, and the reason this is a question and not
+    a constant any more."""
+    return BIG_CAP if state.big_room else ROOM_CAP
+
+
+def room_spot_count(state):
+    """How much of ROOM_SPOTS is reachable. The back room's places are
+    appended, so this is a count rather than a filter."""
+    return len(ROOM_SPOTS) if state.big_room else ROOM_BASE
+
+
+def cats_wide(state):
+    return CATS_W_BIG if state.big_room else CATS_W
+
+
+def area_wide(area, state):
+    return cats_wide(state) if area == "cats" else AREA_WIDE[area]
+
+
 def room_cats(state):
     """The cats the flat shows, in the order they get the good spots."""
     got = [(c.level, BY_KEY[k].rarity, k) for k, c in state.cards.items()]
     got.sort(reverse=True)
-    return [BY_KEY[k] for _, _, k in got[:ROOM_CAP + len(SPOTS)]]
+    return [BY_KEY[k] for _, _, k in got[:room_cap(state) + len(SPOTS)]]
 
 
 def cats_in(state, area):
@@ -5371,7 +6400,7 @@ def cats_in(state, area):
     if area == "cats":
         return []
     out = []
-    for b, spot in zip(room_cats(state)[ROOM_CAP:], SPOTS):
+    for b, spot in zip(room_cats(state)[room_cap(state):], SPOTS):
         if spot[0] == area:
             out.append((b, spot))
     return out
@@ -6020,17 +7049,18 @@ def draw_area(surf, area, state, t, cam=0.0, room=None):
     honest: everything in there is in room coordinates until the moment
     it is shown.
     """
-    if AREA_WIDE[area] <= W:
+    wide = area_wide(area, state)
+    if wide <= W:
         _AREA_DRAW[area](surf, state, t)
         return
     global _wide
-    if _wide is None or _wide.get_width() != AREA_WIDE[area]:
-        _wide = pygame.Surface((AREA_WIDE[area], H))
+    if _wide is None or _wide.get_width() != wide:
+        _wide = pygame.Surface((wide, H))
     _AREA_DRAW[area](_wide, state, t)
     if room is not None:
         room.draw(_wide, t)
     if area == "cats":
-        _catroom_front(_wide, t)
+        _catroom_front(_wide, state, t)
     surf.blit(_wide, (-int(cam), 0))
 
 
@@ -6090,7 +7120,9 @@ class GameBase:
     def __init__(self, screen):
         self.screen = screen
         self.state = load_state()
-        self.scene = "room"
+        self.scene = "intro" if not self.state.seen_intro else "room"
+        self.beat = 0               # which of the four screens
+        self.beat_t = 0.0
         self.area = self.state.area
         self.pan = 0.0              # 1 while a room slides past, else 0
         self.pan_from = None
@@ -6124,6 +7156,7 @@ class GameBase:
 
         # the website
         self.tab = "catalogue"
+        self.site = "meowrder"
         self.product = None
         self.qty = 1
         self.mode = 0
@@ -6189,7 +7222,7 @@ class GameBase:
         self.area = area
         self.state.area = area
         # you come into a wide room from the side you walked in from
-        span = AREA_WIDE[area] - W
+        span = area_wide(area, self.state) - W
         self.cam_to = span if (self.pan_dir < 0 and span > 0) else 0.0
         self.cam = self.cam_to
         if not quiet:
@@ -6198,7 +7231,7 @@ class GameBase:
     def walk(self, d):
         """One step. In a room wider than the window that means sliding
         the camera along it; only at the end of a room do you leave it."""
-        span = AREA_WIDE[self.area] - W
+        span = area_wide(self.area, self.state) - W
         if span > 0:
             if d > 0 and self.cam_to < span - 1:
                 self.cam_to = min(span, self.cam_to + W * 0.78)
@@ -6342,6 +7375,21 @@ class GameBase:
                            f"every cat earns {up.gain * 100:.0f}% more",
                            GOOD, 9.0)
                 self.save()
+        elif name == "site":
+            self.site = val
+            self.product = None
+            self.beep("page")
+        elif name == "lot":
+            self.buy_lot(val)
+        elif name == "intro":
+            if val == "skip":
+                self.end_intro()
+            else:
+                self.intro_next()
+        elif name == "merch":
+            self.buy_merch(val)
+        elif name == "bigroom":
+            self.take_the_room()
         elif name == "club":
             if self.state.join_club():
                 self.shown_exact = self.state.money
@@ -6418,6 +7466,10 @@ class GameBase:
                     m.done = True
                 else:
                     m.deal_fakes(random.Random(), self.state)
+            elif m.spare:
+                m.spare -= 1
+                self.beep("page")
+                m.deal_fakes(random.Random(), self.state)
             else:
                 m.lost = True
                 m.done = True
@@ -6482,6 +7534,55 @@ class GameBase:
             st.conv_take(m.stall, None)
             self.toast("that is the lot", "the table is cleared out until "
                                           "next week", TEA, 8.0)
+        self.save()
+
+    def buy_lot(self, i):
+        st = self.state
+        if not 0 <= i < len(st.lots):
+            return
+        lot = st.lots[i]
+        got = st.take_lot(lot)
+        if got is None:
+            return
+        if lot.kind == "pack":
+            self.beep("coin")
+            self.toast("bought off somebody else",
+                       f"{lot.words()} - {clock_str(got.left)} in the post",
+                       mix(TEA, CREAM, 0.2), 9.0)
+        else:
+            self.beep("shiny" if lot.shiny else "level")
+            word = ("that is a new one" if got.kind == "new" else
+                    f"straight to level {got.level}" if got.kind == "level"
+                    else "one you already had")
+            self.toast(f"{got.breed.name} is yours", word,
+                       mix(LAMP, CREAM, 0.3), 10.0)
+        self.save()
+
+    def buy_merch(self, key):
+        st = self.state
+        m = BY_MERCH.get(key)
+        if m is None or key in st.kit or st.money < m.price:
+            return
+        st.money -= m.price
+        st.spent += m.price
+        st.kit.add(key)
+        self.beep("level")
+        self.toast(m.name.lower() + ", then", m.effect,
+                   mix(LAMP, CREAM, 0.3), 8.0)
+        self.save()
+
+    def take_the_room(self):
+        st = self.state
+        if st.big_room or st.money < BIG_ROOM_PRICE:
+            return
+        st.money -= BIG_ROOM_PRICE
+        st.spent += BIG_ROOM_PRICE
+        st.big_room = True
+        self.room.sync(st, room_cap(st))
+        self.beep("shiny")
+        self.toast("the wall is down",
+                   f"the cat room runs to {CATS_W_BIG} now, and holds "
+                   f"{BIG_CAP}", mix(LAMP, CREAM, 0.3), 12.0)
         self.save()
 
     def let_in(self):
@@ -6663,6 +7764,8 @@ class GameBase:
     # -- time ---------------------------------------------------------------
     def update(self, dt):
         self.t += dt
+        if self.scene == "intro":
+            self.beat_t += dt
         self.shown_t -= dt
         if self.shown_t <= 0:
             self.shown_t = 0.9
@@ -6671,7 +7774,7 @@ class GameBase:
             self.shown = math.floor(self.state.money / q) * q
         self.pan = max(0.0, self.pan - dt * 3.1)
         self.cam += (self.cam_to - self.cam) * min(1.0, dt * 7.0)
-        self.room.update(dt, self.state, ROOM_CAP,
+        self.room.update(dt, self.state, room_cap(self.state),
                          self.cam if self.area == "cats" else None)
         if self.mini is not None:
             self.mini.update(dt)
@@ -6759,6 +7862,8 @@ class GameBase:
             self.draw_shop(s)
         elif self.scene == "open":
             self.draw_open(s)
+        elif self.scene == "intro":
+            self.draw_intro(s)
         elif self.scene == "mini":
             self.draw_mini(s)
         elif self.scene == "menu":
@@ -6930,11 +8035,11 @@ class GameBase:
                 bits = [f"{v} {k}" for k, v in
                         sorted(tal.items(), key=lambda kv: -kv[1])[:3]]
                 text(s, f"{len(self.room.res)} cats in here: "
-                        + ", ".join(bits), 13, (W // 2, 58), TEA,
+                        + ", ".join(bits), 13, (W // 2, 80), TEA,
                      center=True, kind="mono", max_w=W - 440)
             if st.stray and self.area != "hall":
                 text(s, "there is a cat at the front door", 13,
-                     (W // 2, 58 + (20 if self.area == "cats" else 0)),
+                     (W // 2, 80 + (20 if self.area == "cats" else 0)),
                      mix(LAMP, CREAM, 0.35), center=True, kind="mono")
             elif st.parcels and self.area != "hall":
                 word = "parcel" if len(st.parcels) == 1 else "parcels"
@@ -6986,7 +8091,116 @@ def _stars(surf, n, pos, size=13, colour=None):
               col if i < n else shade(DIM, 0.8))
 
 
-def _browser(surf, title):
+SITES = (("meowrder", "MEOWRDER", "meowrder.example"),
+         ("purrbay", "PURRBAY", "purrbay.example"))
+
+
+# ---------------------------------------------------------------------------
+# HOW IT STARTS
+#
+# Four screens before the first pack. The flat is empty because you have
+# just bought it and it took everything; the one thing in it that works
+# is the laptop, and the laptop is how the rest of the game happens.
+#
+# It plays once, on a new collection, and is skippable from the first
+# frame. An intro you cannot get out of is a thing people remember about
+# a game for the wrong reason.
+# ---------------------------------------------------------------------------
+INTRO = (
+    ("The flat is yours.",
+     "So is the mortgage, the gap where a sofa should be, and a box in "
+     "the hall marked KITCHEN that turned out to be books."),
+    ("The removal men took the rest.",
+     "They took it in cash, at the door, in a sum that was not the sum "
+     "on the quote. There is {money} in the account until Friday."),
+    ("Which is when you remember the cards.",
+     "A man at work had one in a plastic sleeve and would not put it "
+     "down. He said the good ones go for thousands. He said it twice."),
+    ("{money} is a paper sack of them, posted.",
+     "It is Thursday. The post comes once a day, the flat is empty, and "
+     "you have nothing else on."),
+)
+
+
+def _intro_room(surf, t, beat, lit):
+    """An empty room with the light off and a laptop on the floor.
+
+    `lit` runs 0 to 1 across the four screens: the room starts as a shape
+    in the dark and ends with the screen on, which is the only light in
+    it and the only thing in the game that matters yet.
+    """
+    surf.fill(INK)
+    floor = 556
+    for y in range(0, floor, 4):
+        f = y / floor
+        pygame.draw.rect(surf, mix((22, 18, 18), (44, 34, 30),
+                                   (f ** 0.7) * (0.45 + 0.55 * lit)),
+                         (0, y, W, 4))
+    pygame.draw.rect(surf, shade(WOOD_LO, 0.52 + 0.3 * lit),
+                     (0, floor, W, H - floor))
+    for i in range(9):
+        hairline(surf, 0, floor + 14 + i * 26, W, WOOD_HI,
+                 int(10 + 18 * lit))
+
+    # a bulb on a flex, no shade, because the shades are in a box
+    pygame.draw.line(surf, shade(WOOD_LO, 1.4), (300, 0), (300, 150), 2)
+    glow(surf, (300, 160), int(190 + 90 * lit), mix(LAMP, CREAM, 0.3),
+         0.10 + 0.14 * lit)
+    pygame.draw.circle(surf, mix(LAMP, CREAM, 0.5), (300, 160), 11)
+
+    # the boxes, stacked where the removal men left them
+    rng = random.Random(4)
+    for bx, by, bw, bh in ((120, 392, 150, 120), (128, 300, 128, 96),
+                           (286, 404, 168, 108), (860, 382, 176, 130),
+                           (884, 286, 138, 100), (1040, 420, 120, 92)):
+        face = mix(WOOD, PAPER, 0.18 + 0.1 * lit)
+        pygame.draw.rect(surf, face, (bx, by, bw, bh), border_radius=3)
+        pygame.draw.rect(surf, shade(face, 0.76), (bx, by, bw, bh), width=2,
+                         border_radius=3)
+        pygame.draw.line(surf, shade(face, 0.84), (bx + bw // 2, by),
+                         (bx + bw // 2, by + bh), 2)
+        tape = pygame.Rect(bx + 10, by + bh // 2 - 7, bw - 20, 14)
+        pygame.draw.rect(surf, mix(face, LAMP, 0.25), tape, border_radius=2)
+        text(surf, rng.choice(("KITCHEN", "BOOKS", "MISC", "BEDROOM",
+                               "FRAGILE")), 11, tape.center,
+             shade(INK, 1.5), center=True, kind="mono", shadow=False)
+
+    # the laptop, open on the floorboards, which is where it lives for now
+    lap = pygame.Rect(W // 2 - 128, 560, 256, 132)
+    pygame.draw.polygon(surf, shade(WOOD, 0.6),
+                        [(lap.x - 22, lap.bottom), (lap.right + 22,
+                                                    lap.bottom),
+                         (lap.right - 6, lap.bottom - 14),
+                         (lap.x + 6, lap.bottom - 14)])
+    scr = pygame.Rect(lap.x + 8, lap.y - 4, lap.w - 16, 118)
+    pygame.draw.rect(surf, shade(WOOD_LO, 1.1), scr.inflate(10, 10),
+                     border_radius=6)
+    pygame.draw.rect(surf, mix(SCREEN, LAMP, 0.10 + 0.30 * lit), scr,
+                     border_radius=4)
+    glow(surf, (scr.centerx, scr.centery), int(150 + 230 * lit),
+         mix(LAMP, CREAM, 0.4), 0.06 + 0.26 * lit)
+    for i in range(4):               # the website, too far away to read
+        wr = pygame.Rect(scr.x + 14, scr.y + 16 + i * 22, scr.w - 28, 10)
+        pygame.draw.rect(surf, mix(SCREEN_HI, EMBER, 0.1 + 0.3 * lit),
+                         (wr.x, wr.y, wr.w * (0.9 - i * 0.14), wr.h),
+                         border_radius=3)
+
+    # a cat on top of the boxes, which is not your cat and has not been
+    # invited, and is the first one in the game
+    if beat >= 2:
+        a = clamp((lit - 0.3) * 2.4, 0.0, 1.0)
+        # cat_surface caches what it builds, so this copies before it
+        # paints - darkening the cached one would darken that cat in the
+        # binder, in the room and on every card it ever appears on
+        img = cat_surface(BY_KEY["dsh"], "sit", 92, level=1).copy()
+        dark = pygame.Surface(img.get_size(), pygame.SRCALPHA)
+        dark.fill((*mix(INK, WOOD, 0.3), 255))
+        img.blit(dark, (0, 0), None, pygame.BLEND_RGBA_MULT)
+        img.set_alpha(int(210 * a))
+        surf.blit(img, img.get_rect(midbottom=(953, 292)))
+
+
+def _browser(surf, title, host="meowrder.example"):
     panel(surf, SHOP_R, SCREEN, shade(SCREEN_HI, 1.4), radius=10)
     bar_r = pygame.Rect(SHOP_R.x, SHOP_R.y, SHOP_R.w, 44)
     pygame.draw.rect(surf, shade(SCREEN_HI, 0.8), bar_r,
@@ -6995,7 +8209,7 @@ def _browser(surf, title):
         pygame.draw.circle(surf, c, (bar_r.x + 24 + i * 20, bar_r.centery), 6)
     pill = pygame.Rect(bar_r.x + 96, bar_r.y + 9, bar_r.w - 180, 26)
     pygame.draw.rect(surf, shade(SCREEN, 1.3), pill, border_radius=13)
-    text(surf, "meowrder.example/" + title, 14,
+    text(surf, host + "/" + title, 14,
          (pill.x + 14, pill.centery), mix(TEA, CREAM, 0.2), left=True,
          kind="mono", shadow=False)
     text(surf, "23:41", 13, (bar_r.right - 22, bar_r.centery), DIM,
@@ -7010,8 +8224,14 @@ class ShopMixin:
         dim.fill((8, 6, 6, 188))
         s.blit(dim, (0, 0))
         st = self.state
+        if self.site == "purrbay":
+            _browser(s, "listings", "purrbay.example")
+            self._bookmarks(s)
+            self.draw_resale(s)
+            return
         _browser(s, "catalogue" if not self.product else
                  "catalogue/" + self.product)
+        self._bookmarks(s)
 
         # masthead
         x, y = PAGE_R.x + 18, PAGE_R.y + 6
@@ -7029,7 +8249,8 @@ class ShopMixin:
         # and the four odd ones are not rungs on the ladder anyway: they
         # are things you go looking for when you want a particular thing.
         tabs = (("catalogue", "CATALOGUE"), ("specials", "SPECIALS"),
-                ("home", "FOR THE FLAT"), ("orders", "ORDERS"),
+                ("home", "FOR THE FLAT"), ("merch", "MERCH"),
+                ("room", "THE ROOM"), ("orders", "ORDERS"),
                 ("club", "THE CLUB"))
         tx = x
         for key, label in tabs:
@@ -7055,7 +8276,11 @@ class ShopMixin:
 
         body = pygame.Rect(PAGE_R.x + 18, y + 102, PAGE_R.w - 36,
                            PAGE_R.bottom - (y + 102) - 8)
-        if self.tab == "orders":
+        if self.tab == "merch":
+            self.draw_merch(s, body)
+        elif self.tab == "room":
+            self.draw_room_page(s, body)
+        elif self.tab == "orders":
             self.draw_orders(s, body)
         elif self.tab == "home":
             self.draw_home(s, body)
@@ -7066,6 +8291,118 @@ class ShopMixin:
         else:
             self.draw_catalogue(s, body, "special" if self.tab == "specials"
                                 else "standard")
+
+    # -- two sites, one laptop ---------------------------------------------
+    def _bookmarks(self, s):
+        """The bar under the address bar. The second site is the whole
+        reason the first one has a name."""
+        bx = SHOP_R.x + 96
+        for key, label, host in SITES:
+            on = self.site == key
+            wdt = font(12, False, "mono").size(label)[0] + 22
+            r = pygame.Rect(bx, SHOP_R.y + 44, wdt, 22)
+            if on:
+                pygame.draw.rect(s, mix(SCREEN_HI, EMBER, 0.22), r,
+                                 border_bottom_left_radius=5,
+                                 border_bottom_right_radius=5)
+            self.buttons.append(Button(r, label, ("site", key),
+                                       "hit" if on else "link", 12,
+                                       kind="mono",
+                                       colour=CREAM if on else DIM))
+            if on:
+                text(s, label, 12, r.center, warm(CREAM, 0.2), center=True,
+                     kind="mono", shadow=False)
+            bx += wdt + 6
+
+    # -- the resale site ---------------------------------------------------
+    def draw_resale(self, s):
+        """Six listings, most of them somebody taking you for a ride."""
+        st = self.state
+        st.refresh_lots()
+        x, y = PAGE_R.x + 18, PAGE_R.y + 6
+        text(s, "PURRBAY", 30, (x, y), mix(TEA, CREAM, 0.45))
+        text(s, "cards people already own", 13, (x + 150, y + 16), DIM,
+             kind="mono", left=True, shadow=False)
+        text(s, money(self.shown_exact), 24, (PAGE_R.right - 18, y + 14),
+             mix(CREAM, TEA, 0.3), right=True, kind="mono")
+        text(s, f"{len(st.orders)}/{st.slots} parcels in the post", 12,
+             (PAGE_R.right - 18, y + 36), MUTED if not self.full else BAD,
+             right=True, kind="mono", shadow=False)
+        hairline(s, x, y + 50, PAGE_R.right - 18, TEA, 60)
+        text(s, "Sealed boxes go in the post like anything else. Single "
+                "cards they will meet you for - that is what you are paying "
+                "the extra for.", 12, (x, y + 60), MUTED, kind="mono",
+             max_w=PAGE_R.w - 220)
+        left = until_midnight(st.played)
+        text(s, f"stock changes in {clock_str(left)}", 12,
+             (PAGE_R.right - 18, y + 60), TEA, right=True, kind="mono",
+             shadow=False)
+        self.buttons.append(Button((PAGE_R.right - 190, y + 78, 180, 26),
+                                   "< back to the room", ("scene", "room"),
+                                   "link", 15, kind="mono", colour=TEA))
+
+        body = pygame.Rect(PAGE_R.x + 18, y + 112, PAGE_R.w - 36,
+                           PAGE_R.bottom - (y + 112) - 8)
+        cols, rows = 3, 2
+        gw, gh = body.w // cols, body.h // rows
+        for i, lot in enumerate(st.lots[:cols * rows]):
+            r = pygame.Rect(body.x + (i % cols) * gw, body.y + (i // cols) * gh,
+                            gw - 14, gh - 14)
+            self._lot_tile(s, r, lot, i)
+
+    def _lot_tile(self, s, r, lot, i):
+        st = self.state
+        name, mark, _weight, _blurb = SELLERS[lot.seller]
+        honest = lot.seller < SELLER_HONEST
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.03 if not lot.sold else 0.10),
+              shade(SCREEN_HI, 1.4), radius=8, shadow=False)
+        pic = pygame.Rect(r.x + 10, r.y + 10, 92, 128)
+        if lot.kind == "card":
+            b = BY_KEY[lot.key]
+            draw_card(s, pic, b, lot.level, dupes=0, variant=lot.coat,
+                      shiny=lot.shiny, show_rate=False)
+        else:
+            draw_pack_art(s, pic, BY_PACK[lot.key])
+        tx = pic.right + 12
+        tw = r.right - tx - 10
+        rare = lot.kind == "pack" and lot.key in NEVER_STOCKED
+        if rare:
+            rib = pygame.Rect(r.x + 8, r.y - 9, r.w - 16, 19)
+            pygame.draw.rect(s, mix(LAMP, EMBER, 0.35), rib, border_radius=5)
+            text(s, "SOMEBODY IS CLEARING THEIR LOFT", 11, rib.center,
+                 shade(INK, 1.4), center=True, kind="mono", shadow=False)
+        text(s, lot.words(), 17, (tx, r.y + 10), CREAM, max_w=tw)
+        sub_line = (f"{BY_PACK[lot.key].cards} cards, one parcel"
+                    if rare else
+                    "sealed, in the post" if lot.kind == "pack"
+                    else coat_name(BY_KEY[lot.key], lot.coat, lot.shiny,
+                                   full=lot.shiny))
+        text(s, sub_line, 12, (tx, r.y + 32),
+             mix(LAMP, CREAM, 0.3) if lot.shiny else MUTED, kind="mono",
+             max_w=tw)
+        text(s, name, 12, (tx, r.y + 52), TEA, kind="mono", max_w=tw)
+        text(s, f"{mark:.2g}x over the odds" if not honest
+             else f"{mark:.2g}x - about fair", 11, (tx, r.y + 70),
+             GOOD if honest else BAD, kind="mono", max_w=tw)
+        paragraph(s, _blurb, 11, (tx, r.y + 90), shade(MUTED, 0.9), tw, 4,
+                  kind="mono")
+        cost = st.lot_cost(lot)
+        text(s, money(cost), 22, (tx, r.bottom - 58),
+             warm(EMBER, 0.2) if not lot.sold else MUTED)
+        if lot.sold:
+            text(s, "SOLD - TO YOU", 13, (tx, r.bottom - 28), GOOD,
+                 kind="mono")
+        else:
+            why = ("" if st.money >= cost else "you cannot afford it")
+            if not why and lot.kind == "pack" and len(st.orders) >= st.slots:
+                why = "the round is full"
+            if why:
+                text(s, why, 11, (tx, r.bottom - 26), BAD, kind="mono",
+                     max_w=tw)
+            self.buttons.append(Button(
+                (r.right - 102, r.bottom - 44, 90, 32), "BUY IT",
+                ("lot", i), "solid", 15, kind="mono",
+                enabled=st.can_take(lot)))
 
     # -- the list of things to buy -----------------------------------------
     def draw_catalogue(self, s, body, shelf="standard"):
@@ -7321,6 +8658,98 @@ class ShopMixin:
                     (r.right - 104, r.bottom - 42, 90, 30), "BUY",
                     ("thing", u.key), "solid", 15, kind="mono",
                     enabled=st.money >= u.price))
+
+    # -- things for the cards ------------------------------------------
+    def draw_merch(self, s, body):
+        """Six small things, in a column you work down. None of them is a
+        decision; all of them are worth having."""
+        st = self.state
+        bits = []
+        if st.gear > 1.001:
+            bits.append(f"+{(st.gear - 1) * 100:.0f}% a second")
+        if st.shiny_gear > 1.001:
+            bits.append(f"shinies one in {SHINY_IN / st.shiny_gear:.0f}")
+        if st.resale_gear < 0.999:
+            bits.append(f"{(1 - st.resale_gear) * 100:.0f}% off resale")
+        if st.has_loupe:
+            bits.append("one wrong answer at the desk")
+        text(s, "   ".join(bits) if bits else "nothing but a shoebox so far",
+             15, (body.x, body.y), warm(EMBER, 0.2), kind="mono",
+             max_w=body.w - 20)
+        text(s, "For the cards rather than the cats. Bought once, and they "
+                "apply to the whole collection.", 13, (body.x, body.y + 22),
+             MUTED, kind="mono", max_w=body.w)
+        top = body.y + 52
+        rowh = (body.bottom - top) // 3
+        for i, m in enumerate(MERCH):
+            col, row = divmod(i, 3)
+            r = pygame.Rect(body.x + col * (body.w // 2 + 8),
+                            top + row * rowh, body.w // 2 - 16, rowh - 10)
+            have = m.key in st.kit
+            panel(s, r, mix(SCREEN_HI, EMBER, 0.12 if have else 0.03),
+                  shade(EMBER, 0.7) if have else shade(SCREEN_HI, 1.4),
+                  radius=8, shadow=False)
+            text(s, m.name, 18, (r.x + 14, r.y + 8),
+                 warm(CREAM, 0.2) if have else CREAM, max_w=r.w - 130)
+            paragraph(s, m.blurb, 12, (r.x + 14, r.y + 30), MUTED,
+                      r.w - 130, 3, kind="mono")
+            text(s, m.effect, 14, (r.right - 14, r.y + 14),
+                 GOOD if have else mix(TEA, CREAM, 0.2), right=True,
+                 kind="mono")
+            if have:
+                text(s, "IN THE BOX ROOM", 12, (r.right - 14, r.bottom - 18),
+                     GOOD, right=True, kind="mono")
+            else:
+                text(s, money(m.price), 20, (r.right - 116, r.bottom - 32),
+                     warm(EMBER, 0.2), right=True)
+                self.buttons.append(Button(
+                    (r.right - 104, r.bottom - 42, 90, 30), "BUY",
+                    ("merch", m.key), "solid", 15, kind="mono",
+                    enabled=st.money >= m.price))
+
+    # -- the wall at the end of the cat room ---------------------------
+    def draw_room_page(self, s, body):
+        """The one thing in the shop that is not for the cats to use but
+        for you to watch them use."""
+        st = self.state
+        done = st.big_room
+        text(s, "THE FLAT NEXT DOOR", 24, (body.x, body.y), warm(CREAM, 0.2))
+        paragraph(s, "The flat next door has been empty for a year and the "
+                     "landlord would rather have one tenant than none. Take "
+                     "it, take the wall out, and the cat room runs on for "
+                     "another room\'s worth - a bird window, three steps up "
+                     "the wall, a tunnel, a hammock, a sofa and a post that "
+                     "goes to the ceiling.", 14,
+                  (body.x, body.y + 34), MUTED, body.w - 20, 5, kind="mono")
+
+        r = pygame.Rect(body.x, body.y + 128, body.w - 8, 150)
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.14 if done else 0.04),
+              shade(EMBER, 0.7) if done else shade(SCREEN_HI, 1.4),
+              radius=10, shadow=False)
+        text(s, BIG_ROOM_NAME, 22, (r.x + 20, r.y + 16),
+             warm(CREAM, 0.2) if done else CREAM)
+        facts = ((f"cats in the room", f"{ROOM_CAP}", f"{BIG_CAP}"),
+                 ("places to be", f"{ROOM_BASE}", f"{len(ROOM_SPOTS)}"),
+                 ("things to do", f"{len(ACT_WORD) - 3}", f"{len(ACT_WORD)}"))
+        fy = r.y + 56
+        for label, before, after in facts:
+            text(s, label, 13, (r.x + 24, fy), MUTED, kind="mono")
+            text(s, f"{before}  ->  {after}", 14, (r.x + 220, fy),
+                 GOOD if done else mix(TEA, CREAM, 0.3), kind="mono")
+            fy += 24
+        if done:
+            text(s, "THE WALL IS DOWN", 14, (r.right - 20, r.bottom - 30),
+                 GOOD, right=True, kind="mono")
+        else:
+            text(s, money(BIG_ROOM_PRICE), 26, (r.right - 160, r.bottom - 52),
+                 warm(EMBER, 0.2), right=True)
+            self.buttons.append(Button(
+                (r.right - 150, r.bottom - 60, 130, 38), "TAKE IT",
+                ("bigroom", None), "solid", 17, kind="mono",
+                enabled=st.money >= BIG_ROOM_PRICE))
+        text(s, "It earns you nothing. There is simply more of it, and "
+                "more of them in it.", 13, (body.x, r.bottom + 20), TEA,
+             kind="mono", max_w=body.w - 20)
 
     # -- the club -----------------------------------------------------------
     def draw_club(self, s, body):
@@ -7604,7 +9033,9 @@ class BinderMixin:
              warm(CREAM, 0.2))
         shiny_n = sum(1 for c in st.cards.values() if c.shiny)
         strays_n = st.strays_owned
+        expo_n = st.expo_owned
         text(s, f"{st.owned} of {len(BREEDS)} breeds    "
+                + (f"{expo_n} from the hall    " if expo_n else "")
                 + (f"{strays_n} stray{'s' if strays_n > 1 else ''}    "
                    if strays_n else "")
                 + f"{st.retired} retired"
@@ -7626,16 +9057,29 @@ class BinderMixin:
         # the mat. An empty page of question marks would say "there are
         # five more of these", which is the one thing it must not say.
         found = [b for b in SECRETS if b.key in st.cards]
-        pages = (len(BREEDS) + per - 1) // per + (1 if found else 0)
+        book_pages = (len(BREEDS) + per - 1) // per
+        pages = book_pages + 1 + (1 if found else 0)
         self.page = int(clamp(self.page, 0, pages - 1))
+        expo_page = self.page == book_pages
         secret_page = bool(found) and self.page == pages - 1
         cw = (area.w - (cols - 1) * gap) // cols
         ch = int(cw * 1.4)
         gx = area.centerx - (cols * cw + (cols - 1) * gap) // 2
         gy = area.centery - (rows * ch + (rows - 1) * vgap) // 2
-        shown = found if secret_page \
-            else BREEDS[self.page * per:(self.page + 1) * per]
-        if secret_page:
+        shown = (found if secret_page else
+                 list(EXPO_BREEDS) if expo_page else
+                 BREEDS[self.page * per:(self.page + 1) * per])
+        if expo_page:
+            got = st.expo_owned
+            text(s, "PRINTED FOR THE HALL", 20, (inner.centerx, area.y + 10),
+                 rarity_colour(R_EXPO), center=True, kind="mono")
+            text(s, f"{got} of {len(EXPO_BREEDS)} - the show prints these "
+                    f"and nobody else is allowed to", 13,
+                 (inner.centerx, area.y + 38), MUTED, center=True,
+                 kind="mono")
+            gx = area.centerx - (len(shown) * cw + (len(shown) - 1) * gap) // 2
+            gy = area.y + 86
+        elif secret_page:
             text(s, "NOT IN THE CATALOGUE", 20, (inner.centerx, area.y + 10),
                  mix(LAMP, CREAM, 0.35), center=True, kind="mono")
             text(s, f"{len(found)} that turned up at the door, and were "
@@ -7664,14 +9108,23 @@ class BinderMixin:
                             inner.bottom - 96, 80, 30)
             on = self.page == i
             last = found and i == pages - 1
-            self.buttons.append(Button(r, "strays" if last else f"page {i + 1}",
-                                       ("page", i),
+            expo = i == book_pages
+            lab = ("strays" if last else "the hall" if expo
+                   else f"page {i + 1}")
+            self.buttons.append(Button(r, lab, ("page", i),
                                        "solid" if on else "plain", 14,
                                        kind="mono",
                                        colour=mix(LAMP, CREAM, 0.3) if last
+                                       else rarity_colour(R_EXPO) if expo
                                        else None))
         left = [b for b in BREEDS if b.key not in st.cards]
-        if secret_page:
+        if expo_page:
+            short = [b for b in EXPO_BREEDS if b.key not in st.cards]
+            note = ("every one of them, and not one by post"
+                    if not short else
+                    f"{len(short)} still to find, and only one place to "
+                    f"look")
+        elif secret_page:
             note = ("five of them have been seen in this city"
                     if len(found) < len(SECRETS)
                     else "all five, and not one of them was ordered")
@@ -7806,7 +9259,7 @@ class Mini:
     """The state of whichever game is being played."""
     __slots__ = ("kind", "stall", "stage", "rounds", "won", "lost", "t",
                  "pos", "dir", "band", "cards", "pick", "secret", "guess",
-                 "tries", "said", "done")
+                 "tries", "said", "done", "spare")
 
     def __init__(self, kind, stall, rng, state):
         self.kind = kind
@@ -7816,6 +9269,8 @@ class Mini:
         self.won = 0
         self.lost = False
         self.done = False
+        # the loupe is worth exactly one mistake, and only at the desk
+        self.spare = 1 if (kind == "fake" and state.has_loupe) else 0
         self.t = 0.0
         self.pos = 0.0
         self.dir = 1.0
@@ -7895,6 +9350,57 @@ RULES = (
 
 
 class MenuMixin:
+    def draw_intro(self, s):
+        """One screen at a time, with the light coming up as it goes."""
+        beat = int(clamp(self.beat, 0, len(INTRO) - 1))
+        lit = (beat + min(1.0, self.beat_t / 1.1)) / len(INTRO)
+        _intro_room(s, self.t, beat, lit)
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((8, 6, 6, 120))
+        s.blit(dim, (0, 0))
+
+        head, body = INTRO[beat]
+        money_s = money(START_MONEY)
+        head = head.format(money=money_s)
+        body = body.format(money=money_s)
+        fade = int(255 * min(1.0, self.beat_t / 0.75))
+        r = pygame.Rect(W // 2 - 330, 150, 660, 180)
+        text(s, head, 30, (r.centerx, r.y), warm(CREAM, 0.2), center=True,
+             alpha=fade, max_w=r.w)
+        paragraph(s, body, 16, (r.x, r.y + 44), mix(TEA, CREAM, 0.25), r.w,
+                  4, kind="mono", center=True, alpha=fade)
+
+        for i in range(len(INTRO)):
+            d = pygame.Rect(48 + i * 18, H - 56, 10, 10)
+            pygame.draw.rect(s, warm(CREAM, 0.1) if i <= beat
+                             else shade(TEA, 0.45), d, border_radius=5)
+        last = beat == len(INTRO) - 1
+        self.buttons.append(Button((W - 266, H - 74, 226, 46),
+                                   "ORDER A PACK" if last else "NEXT",
+                                   ("intro", "next"), "solid", 18,
+                                   kind="mono"))
+        if not last:
+            self.buttons.append(Button((W - 150, 26, 120, 30),
+                                       "skip this", ("intro", "skip"),
+                                       "link", 14, kind="mono", colour=TEA))
+
+    def intro_next(self):
+        if self.beat >= len(INTRO) - 1:
+            self.end_intro()
+            return
+        self.beat += 1
+        self.beat_t = 0.0
+        self.beep("page")
+
+    def end_intro(self):
+        self.state.seen_intro = True
+        self.go("room")
+        self.go_area("study", quiet=True)
+        self.toast("ten pounds and a laptop",
+                   "the shop is on the desk - order a paper sack",
+                   mix(LAMP, CREAM, 0.3), 14.0)
+        self.save()
+
     def draw_mini(self, s):
         """Whichever of the three is being played, on the hall behind it."""
         m = self.mini
@@ -7993,6 +9499,9 @@ class MenuMixin:
         text(s, "the name, the tier, the rate - a forgery gets one of the "
                 "three wrong", 13, (r.centerx, r.y + 368), MUTED,
              center=True, kind="mono")
+        if m.spare:
+            text(s, "the loupe is good for one wrong answer", 13,
+                 (r.centerx, r.y + 408), GOOD, center=True, kind="mono")
         text(s, f"round {min(m.stage + 1, m.rounds)} of {m.rounds}", 14,
              (r.centerx, r.y + 390), TEA, center=True, kind="mono")
 
