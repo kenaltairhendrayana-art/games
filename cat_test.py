@@ -4136,6 +4136,119 @@ def awards():
     return ok
 
 
+
+def jumps():
+    """Getting onto things: the state machine, at any frame rate.
+
+    This exists because of one bug and it is worth writing down. A cat
+    arrived when it was within eight pixels of its spot, and it moved
+    `speed * dt` pixels a step. At sixty frames a second a stride is
+    two pixels and the test passed for months. At a tenth of a second
+    a stride is nineteen, so the cat stepped OVER the eight-pixel
+    window, turned round, stepped back over it, and walked on the spot
+    for the rest of the game - and the only visible symptom was that
+    some breeds stopped doing the thing their temperament is named
+    after, because they never arrived anywhere to do it.
+
+    So: the room is run at four frame rates, including deliberately
+    awful ones, and every cat has to end up somewhere.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+
+    for dt in (1 / 60.0, 1 / 30.0, 0.1, 0.25):
+        st = cc.State()
+        rng = random.Random(3)
+        for b in cc.BREEDS:
+            st.cards[b.key] = cc.Card(level=rng.randint(3, 10))
+        st.wings = len(cc.WINGS)
+        cap = cc.room_cap(st)
+        room = cc.CatRoom()
+        room.update(dt, st, cap)
+        seen = {}
+        rested = {id(r): 0 for r in room.res}
+        steps = int(300 / dt)
+        for _ in range(steps):
+            room.update(dt, st, cap)
+            for r in room.res:
+                seen[r.state] = seen.get(r.state, 0) + 1
+                if r.state == "rest":
+                    rested[id(r)] += 1
+        stuck = [r.breed.name for r in room.res if not rested[id(r)]]
+        tot = sum(seen.values())
+        share = seen.get("rest", 0) * 100 // max(1, tot)
+        print(f"    dt {dt:<6.3f}  resting {share:>2}% of the time, "
+              f"{len(seen)} states used, {len(stuck)} cat(s) never settled")
+        if stuck:
+            print(f"  never settled at dt={dt}: {stuck[:4]}")
+            ok = False
+        if share < 25:
+            print(f"  at dt={dt} the room only rests {share}% of the time")
+            ok = False
+
+    # -- every part of the hop happens ----------------------------------
+    st = cc.State()
+    rng = random.Random(5)
+    for b in cc.BREEDS:
+        st.cards[b.key] = cc.Card(level=rng.randint(3, 10))
+    st.wings = len(cc.WINGS)
+    cap = cc.room_cap(st)
+    room = cc.CatRoom()
+    room.update(0.05, st, cap)
+    states = set()
+    for _ in range(int(600 / 0.05)):
+        room.update(0.05, st, cap)
+        for r in room.res:
+            states.add(r.state)
+    want = {"rest", "walk", "crouch", "up", "down", "land", "wake"}
+    missing = want - states
+    if missing:
+        print(f"  never happens in ten minutes: {sorted(missing)}")
+        ok = False
+    else:
+        print(f"  all {len(want)} states happen: {', '.join(sorted(want))}")
+
+    # -- a cat in the air is drawn in the air ---------------------------
+    probe = cc.Resident(cc.BREEDS[0], 5, 0, 1)
+    for state, pose in (("up", "leap"), ("down", "leap"),
+                        ("walk", "stand"), ("crouch", "stand"),
+                        ("land", "stand")):
+        probe.state = state
+        if probe.pose != pose:
+            print(f"  a cat {state} is drawn as {probe.pose!r}, not {pose!r}")
+            ok = False
+    probe.state = "rest"
+    probe.act = "sleep"
+    if probe.pose != "curl":
+        print("  a sleeping cat is not curled up")
+        ok = False
+    print("  mid-air uses the leap drawing, on its feet uses the standing one")
+
+    # -- and the leap draws for every breed, at every grade -------------
+    bad = 0
+    for b in cc.BREEDS:
+        for lv in (1, cc.MAX_LEVEL):
+            try:
+                im = cc.cat_surface(b, "leap", 90, level=lv)
+            except Exception as e:                       # noqa: BLE001
+                print(f"  {b.name} will not leap: {e!r}")
+                bad += 1
+                break
+            w, h = im.get_size()
+            if w < h:
+                print(f"  {b.name} leaping is taller than it is long")
+                bad += 1
+                break
+    if bad:
+        ok = False
+    else:
+        print(f"  all {len(cc.BREEDS)} breeds draw a leap, at both ends of "
+              f"the grades")
+
+    print("  jumps:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -4211,6 +4324,9 @@ def main():
         print()
     if cmd in ("kittens", "all"):
         ok &= kittens()
+        print()
+    if cmd in ("jumps", "all"):
+        ok &= jumps()
         print()
     if cmd in ("awards", "all"):
         ok &= awards()

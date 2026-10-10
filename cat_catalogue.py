@@ -3157,6 +3157,175 @@ def _shapes_stand(P, w, h):
     return out
 
 
+
+# ---------------------------------------------------------------------------
+# THE FOURTH POSE
+#
+# A cat getting onto the shelf used to be the standing sprite with its
+# y going up - four feet on nothing, gliding, like a sticker being slid
+# up a window. The hop is the most-watched half second in the room and
+# it had no drawing of its own at all.
+#
+# A leaping cat is not a standing cat at a different height. It is a
+# longer animal: the spine straightens, the front legs reach out in
+# front of the nose, the back legs trail out behind, and the whole
+# thing is nearly twice as long as it is tall. That is why this is a
+# pose and not a transform.
+#
+# Built along a spine rather than out of stacked ellipses, because the
+# body tilts and `pygame.draw.ellipse` has no idea how to do that. A
+# chain of circles down a curve is a capsule that can point anywhere.
+# ---------------------------------------------------------------------------
+def _leap_spine(P, w, h):
+    """Rear to shoulder, rising to the front, with the ribs in the middle.
+
+    Kept deliberately slim. The first version used the standing body
+    depth on a frame twice as wide and the result was a draught
+    excluder: the legs were inside it and so was the head.
+    """
+    body = 0.92 + 0.16 * P["body"]
+    out = []
+    for i in range(14):
+        f = i / 13.0
+        x = w * (0.20 + 0.44 * f)
+        y = h * (0.58 - 0.14 * f)
+        r = h * (0.085 + 0.080 * math.sin((0.22 + f * 0.64) * math.pi))
+        out.append((x, y, r * body * (1 + 0.12 * P["fluff"])))
+    return out
+
+
+def _head_box_leap(P, w, h):
+    hw = w * 0.165 * P["facew"]
+    hh = h * 0.33 * P["faceh"]
+    return pygame.Rect(round(w * 0.775 - hw * 0.5), round(h * 0.36 - hh * 0.5),
+                       round(hw), round(hh))
+
+
+def _shapes_leap(P, w, h):
+    """Mid-air, facing right, fully extended."""
+    fluff = P["fluff"]
+    out = []
+    spine = _leap_spine(P, w, h)
+
+    # The tail streams out behind and lifts. It is the one part of a
+    # leaping cat that is not pointing where the cat is going.
+    if P["tail"] != "none":
+        fat = TAIL_FAT.get(P["tail"], 1.0)
+        run = TAIL_LEN.get(P["tail"], 1.0)
+        thick = h * (0.026 + 0.022 * fluff) * fat
+        x0, y0, _ = spine[0]
+        tx = ty = 0.0
+        for i in range(18):
+            f = i / 17.0
+            tx = x0 - w * 0.165 * run * f
+            ty = (y0 - h * 0.42 * run * (f ** 1.5)
+                  + h * 0.035 * math.sin(f * 3.4))
+            out.append(("circle", (tx, ty), thick * (0.5 + 0.5 * (1 - f))))
+        if P["tail"] == "pom":
+            out.append(("circle", (tx, ty), h * 0.07 * (1 + fluff)))
+
+    lw = h * 0.052
+    _leap_hind(out, P, w, h, spine, lw * 0.90, h * 0.040)
+    _leap_fore(out, P, w, h, spine, lw * 0.90, h * 0.040)
+    for x, y, r in spine:
+        out.append(("circle", (x, y), r))
+    _leap_hind(out, P, w, h, spine, lw, 0.0)
+    _leap_fore(out, P, w, h, spine, lw, 0.0)
+    if fluff > 0.35:                       # the ruff, blown back
+        out.append(("circle", (w * 0.655, h * 0.44),
+                    h * (0.12 + 0.06 * fluff)))
+    return out
+
+
+def _leap_fore(out, P, w, h, spine, lw, dy):
+    """Both front legs out past the nose. That reach is the difference
+    between a leap and a cat being carried across the screen."""
+    sx, sy, _ = spine[-1]
+    reach = 0.84 + 0.32 * P["legs"]
+    tipx = sx + w * 0.135 * reach
+    tipy = sy + h * 0.26 + dy
+    out.append(("poly", [(sx - lw * 0.9, sy - lw * 0.3 + dy),
+                         (sx + lw * 0.9, sy - lw * 0.9 + dy),
+                         (tipx + lw * 0.5, tipy - lw * 0.9),
+                         (tipx + lw * 1.3, tipy + lw * 0.5),
+                         (sx - lw * 0.3, sy + lw * 1.5 + dy)]))
+    out.append(("circle", (tipx + lw * 0.85, tipy), lw * 1.25))
+
+
+def _leap_hind(out, P, w, h, spine, lw, dy):
+    """And both back legs streamed out behind, still coming straight."""
+    sx, sy, _ = spine[0]
+    reach = 0.86 + 0.34 * P["legs"]
+    tipx = sx - w * 0.125 * reach
+    tipy = sy + h * 0.30 + dy
+    out.append(("poly", [(sx + lw * 0.8, sy - lw * 0.6 + dy),
+                         (sx + lw * 1.2, sy + lw * 1.8 + dy),
+                         (tipx + lw * 1.2, tipy + lw * 0.9),
+                         (tipx - lw * 0.7, tipy - lw * 0.2),
+                         (sx - lw * 1.0, sy + lw * 0.2 + dy)]))
+    out.append(("circle", (tipx - lw * 0.35, tipy - lw * 0.35), lw * 1.2))
+
+
+def _shapes_head_leap(P, w, h):
+    """Low and forward, ears back. A cat in the air is not looking at
+    you, it is looking at where it is about to be."""
+    out = []
+    hb = _head_box_leap(P, w, h)
+    ear = P["ear"]
+    eh = hb.h * 0.50 * ear
+    ew = hb.w * 0.46 * (0.8 + 0.3 * ear)
+    # the neck, reaching back to the shoulder
+    out.append(("ellipse", (hb.centerx - hb.w * 0.92, hb.centery - hb.h * 0.10,
+                            hb.w * 1.1, hb.h * 0.80)))
+    for bx, lean in ((hb.centerx - hb.w * 0.32, -0.95),
+                     (hb.centerx + hb.w * 0.06, -0.62)):
+        by = hb.y + hb.h * 0.30
+        if P["fold"] > 0.4:
+            out.append(("ellipse", (bx - ew * 0.5, by - eh * 0.24,
+                                    ew, eh * 0.78)))
+        else:
+            out.append(("poly", [
+                (bx - ew * 0.42, by + eh * 0.24),
+                (bx + lean * ew * 0.66, by - eh * 0.80),
+                (bx + ew * 0.48, by + eh * 0.06)]))
+    out.append(("ellipse", hb))
+    ch = hb.w * 0.42 * P["cheek"]
+    out.append(("ellipse", (hb.x + hb.w * 0.02, hb.y + hb.h * 0.46,
+                            ch, hb.h * 0.52)))
+    mw = hb.w * (0.54 - 0.14 * P["flat"])
+    mh = hb.h * (0.40 - 0.12 * P["flat"])
+    out.append(("ellipse", (hb.right - mw * 0.68, hb.bottom - mh * 1.06,
+                            mw, mh)))
+    return out
+
+
+def _side_metrics(P, w, h, pose):
+    """The torso of a side-on cat, in the shape `_stand_marks` expects.
+
+    The markings routine was written against the standing body and
+    reads five numbers off it. A leaping cat has the same five numbers
+    - they are just measured off the spine instead of off a rectangle
+    with legs under it - so giving it those rather than teaching the
+    marking code a second layout keeps one routine for both.
+    """
+    if pose != "leap":
+        return _stand_metrics(P, w, h)
+    spine = _leap_spine(P, w, h)
+    top = min(y - r for _, y, r in spine)
+    back = max(y + r for _, y, r in spine)
+    x0 = min(x - r * 0.6 for x, _, r in spine)
+    x1 = max(x + r * 0.6 for x, _, r in spine)
+    return (max(1.0, h - back), back - top, top, back,
+            pygame.Rect(round(x0), round(top), round(x1 - x0),
+                        round(back - top)))
+
+
+def _side_on(pose):
+    """The two poses drawn from the side. They share their markings,
+    their face and their creases; only the body differs."""
+    return pose in ("stand", "leap")
+
+
 def _head_box_stand(P, w, h):
     leg, bh, top, back, body = _stand_metrics(P, w, h)
     hw = w * 0.30 * P["facew"]
@@ -3196,7 +3365,7 @@ def _shapes_head_stand(P, w, h):
     return out
 
 
-def _stand_marks(surf, P, w, h, hb, rng):
+def _stand_marks(surf, P, w, h, hb, rng, pose="stand"):
     """One routine for every pattern, laid out along a flank.
 
     The sitting markings are built around a bell-shaped front view and
@@ -3206,7 +3375,7 @@ def _stand_marks(surf, P, w, h, hb, rng):
     """
     pat = P["pat"]
     c = P["mark"]
-    leg, bh, top, back, body = _stand_metrics(P, w, h)
+    leg, bh, top, back, body = _side_metrics(P, w, h, pose)
 
     if pat in ("solid", "smoke", "ticked", "roan"):
         s2 = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -3233,9 +3402,11 @@ def _stand_marks(surf, P, w, h, hb, rng):
             pygame.draw.line(surf, c, (round(x), round(top + bh * 0.08)),
                              (round(x - w * 0.014), round(back - bh * 0.06)),
                              lw)
-        for i, (tx, ty, tr) in enumerate(_tail_path_stand(P, w, h)):
-            if (i // 3) % 2 == 0:
-                pygame.draw.circle(surf, c, (round(tx), round(ty)), round(tr))
+        if pose != "leap":          # the leaping tail is drawn elsewhere
+            for i, (tx, ty, tr) in enumerate(_tail_path_stand(P, w, h)):
+                if (i // 3) % 2 == 0:
+                    pygame.draw.circle(surf, c, (round(tx), round(ty)),
+                                       round(tr))
         for k in range(3):
             pygame.draw.line(surf, c,
                              (round(hb.x + hb.w * (0.18 + 0.15 * k)),
@@ -3990,7 +4161,12 @@ def _build_prims(P, pose, w, h):
         return prims, head_prims, hb
     if pose == "stand":
         head_prims = _shapes_head_stand(P, w, h)
-        return _shapes_stand(P, w, h) + head_prims, head_prims,             _head_box_stand(P, w, h)
+        return (_shapes_stand(P, w, h) + head_prims, head_prims,
+                _head_box_stand(P, w, h))
+    if pose == "leap":
+        head_prims = _shapes_head_leap(P, w, h)
+        return (_shapes_leap(P, w, h) + head_prims, head_prims,
+                _head_box_leap(P, w, h))
     head_prims = _shapes_head(P, w, h)
     return _shapes_sit(P, w, h) + head_prims, head_prims, _head_box(P, w, h)
 
@@ -4078,6 +4254,9 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
     elif pose == "stand":
         h = int(h * 0.80)
         w = int(h * 1.46)
+    elif pose == "leap":
+        h = int(h * 0.74)           # a cat in the air is long, not tall
+        w = int(h * 1.94)
     else:
         w = int(h * CAT_RATIO)
     ow, oh = w, h
@@ -4100,7 +4279,7 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
             spots = [(w * 0.5 + math.cos(a) * w * 0.43,
                       h * 0.62 + math.sin(a) * h * 0.33)
                      for a in (i / 26 * TAU for i in range(26))]
-        elif pose == "stand":
+        elif _side_on(pose):
             # Round the cat's own edge, wherever that is. These used to be
             # placed on the SITTING cat's bell, which on a cat standing up
             # left a row of lumps hanging in the air behind its rump.
@@ -4111,10 +4290,12 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
             # The coat is long over the back and the rump. It is not long
             # on the shins or the bridge of the nose, and ringing the whole
             # outline with bumps turned a Persian into a sheep.
-            _, bh0, _, back0, _ = _stand_metrics(P, w, h)
-            hbx = _head_box_stand(P, w, h).x
-            edge = [q for q in edge
-                    if q[1] < back0 + bh0 * 0.14 and q[0] < hbx]
+            if pose == "leap":
+                hbx, cut = _head_box_leap(P, w, h).x, h * 0.62
+            else:
+                _, bh0, _, back0, _ = _stand_metrics(P, w, h)
+                hbx, cut = _head_box_stand(P, w, h).x, back0 + bh0 * 0.14
+            edge = [q for q in edge if q[1] < cut and q[0] < hbx]
             spots = edge[::max(1, len(edge) // 17)] if len(edge) > 8 else []
         else:
             left, right, _, _ = _bell(P, w, h)
@@ -4129,8 +4310,8 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
             pygame.draw.circle(sil, (255, 255, 255), (round(px), round(py)), rr)
 
     marks = pygame.Surface((w, h), pygame.SRCALPHA)
-    if pose == "stand":
-        _stand_marks(marks, P, w, h, hb, random.Random(breed.key))
+    if _side_on(pose):
+        _stand_marks(marks, P, w, h, hb, random.Random(breed.key), pose)
     else:
         _MARKS[P["pat"]](marks, P, w, h, hb, random.Random(breed.key), pose)
     marks.blit(sil, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
@@ -4147,7 +4328,9 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
     # Where one part of the cat lies in front of another, nothing in the
     # silhouette says so - it is all one colour. These are the creases a
     # person reads as legs, a chest and a chin.
-    if pose == "stand":
+    if pose == "leap":
+        pass                        # nothing is behind anything, mid-air
+    elif pose == "stand":
         cr = pygame.Surface((w, h), pygame.SRCALPHA)
         leg, bh, top, back, body = _stand_metrics(P, w, h)
         # Only the part below the belly: the far thigh and shoulder are
@@ -4221,7 +4404,7 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
             pygame.draw.circle(sp, (*mix(CREAM, LAMP, 0.4), 150),
                                (round(px), round(py)), max(1, r0 // 3))
         surf.blit(sp, (0, 0))
-    if pose == "stand":
+    if _side_on(pose):
         _face_side(surf, P, w, h, hb, shut, shine)
     else:
         _face(surf, P, w, h, hb, shut or pose == "curl", pose, shine)
@@ -8131,7 +8314,8 @@ ACT_PREP = {"climb": "up", "hide": "in", "chatter": "at", "prowl": "along",
 class Resident:
     """One cat living in the cat room, and what it is up to."""
     __slots__ = ("breed", "level", "spot", "act", "timer", "x", "y",
-                 "state", "phase", "face", "home", "seed", "coat", "shiny")
+                 "state", "phase", "face", "home", "seed", "coat", "shiny",
+                 "x0", "y0", "gait", "pause", "look", "was")
 
     def __init__(self, breed, level, spot, seed, coat=0, shiny=False):
         self.breed = breed
@@ -8148,6 +8332,12 @@ class Resident:
         self.seed = seed
         self.x = ROOM_SPOTS[spot][1]
         self.y = ROOM_SPOTS[spot][2]
+        self.x0 = self.x            # where a jump started from
+        self.y0 = self.y
+        self.gait = 1.0             # this trip's walking speed
+        self.pause = 0.0            # ... and how long it has stopped for
+        self.look = None            # another cat worth turning towards
+        self.was = "loaf"           # what it was doing before this
 
     @property
     def size(self):
@@ -8155,10 +8345,17 @@ class Resident:
 
     @property
     def pose(self):
+        if self.state in ("up", "down"):
+            return "leap"           # the only two states that are mid-air
         return "stand" if self.state != "rest" else ACT_POSE[self.act]
 
     @property
     def doing(self):
+        if self.state in ("up", "down"):
+            return "jumping " + ("up to " if self.state == "up" else "down "
+                                 "from ") + ROOM_SPOTS[self.spot][5]
+        if self.state == "wake":
+            return "stretching"
         if self.state != "rest":
             return "on its way to " + ROOM_SPOTS[self.spot][5]
         prep = ACT_PREP.get(self.act,
@@ -8179,6 +8376,7 @@ class CatRoom:
         self.keys = ()
         self.rng = random.Random(11)
         self.toy_t = 0.0
+        self.notice_t = 0.0    # when to work out who is looking at whom
         self.view = 0.0        # where the camera is, so cats can prefer it
         self.nspots = ROOM_BASE
 
@@ -8268,14 +8466,26 @@ class CatRoom:
         spot = self._pick_spot(r.breed, act, taken)
         lo, hi = T["stay"]
         r.timer = self.rng.uniform(lo, hi) * 0.55
-        r.act = act
+        r.was, r.act = r.act, act
+        r.look = None
+        # Nobody crosses the same room at the same speed twice, and a
+        # room where every cat moves at exactly its breed's number is a
+        # room of clockwork.
+        r.gait = self.rng.uniform(0.74, 1.34)
+        r.pause = 0.0
         if spot == r.spot:
             r.state = "rest"
             r.face = ROOM_SPOTS[spot][3]
             return
         r.spot = spot
         r.phase = 0.0
-        r.state = "down" if r.y < CAT_WALK_Y - 24 else "walk"
+        r.x0, r.y0 = r.x, r.y
+        # A cat that has just woken up stretches before it goes anywhere,
+        # every time, without exception.
+        if r.was == "sleep":
+            r.state = "wake"
+        else:
+            r.state = "down" if r.y < CAT_WALK_Y - 24 else "walk"
 
     # -- time ---------------------------------------------------------------
     def update(self, dt, state, cap, view=None):
@@ -8295,40 +8505,135 @@ class CatRoom:
                     r.y = CAT_WALK_Y
                 if r.timer <= 0:
                     self._choose(r)
-            elif r.state == "down":
-                r.phase += dt * 2.6
-                top = ROOM_SPOTS[r.home][2] if r.home < len(ROOM_SPOTS) else r.y
-                f = min(1.0, r.phase)
-                r.y = top + (CAT_WALK_Y - top) * f
-                r.x += (ROOM_SPOTS[r.spot][1] - r.x) * 0.04 * f
-                if f >= 1.0:
-                    r.state = "walk"
+            elif r.state == "wake":
+                # The stretch. Nothing moves; the drawing does the work.
+                r.phase += dt * 1.25
+                if r.phase >= 1.0:
                     r.phase = 0.0
+                    r.state = ("down" if r.y < CAT_WALK_Y - 24 else "walk")
+                    r.x0, r.y0 = r.x, r.y
+            elif r.state == "down":
+                # Off the shelf. It goes out before it comes down, which
+                # is the difference between a jump and being deleted
+                # from one height and drawn at another.
+                r.phase += dt * 1.9
+                f = min(1.0, r.phase)
+                tx = ROOM_SPOTS[r.spot][1]
+                r.face = 1 if tx > r.x0 else -1
+                r.x = r.x0 + (tx - r.x0) * min(1.0, f * 0.6)
+                peak = r.y0 - 16
+                r.y = ((1 - f) ** 2 * r.y0 + 2 * (1 - f) * f * peak
+                       + f * f * CAT_WALK_Y)
+                if f >= 1.0:
+                    r.y = CAT_WALK_Y
+                    r.state, r.phase = "land", 0.0
             elif r.state == "walk":
                 tx = ROOM_SPOTS[r.spot][1]
-                r.face = 1 if tx > r.x else -1
-                r.x += r.face * 118 * T["speed"] * dt
+                if r.pause > 0:
+                    # Cats do not cross a room in one unbroken line.
+                    # They get half way, stop, and have a look at it.
+                    r.pause -= dt
+                else:
+                    r.face = 1 if tx > r.x else -1
+                    # Arriving is "the next step would take me past it",
+                    # not "I am within eight pixels". A fixed window is
+                    # a bet that one step is smaller than the window,
+                    # and at a tenth of a second a stride is nineteen
+                    # pixels: the cat steps over its own spot, turns
+                    # round, steps back over it, and walks on the spot
+                    # until the game is closed. Stepping the room by
+                    # hand is what found it; at sixty a second the
+                    # stride is two pixels and it never showed.
+                    step = 118 * T["speed"] * r.gait * dt
+                    if abs(tx - r.x) <= max(step, 1.0):
+                        r.x = tx
+                    else:
+                        r.x += r.face * step
+                        # Rare on purpose. At four tenths a second the
+                        # room went from resting three quarters of the
+                        # time to walking more than half of it, which
+                        # is not cats pausing, it is cats dithering.
+                        if (abs(tx - r.x) > 80
+                                and self.rng.random() < 0.14 * dt):
+                            r.pause = self.rng.uniform(0.30, 0.90)
                 r.y = CAT_WALK_Y
-                if abs(tx - r.x) < 8:
-                    r.x = tx
+                if r.x == tx:
                     if _elevated(r.spot):
-                        r.state = "up"
-                        r.phase = 0.0
+                        r.state, r.phase = "crouch", 0.0
+                        r.x0, r.y0 = r.x, r.y
                     else:
                         r.state = "rest"
                         r.home = r.spot
                         r.y = ROOM_SPOTS[r.spot][2]
                         r.face = ROOM_SPOTS[r.spot][3]
-            else:                               # "up", a hop onto something
-                r.phase += dt * 2.2
+            elif r.state == "crouch":
+                # The gather. Barely two tenths of a second, and the
+                # jump reads as deliberate rather than as a cat being
+                # fired out of something.
+                r.phase += dt * 5.0
+                if r.phase >= 1.0:
+                    r.state, r.phase = "up", 0.0
+                    r.x0, r.y0 = r.x, r.y
+            elif r.state == "up":
+                r.phase += dt * 1.7
                 f = min(1.0, r.phase)
                 top = ROOM_SPOTS[r.spot][2]
-                r.y = CAT_WALK_Y + (top - CAT_WALK_Y) * (f ** 0.7)
+                tx = ROOM_SPOTS[r.spot][1]
+                r.x = r.x0 + (tx - r.x0) * f
+                # a control point above both ends, so the arc clears the
+                # thing it is landing on instead of sliding up its side
+                peak = min(r.y0, top) - (abs(r.y0 - top) * 0.34 + 24)
+                r.y = ((1 - f) ** 2 * r.y0 + 2 * (1 - f) * f * peak
+                       + f * f * top)
                 if f >= 1.0:
-                    r.state = "rest"
-                    r.home = r.spot
                     r.y = top
-                    r.face = ROOM_SPOTS[r.spot][3]
+                    r.state, r.phase = "land", 0.0
+            else:                               # "land", the squash
+                r.phase += dt * 5.5
+                if r.phase >= 1.0:
+                    r.phase = 0.0
+                    at = (abs(r.y - ROOM_SPOTS[r.spot][2]) < 2
+                          and abs(r.x - ROOM_SPOTS[r.spot][1]) < 10)
+                    if at:
+                        r.state = "rest"
+                        r.home = r.spot
+                        r.x = ROOM_SPOTS[r.spot][1]
+                        r.face = ROOM_SPOTS[r.spot][3]
+                    else:
+                        r.state = "walk"        # landed on the floor, still
+                                                # has somewhere to be
+
+        # -- who is looking at whom ------------------------------------
+        # Every two thirds of a second, not every frame: it is the only
+        # thing in here that compares every cat with every other one,
+        # and a cat does not change its mind about a neighbour sixty
+        # times a second anyway.
+        self.notice_t -= dt
+        if self.notice_t <= 0:
+            self.notice_t = 0.65
+            self._notice()
+
+    def _notice(self):
+        """A resting cat turns towards the nearest cat it can see.
+
+        This is most of what makes a room of them look like a room of
+        them rather than a row of independent screensavers: two cats
+        near each other both looking the same way is a coincidence, two
+        looking AT each other is a pair.
+        """
+        watchful = [r for r in self.res
+                    if r.state == "rest"
+                    and r.act in ("loaf", "sit", "watch", "chatter")]
+        for r in watchful:
+            best = None
+            near = 165.0
+            for o in self.res:
+                if o is r:
+                    continue
+                d = abs(o.x - r.x) + abs(o.y - r.y) * 1.6
+                if d < near:
+                    near, best = d, o
+            r.look = best.x if best is not None else None
 
     def tally(self):
         """What the room is doing, for the line under the room name."""
@@ -8363,9 +8668,35 @@ class CatRoom:
         sx = 1.0
         sy = 1.0 + (0.030 if r.act == "sleep" else 0.018) * \
             math.sin(ph * (0.6 if r.act == "sleep" else 1.0))
-        if r.state in ("walk", "down", "up") or r.act == "prowl":
-            dy = -abs(math.sin(t * 7.0 + r.seed)) * ih * 0.035
-            sy = 1.0 + 0.02 * math.sin(t * 14.0 + r.seed)
+        if r.state == "crouch":
+            # gathering: down and wide, for two tenths of a second
+            k = math.sin(r.phase * math.pi) ** 0.6
+            sy = 1.0 - 0.22 * k
+            sx = 1.0 + 0.11 * k
+        elif r.state == "land":
+            # and the opposite on the way out of it, decaying
+            k = (1.0 - r.phase) ** 2
+            sy = 1.0 - 0.26 * k
+            sx = 1.0 + 0.14 * k
+        elif r.state == "wake":
+            # the stretch: long and low, then back
+            k = math.sin(r.phase * math.pi)
+            sx = 1.0 + 0.20 * k
+            sy = 1.0 - 0.13 * k
+            dy = -ih * 0.02 * k
+        elif r.state in ("up", "down"):
+            # In the air the legs are already out in the drawing, so
+            # the squash and the walk bob would both be wrong. What it
+            # gets instead is a stretch along the way it is going.
+            k = math.sin(min(1.0, r.phase) * math.pi)
+            sx = 1.0 + 0.05 * k
+            sy = 1.0 - 0.04 * k
+        elif r.state == "walk" or r.act == "prowl":
+            if r.pause <= 0:
+                dy = -abs(math.sin(t * 7.0 + r.seed)) * ih * 0.035
+                sy = 1.0 + 0.02 * math.sin(t * 14.0 + r.seed)
+            else:                       # stopped, and having a look
+                dy = math.sin(t * 1.3 + r.seed) * ih * 0.010
         elif r.act in ("eat", "drink"):
             dy = abs(math.sin(t * (3.4 if r.act == "eat" else 2.2) + r.seed)) \
                 * ih * 0.07
@@ -8376,12 +8707,16 @@ class CatRoom:
             sy = 1.0 + 0.055 * abs(math.sin(t * 4.4 + r.seed))
             dy = -ih * 0.02 * abs(math.sin(t * 4.4 + r.seed))
         if r.state == "rest" and r.act in ("loaf", "sit", "watch"):
-            # every so often it looks round the room
-            look = math.sin(t * 0.21 + r.seed * 1.7)
-            if look > 0.72:
-                r.face = -ROOM_SPOTS[r.spot][3]
-            elif look < -0.72:
-                r.face = ROOM_SPOTS[r.spot][3]
+            # A cat with another cat beside it watches the other cat.
+            # Failing that it looks round the room on its own clock.
+            if r.look is not None and abs(r.look - r.x) > 6:
+                r.face = 1 if r.look > r.x else -1
+            else:
+                look = math.sin(t * 0.21 + r.seed * 1.7)
+                if look > 0.72:
+                    r.face = -ROOM_SPOTS[r.spot][3]
+                elif look < -0.72:
+                    r.face = ROOM_SPOTS[r.spot][3]
             dy += math.sin(t * 0.8 + r.seed) * ih * 0.012
         if abs(sy - 1.0) > 0.001 or abs(sx - 1.0) > 0.001:
             img = pygame.transform.smoothscale(
@@ -8392,9 +8727,18 @@ class CatRoom:
             img = pygame.transform.rotate(img, math.sin(t * 1.6 + r.seed) * 7)
         rect = img.get_rect(midbottom=(round(r.x), round(r.y + dy)))
 
-        sh = pygame.Surface((max(4, iw), 12), pygame.SRCALPHA)
-        pygame.draw.ellipse(sh, (0, 0, 0, 85), (0, 0, max(4, iw), 12))
-        surf.blit(sh, (round(r.x - iw / 2), round(r.y - 7)))
+        # The shadow stays on the floor and shrinks as the cat leaves
+        # it. Carrying it up with the cat is what made the old hop read
+        # as a sticker being slid up a window.
+        air = 0.0
+        if r.state in ("up", "down"):
+            air = math.sin(min(1.0, r.phase) * math.pi)
+        sw = max(4, int(iw * (1.0 - 0.45 * air)))
+        sh = pygame.Surface((sw, 12), pygame.SRCALPHA)
+        pygame.draw.ellipse(sh, (0, 0, 0, int(85 * (1.0 - 0.55 * air))),
+                            (0, 0, sw, 12))
+        gy = r.y if not air else max(r.y, min(r.y0, ROOM_SPOTS[r.spot][2]))
+        surf.blit(sh, (round(r.x - sw / 2), round(gy - 7)))
         surf.blit(img, rect)
         self._extras(surf, r, rect, t)
 
