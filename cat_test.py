@@ -27,6 +27,7 @@ toward whatever is left, so making commons cheaper to finish makes
 legends arrive sooner too.
 """
 
+import array
 import math
 import os
 import random
@@ -3643,6 +3644,139 @@ def _backups_in(tmp):
     return ok
 
 
+
+def weather():
+    """The sky outside both windows.
+
+    It has to be the same all day and different tomorrow, it has to
+    survive a reload - which it does by being a function of the day
+    number and nothing else - and it must never touch the economy. A
+    wet Tuesday that also halved your income would be a thing to play
+    around rather than a thing to sit in.
+    """
+    ok = True
+    screen = pygame.display.set_mode((cc.W, cc.H))
+
+    # -- the same all day, and settled before the day starts -------------
+    for d in (0, 1, 5, 23, 61):
+        want = cc.weather_of(cc.DAY * d + 1)
+        for f in (0.0, 0.25, 0.5, 0.99):
+            if cc.weather_of(cc.DAY * (d + f) + 1) != want:
+                print(f"  day {d} changes its mind {f:.0%} of the way in")
+                ok = False
+    print("  one sky per day, the whole day")
+
+    # -- but not the same every day --------------------------------------
+    got = [cc.weather_of(cc.DAY * d) for d in range(240)]
+    seen = {cc.WEATHERS[i][0]: got.count(i) for i in set(got)}
+    print("    240 days: " + ", ".join(f"{k} {v}" for k, v in
+                                       sorted(seen.items(), key=lambda kv:
+                                              -kv[1])))
+    if len(seen) < len(cc.WEATHERS):
+        missing = [w[0] for i, w in enumerate(cc.WEATHERS) if i not in got]
+        print(f"  never happens in 240 days: {missing}")
+        ok = False
+    run = max_run = 1
+    for a, b in zip(got, got[1:]):
+        run = run + 1 if a == b else 1
+        max_run = max(max_run, run)
+    print(f"    the longest stretch of one sky is {max_run} days")
+    if max_run > 8:
+        print("  the weather gets stuck")
+        ok = False
+
+    # -- a reload is the same weather ------------------------------------
+    st = cc.State()
+    st.played = cc.DAY * 9 + 240
+    before = cc.weather_of(st.played)
+    after = cc.weather_of(cc.State.from_dict(st.to_dict()).played)
+    if before != after:
+        print("  the sky changed over a save")
+        ok = False
+    else:
+        print("  and it is the same sky after a reload")
+
+    # -- every sky draws, in both windows --------------------------------
+    for i, w in enumerate(cc.WEATHERS):
+        for t in (0.0, 2.5, 9.0):
+            try:
+                surf = pygame.Surface((cc.W, cc.H))
+                cc._window(surf, t, i)
+                cc._cat_window(surf, pygame.Rect(140, 150, 240, 190), t,
+                               sky=i)
+                cc._sky_glass(surf, pygame.Rect(0, 0, 14, 14), t, i)
+            except Exception as e:                       # noqa: BLE001
+                print(f"  {w[0]} at t={t} will not draw: {e!r}")
+                ok = False
+    print(f"  all {len(cc.WEATHERS)} skies draw, in both windows, at any "
+          f"size")
+
+    # -- and it changes nothing anybody is playing with -------------------
+    pk = next(p for p in cc.PACKS if p.price and p.shelf in cc.SHELVES)
+
+    def numbers(day):
+        a = cc.State()
+        a.played = cc.DAY * day + 30
+        for b in list(cc.BREEDS)[:40]:
+            a.cards[b.key] = cc.Card(level=4)
+        return (round(a.income, 6), cc.price_of(pk, a),
+                round(cc.ship_time(pk, 0, 1) * cc.today(a.played).ship, 4))
+
+    checked = 0
+    for wd in range(7):
+        days = [d for d in range(400) if d % 7 == wd]
+        skies = {}
+        for d in days:
+            skies.setdefault(cc.weather_of(cc.DAY * d), d)
+        if len(skies) < 2:
+            continue
+        vals = {i: numbers(d) for i, d in skies.items()}
+        checked += len(vals)
+        if len(set(vals.values())) != 1:
+            print(f"  {cc.DAY_NAMES[wd]}: the sky moves the numbers "
+                  f"{ {cc.WEATHERS[i][0]: v for i, v in vals.items()} }")
+            ok = False
+    print(f"  income, price and postage hold still across {checked} "
+          f"weekday-and-sky pairs")
+    if checked < 14:
+        print("  not enough pairs to have tested anything")
+        ok = False
+
+    # -- the bed itself ---------------------------------------------------
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+    cc.init_audio()
+    r = cc.rain_loop()
+    if r is None:
+        print("  no audio here, so the rain was not built")
+    else:
+        raw = array.array("h", r.get_raw())
+        # get_raw is interleaved, so on a stereo device there are two
+        # samples per frame and the naive division says the loop is
+        # twice as long as it is.
+        chans = (pygame.mixer.get_init() or (cc.RATE, -16, 1))[2]
+        secs = len(raw) / cc.RATE / max(1, chans)
+        peak = max(abs(v) for v in raw) / 32767.0
+        head = sum(abs(v) for v in raw[:400]) / 400
+        tail = sum(abs(v) for v in raw[-400:]) / 400
+        print(f"    rain: {secs:.1f}s loop, peak {peak:.0%} of full scale, "
+              f"seam {head:.0f} to {tail:.0f}")
+        if secs < 2.0:
+            print("  the loop is short enough to hear repeating")
+            ok = False
+        if peak > 0.55:
+            print("  the weather is louder than the game")
+            ok = False
+        if max(head, tail) > 3 * max(1.0, min(head, tail)):
+            print("  the ends of the loop do not meet - that is a click")
+            ok = False
+        cc.ambience(0.0)
+        cc.ambience(0.7)
+        cc.ambience(0.0)
+
+    print("  weather:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -3724,6 +3858,9 @@ def main():
         print()
     if cmd in ("auctions", "all"):
         ok &= auctions()
+        print()
+    if cmd in ("weather", "all"):
+        ok &= weather()
         print()
     if cmd in ("backups", "all"):
         ok &= backups()

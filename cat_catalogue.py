@@ -7089,6 +7089,85 @@ def music_loop():
     return _music or None
 
 
+
+# ---------------------------------------------------------------------------
+# THE SOUND OF IT
+#
+# The loop is music; this is weather. Six seconds of filtered noise with
+# a swell in it, crossfaded into itself so the seam does not tick, held
+# under everything at a level you would have to go looking for.
+#
+# It is the other half of the window. Rain you can see and cannot hear
+# is a screensaver.
+# ---------------------------------------------------------------------------
+RAIN_GAIN = 0.26           # how hard the bed is built...
+RAIN_VOL = 0.34            # ...and the top of the fader it plays on
+
+_rain = None
+_rain_at = -1.0            # the level it is currently playing at
+
+
+def rain_loop():
+    """Rain on glass. Noise, rolled right off, with weight underneath."""
+    global _rain
+    if _rain is not None or not _audio:
+        return _rain
+    n = int(6.0 * RATE)
+    fade = int(0.35 * RATE)
+    rng = random.Random(17)
+    buf = [0.0] * (n + fade)
+    last = 0.0
+    for i in range(n + fade):
+        last = last * 0.70 + rng.uniform(-1, 1) * 0.30
+        buf[i] = last
+    _lowpass(buf, 0.22)
+    # the odd heavier spatter, so it is rain and not a hiss
+    for _ in range(int((n + fade) / RATE * 7)):
+        at = rng.randrange(n + fade - 900)
+        amp = rng.uniform(0.5, 1.4)
+        for k in range(900):
+            buf[at + k] += (rng.uniform(-1, 1) * amp * 0.30
+                            * (1.0 - k / 900) ** 2)
+    # a slow swell, a whole number of cycles so the loop keeps it
+    for i in range(n + fade):
+        buf[i] *= 0.74 + 0.26 * math.sin(i / n * TAU * 2)
+    # and the seam: the tail folded back over the head
+    for k in range(fade):
+        f = k / fade
+        buf[k] = buf[k] * f + buf[n + k] * (1 - f)
+    del buf[n:]
+    try:
+        _rain = _to_sound(buf, RAIN_GAIN)
+    except (pygame.error, ValueError, MemoryError):
+        _rain = False
+    return _rain or None
+
+
+def ambience(level):
+    """Hold the weather under the room at `level`, 0 for silence."""
+    global _rain_at
+    level = clamp(level, 0.0, 1.0)
+    if abs(level - _rain_at) < 0.01:
+        return
+    r = rain_loop()
+    if r is None:
+        _rain_at = level
+        return
+    try:
+        ch = pygame.mixer.Channel(0)
+    except pygame.error:
+        _rain_at = level
+        return
+    if level <= 0.001:
+        if _rain_at > 0.001:
+            ch.fadeout(700)
+    else:
+        if _rain_at <= 0.001 or not ch.get_busy():
+            ch.play(r, loops=-1, fade_ms=1400)
+        ch.set_volume(RAIN_VOL * level)
+    _rain_at = level
+
+
 _music_on = False
 
 
@@ -7125,6 +7204,13 @@ def init_audio():
         got = pygame.mixer.get_init()
         if got:
             RATE = got[0]
+        # One channel held back for the weather. It runs for the whole
+        # session, and a loop left to find its own channel is a loop
+        # that a flurry of beeps can quietly take away.
+        try:
+            pygame.mixer.set_reserved(1)
+        except pygame.error:
+            pass
         _audio = True
     except pygame.error:
         _audio = False
@@ -8139,14 +8225,163 @@ class CatRoom:
                                    round(rr), 1)
 
 
-def _cat_window(surf, r, t, seed=4):
-    pygame.draw.rect(surf, (18, 22, 34), r)
+# ---------------------------------------------------------------------------
+# WHAT IT IS DOING OUTSIDE
+#
+# Both windows looked out at the same fixed starfield every night of the
+# game, with fourteen lines of rain drawn in (54, 62, 78) against a sky
+# of (18, 22, 34) - rain nobody could see, falling for ever.
+#
+# A sky that changes is the cheapest atmosphere there is, and this game
+# already has a calendar to hang it on. One sky per day, the same all
+# day, rolled off the day number so it survives a reload: you look up
+# from the binder and it has started raining, and it was not raining
+# yesterday.
+#
+# Weather does nothing to the economy on purpose. A wet Tuesday that
+# also halved your income would be a thing to play around rather than a
+# thing to sit in, and sitting in it is the entire point.
+# ---------------------------------------------------------------------------
+#        name        rain  snow  haze  stars  weight
+WEATHERS = (
+    ("a clear night", 0.00, 0.00, 0.00, 1.00, 4),
+    ("drizzle",       0.34, 0.00, 0.12, 0.42, 3),
+    ("rain",          0.68, 0.00, 0.20, 0.16, 3),
+    ("a downpour",    1.00, 0.00, 0.34, 0.00, 2),
+    ("snow",          0.00, 0.85, 0.26, 0.34, 2),
+    ("fog",           0.00, 0.00, 0.78, 0.06, 1),
+)
+SKY_CLEAR, SKY_SNOW, SKY_FOG = 0, 4, 5
+
+
+_skies = {}
+
+
+def weather_of(played):
+    """The same sky all day, and a different one tomorrow.
+
+    Memoised on the day: four windows and the ambience all ask for this
+    every frame, and building a Random sixty times a second to be told
+    it is still Tuesday is work nobody needs doing.
+    """
+    day = day_of(played)
+    got = _skies.get(day)
+    if got is not None:
+        return got
+    rng = random.Random(day * 7919 + 13)
+    pick = rng.random() * sum(w[5] for w in WEATHERS)
+    out = 0
+    for i, w in enumerate(WEATHERS):
+        pick -= w[5]
+        if pick < 0:
+            out = i
+            break
+    _skies[day] = out
+    return out
+
+
+def sky_words(played):
+    return WEATHERS[weather_of(played)][0]
+
+
+def _sky_glass(surf, r, t, sky, seed=4):
+    """Everything on the far side of the pane, and on the pane itself.
+
+    Drawn into `r`, which is the glass and not the frame. Both windows
+    use this, so the two of them never disagree about the weather.
+    """
+    name, wet, snowy, haze, stars, _ = WEATHERS[sky]
+    base = (18, 22, 34)
+    if snowy:                        # snow light, bounced off the cloud
+        base = (28, 30, 44)
+    elif haze > 0.5:
+        base = (34, 34, 40)
+    elif wet:
+        base = (20, 23, 33)
+    pygame.draw.rect(surf, base, r)
+
     rng = random.Random(seed)
-    for i in range(24):
-        s = pygame.Surface((2, 2), pygame.SRCALPHA)
-        s.fill((*CREAM, int(70 + 70 * abs(math.sin(t * 0.3 + i)))))
-        surf.blit(s, (r.x + rng.randrange(6, r.w - 6),
-                      r.y + rng.randrange(6, r.h - 6)))
+    if stars > 0.02:
+        for i in range(int(40 * stars)):
+            x = r.x + rng.randrange(4, max(5, r.w - 4))
+            y = r.y + rng.randrange(4, max(5, r.h - 4))
+            a = (60 + 90 * abs(math.sin(t * 0.4 + i))) * stars
+            dot = pygame.Surface((2, 2), pygame.SRCALPHA)
+            dot.fill((*CREAM, int(clamp(a, 0, 255))))
+            surf.blit(dot, (x, y))
+
+    if wet:
+        # Falling, at a slant, and light enough against the sky to
+        # actually be rain. Three depths: the far ones are slower, dimmer
+        # and shorter, which is the whole trick.
+        lit = pygame.Surface(r.size, pygame.SRCALPHA)
+        for depth in range(3):
+            k = 0.45 + 0.35 * depth
+            cnt = int((6 + 16 * wet) * (0.7 + 0.5 * depth))
+            fall = (120 + 150 * depth) * (0.6 + 0.6 * wet)
+            length = int((5 + 5 * depth) * (0.6 + 0.7 * wet))
+            col = (*mix((104, 122, 150), LAMP, 0.10 + 0.12 * depth),
+                   int(70 + 90 * k * wet))
+            for i in range(cnt):
+                ph = rng.random()
+                x = (ph * r.w * 1.3 + t * 26 * k) % (r.w + 20) - 10
+                y = ((ph * 977 % r.h) + t * fall) % (r.h + length) - length
+                pygame.draw.line(lit, col, (x, y),
+                                 (x - 2 - depth, y + length), 1)
+        surf.blit(lit, r.topleft)
+
+        # and the drops that never made it off the glass. Each one sits,
+        # then lets go, on its own clock - this is the detail that reads
+        # as a window rather than as weather.
+        beads = pygame.Surface(r.size, pygame.SRCALPHA)
+        for i in range(int(4 + 10 * wet)):
+            dx = 6 + (i * 53 % max(1, r.w - 12))
+            period = 3.4 + (i * 7 % 11) * 0.55
+            f = ((t + i * 1.7) % period) / period
+            slide = f * f * (r.h + 18) - 10
+            a = int(150 * min(1.0, (1 - f) * 3.2) * (0.5 + 0.5 * wet))
+            if a <= 4:
+                continue
+            pygame.draw.line(beads, (*mix((150, 170, 200), LAMP, 0.2),
+                                     a // 3),
+                             (dx, max(0, slide - 16)), (dx, slide), 2)
+            pygame.draw.circle(beads, (*mix((186, 202, 226), LAMP, 0.18), a),
+                               (dx, int(slide)), 2)
+        surf.blit(beads, r.topleft)
+
+    if snowy:
+        flakes = pygame.Surface(r.size, pygame.SRCALPHA)
+        for i in range(int(34 * snowy)):
+            ph = rng.random()
+            drift = math.sin(t * 0.5 + i * 1.3) * 9
+            x = (ph * r.w + drift) % r.w
+            y = ((ph * 613 % r.h) + t * (11 + 13 * (i % 3))) % (r.h + 6) - 3
+            rr = 1 if i % 3 else 2
+            pygame.draw.circle(flakes, (*mix(CREAM, (200, 212, 232), 0.4),
+                                        150 + 60 * (i % 2)),
+                               (int(x), int(y)), rr)
+        surf.blit(flakes, r.topleft)
+
+    if haze > 0.02:
+        veil = pygame.Surface(r.size, pygame.SRCALPHA)
+        veil.fill((*mix((92, 98, 116), LAMP, 0.18), int(78 * haze)))
+        surf.blit(veil, r.topleft)
+    # The pane itself, catching the lamp behind you. One ellipse at
+    # alpha 16 is not a sheen, it is a hard-edged smudge across the
+    # glass - the same lesson as every additive glow in this file. The
+    # falloff has to be built out of layers, because the shape will not
+    # provide one.
+    sheen = pygame.Surface(r.size, pygame.SRCALPHA)
+    for k in range(5):
+        f = 0.55 + k * 0.17
+        pygame.draw.ellipse(sheen, (*LAMP, 5),
+                            (-r.w * 0.2 * f, -r.h * 0.5 * f,
+                             r.w * 1.1 * f, r.h * 1.2 * f))
+    surf.blit(sheen, r.topleft)
+
+
+def _cat_window(surf, r, t, seed=4, sky=0):
+    _sky_glass(surf, r, t, sky, seed)
     pygame.draw.rect(surf, WOOD, r, width=8)
     pygame.draw.line(surf, WOOD, (r.centerx, r.y), (r.centerx, r.bottom), 5)
     sill = pygame.Rect(r.x - 22, r.bottom - 2, r.w + 44, 18)
@@ -8248,7 +8483,7 @@ def _backroom(surf, state, t):
 
     # the bird window, with the sill the cat sits on
     win = pygame.Rect(x0 + 80, 180, 132, 136)
-    _cat_window(surf, win, t, seed=9)
+    _cat_window(surf, win, t, seed=9, sky=weather_of(state.played))
     _feeder(surf, x0 + 262, 236, t)
 
     # the climbing steps, going up the wall away from the opening
@@ -8662,7 +8897,8 @@ def _catroom(surf, state, t):
         glow(surf, (x, y + 8), 26, LAMP, 0.34 * tw)
         pygame.draw.circle(surf, mix(LAMP, CREAM, 0.3), (int(x), int(y + 8)), 4)
 
-    _cat_window(surf, pygame.Rect(140, 150, 240, 190), t)
+    _cat_window(surf, pygame.Rect(140, 150, 240, 190), t,
+                sky=weather_of(state.played))
 
     for sx, sy, sw in ((414, 358, 176), (556, 256, 168)):
         r = pygame.Rect(sx, sy, sw, 12)
@@ -8756,7 +8992,8 @@ def _catroom(surf, state, t):
                        (int(452 + jig), 726), 11, 2)
 
     # ---- the far half ----------------------------------------------------
-    sill2 = _cat_window(surf, pygame.Rect(1212, 140, 170, 180), t, seed=9)
+    sill2 = _cat_window(surf, pygame.Rect(1212, 140, 170, 180), t,
+                        seed=9, sky=weather_of(state.played))
     if "perch" in state.things:         # a box of a balcony on the window
         cat_io = pygame.Rect(1192, 300, 210, 96)
         pygame.draw.rect(surf, mix(WOOD_HI, PAPER, 0.1), cat_io,
@@ -9177,21 +9414,9 @@ def _wall(surf, t):
     pygame.draw.line(surf, shade(WOOD, 0.7), (0, WALL_H - 2), (W, WALL_H - 2), 3)
 
 
-def _window(surf, t):
+def _window(surf, t, sky=0):
     r = pygame.Rect(812, 52, 300, 208)
-    pygame.draw.rect(surf, (18, 22, 34), r)
-    rng = random.Random(9)
-    for i in range(40):                  # a few stars, and no moon
-        x = r.x + rng.randrange(6, r.w - 6)
-        y = r.y + rng.randrange(6, r.h - 6)
-        a = 60 + 90 * abs(math.sin(t * 0.4 + i))
-        s = pygame.Surface((2, 2), pygame.SRCALPHA)
-        s.fill((*CREAM, int(a)))
-        surf.blit(s, (x, y))
-    for i in range(14):                  # rain, slow and warm-lit
-        x = r.x + (i * 37 + int(t * 46) % 37) % (r.w - 8) + 4
-        y = r.y + int((t * 150 + i * 60) % (r.h - 10)) + 4
-        pygame.draw.line(surf, (54, 62, 78), (x, y), (x - 2, y + 9), 1)
+    _sky_glass(surf, r, t, sky, seed=9)
     pygame.draw.rect(surf, WOOD, r, width=9)
     pygame.draw.rect(surf, WOOD_HI, r, width=2)
     pygame.draw.line(surf, WOOD, (r.centerx, r.y), (r.centerx, r.bottom), 7)
@@ -9237,6 +9462,47 @@ def _desk(surf):
     pygame.draw.rect(surf, shade(WOOD_LO, 1.2), d, border_radius=3)
     pygame.draw.rect(surf, shade(WOOD_HI, 0.8), (d.centerx - 24, d.centery - 3,
                                                  48, 7), border_radius=3)
+
+
+
+def _mug(surf, t):
+    """A mug on the desk, going cold at its own pace.
+
+    It does nothing and costs nothing and is the warmest object in the
+    room. The steam is the point: three strands on different clocks, so
+    the desk is never quite still even when the whole game is paused on
+    a screen with no cats on it.
+    """
+    x, y = 990, WALL_H + 30      # clear of the binder, under the window
+    body = pygame.Rect(x - 20, y - 34, 40, 42)
+    pygame.draw.ellipse(surf, shade(WOOD_LO, 1.1),
+                        (body.x - 3, body.bottom - 9, body.w + 6, 13))
+    pygame.draw.arc(surf, mix(PAPER, TEA, 0.30),
+                    (body.right - 12, body.y + 8, 24, 26), -1.55, 1.55, 4)
+    pygame.draw.rect(surf, mix(PAPER, TEA, 0.22), body,
+                     border_bottom_left_radius=11,
+                     border_bottom_right_radius=11)
+    pygame.draw.rect(surf, mix(PAPER, CREAM, 0.5),
+                     (body.x, body.y, body.w, 6), border_radius=3)
+    pygame.draw.ellipse(surf, shade(mix(RUG, WOOD, 0.4), 0.9),
+                        (body.x + 3, body.y + 1, body.w - 6, 9))
+    # and the steam, which has to be built out of layers: one ellipse at
+    # a low alpha is a smudge, the same way the window sheen was.
+    steam = pygame.Surface((70, 78), pygame.SRCALPHA)
+    for i in range(4):
+        ph = t * 0.30 + i * 0.26
+        for k in range(16):
+            f = (k / 16.0 + ph) % 1.0
+            sx = 35 + math.sin(f * 3.4 + i * 1.9) * (3 + 10 * f)
+            sy = 72 - f * 68
+            # low alpha and radii that overlap: discrete dots up the wall
+            # read as bubbles, and what is wanted is one soft column
+            a = int(15 * (1.0 - f) ** 0.9 * (0.65 + 0.35 * math.sin(ph * 2)))
+            if a <= 1:
+                continue
+            pygame.draw.circle(steam, (*mix(CREAM, LAMP, 0.4), a),
+                               (int(sx), int(sy)), int(4 + 9 * f))
+    surf.blit(steam, (x - 35, y - 108))
 
 
 def _floor(surf):
@@ -9367,7 +9633,7 @@ def _grass(surf, t):
 def _study(surf, state, t):
     surf.fill(INK)
     _wall(surf, t)
-    _window(surf, t)
+    _window(surf, t, weather_of(state.played))
     _shelf(surf)
     _desk(surf)
     _floor(surf)
@@ -9391,6 +9657,7 @@ def _study(surf, state, t):
             text(surf, "~", 15, (g.right + 46 + i * 10, yy),
                  mix(LAMP, CREAM, 0.3), alpha=a, shadow=False)
     _lamp(surf, t)
+    _mug(surf, t)
     _laptop(surf, t, unread=len(state.orders))
     _binder(surf, t, owned=state.owned, total=len(state.book))
     _grass(surf, t)
@@ -10520,6 +10787,12 @@ class GameBase:
     # -- time ---------------------------------------------------------------
     def update(self, dt):
         self.t += dt
+        # The weather is only audible from indoors: the hall across town
+        # is somebody else's building and the shop is a laptop.
+        wet = WEATHERS[weather_of(self.state.played)][1]
+        ambience(wet if (self.state.sound and self.area in ("study", "cats")
+                         and self.scene in ("room", "menu", "saves", "binder",
+                                            "open")) else 0.0)
         if self.scene in ("intro", "news"):
             self.beat_t += dt
         self.shown_t -= dt
