@@ -3971,6 +3971,171 @@ def statues():
     return ok
 
 
+
+def awards():
+    """The kitty awards: nine things to have done, and nothing else.
+
+    Two things matter and they pull against each other. Every award has
+    to be WINNABLE - each one reads a counter by hand, and a counter
+    that was renamed or never incremented is an award nobody can ever
+    get and nobody can ever see is broken. And no award may be worth
+    anything, because the whole point of having them beside the foundry
+    line is that one shelf pays and the other does not.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+
+    # -- a new collection has won none of them --------------------------
+    fresh = cc.State()
+    early = [a.name for a in cc.AWARDS if a.won(fresh)]
+    if early:
+        print(f"  won before doing anything: {early}")
+        ok = False
+    for a in cc.AWARDS:
+        if a.want < 1:
+            print(f"  {a.name} asks for {a.want}")
+            ok = False
+        if a.at(fresh) != 0:
+            print(f"  {a.name} starts at {a.at(fresh)}")
+            ok = False
+    print(f"  {len(cc.AWARDS)} awards, none of them won on a new binder")
+
+    # -- and a player who has done everything has won the lot -----------
+    done = cc.State()
+    for b in cc.BY_KEY.values():            # every card there is, maxed
+        done.cards[b.key] = cc.Card(level=cc.MAX_LEVEL)
+    done.packs_opened = 10 ** 5
+    done.shinies = 10 ** 3
+    done.swapped = 10 ** 3
+    done.won_bids = 10 ** 3
+    done.conv_wins = 10 ** 3
+    missed = [a.name for a in cc.AWARDS if not a.won(done)]
+    if missed:
+        print(f"  cannot be won by a player who has done everything: "
+              f"{missed}")
+        ok = False
+    else:
+        print("  and all of them won by a binder with everything in it")
+
+    # -- the counters they read are counters that move ------------------
+    for a in cc.AWARDS:
+        probe = cc.State()
+        try:
+            v = a.how(probe)
+        except Exception as e:                           # noqa: BLE001
+            print(f"  {a.name} cannot read its own counter: {e!r}")
+            ok = False
+            continue
+        if not isinstance(v, (int, float)):
+            print(f"  {a.name} counts in {type(v).__name__}")
+            ok = False
+
+    # -- handed out once, and only once ---------------------------------
+    st = cc.State()
+    st.packs_opened = 10 ** 5
+    first = st.check_awards()
+    again = st.check_awards()
+    if not first:
+        print("  a hundred thousand parcels won nothing")
+        ok = False
+    if again:
+        print(f"  the same award was handed out twice: "
+              f"{[a.name for a in again]}")
+        ok = False
+    if any(a.key not in st.awards for a in first):
+        print("  an award was announced but not kept")
+        ok = False
+
+    # -- looked at once on arrival, then rarely -------------------------
+    # The FIRST look is deliberately immediate: a save written before
+    # any of this existed has to be told what it already won, not sit
+    # on it for a quarter of a minute. After that it is throttled,
+    # because two of these count every card in the binder.
+    st = cc.State()
+    st.packs_opened = 10 ** 5
+    if not st.check_awards(1 / 60):
+        print("  the first look did not happen on arrival")
+        ok = False
+    st.shinies = 10 ** 3
+    for _ in range(14 * 60):
+        if st.check_awards(1 / 60):
+            print("  it looked again inside the fifteen seconds")
+            ok = False
+            break
+    for _ in range(2 * 60):
+        st.check_awards(1 / 60)
+    if "foil" not in st.awards:
+        print("  seventeen seconds later it still had not looked again")
+        ok = False
+    else:
+        print("  looked at once on arrival, then every fifteen seconds")
+
+    # -- they are worth nothing, which is the point ---------------------
+    a, b = cc.State(), cc.State()
+    for br in list(cc.BREEDS)[:40]:
+        a.cards[br.key] = cc.Card(level=5)
+        b.cards[br.key] = cc.Card(level=5)
+    b.awards = {x.key for x in cc.AWARDS}
+    same = (abs(a.income - b.income) < 1e-9
+            and abs(a.comfort - b.comfort) < 1e-9
+            and abs(a.gear - b.gear) < 1e-9
+            and abs(a.line - b.line) < 1e-9
+            and a.slots == b.slots)
+    if not same:
+        print(f"  the awards pay out: {cc.rate(a.income)} -> "
+              f"{cc.rate(b.income)}")
+        ok = False
+    else:
+        print(f"  a full shelf of them changes nothing: "
+              f"{cc.rate(b.income)} either way")
+
+    # -- saved, and not inventing any ------------------------------------
+    keep = cc.State()
+    keep.awards = {cc.AWARDS[0].key, cc.AWARDS[3].key}
+    back = cc.State.from_dict(keep.to_dict())
+    if back.awards != keep.awards:
+        print(f"  the awards came back as {back.awards}")
+        ok = False
+    if cc.State.from_dict({"awards": ["not an award"]}).awards:
+        print("  an award that does not exist survived a load")
+        ok = False
+
+    # -- every trophy draws, and the page and the shelf with it ----------
+    surf = pygame.Surface((cc.W, cc.H))
+    kinds = {x.cup for x in cc.AWARDS}
+    for cup in kinds:
+        for lit in (0.0, 1.0):
+            try:
+                cc._trophy(surf, 100, 100, cup, 34, lit)
+            except Exception as e:                       # noqa: BLE001
+                print(f"  the {cup} will not draw: {e!r}")
+                ok = False
+    print(f"  {len(kinds)} different trophies, all of them drawing")
+
+    g = cc.Game(pygame.display.get_surface())
+    g.state = cc.State()
+    g.state.seen_intro = True
+    g.room = cc.CatRoom()
+    for owned in (0, 3, len(cc.AWARDS)):
+        g.state.awards = {x.key for x in cc.AWARDS[:owned]}
+        g.scene, g.site, g.tab, g.product = "shop", "meowrder", "awards", None
+        try:
+            g.draw()
+        except Exception as e:                           # noqa: BLE001
+            print(f"  the page will not draw with {owned} won: {e!r}")
+            ok = False
+        g.scene, g.area = "room", "hall"
+        try:
+            g.draw()
+        except Exception as e:                           # noqa: BLE001
+            print(f"  the hall will not draw with {owned} won: {e!r}")
+            ok = False
+    print("  the page and the hall shelf draw at nought, three and nine")
+
+    print("  awards:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -4046,6 +4211,9 @@ def main():
         print()
     if cmd in ("kittens", "all"):
         ok &= kittens()
+        print()
+    if cmd in ("awards", "all"):
+        ok &= awards()
         print()
     if cmd in ("statues", "all"):
         ok &= statues()

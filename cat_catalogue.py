@@ -5098,6 +5098,90 @@ BY_MERCH = {m.key: m for m in MERCH}
 
 
 
+
+# ---------------------------------------------------------------------------
+# THE KITTY AWARDS
+#
+# The club gives these out, which is to say a man called Derek gives
+# these out, and they arrive in a jiffy bag with a compliments slip.
+#
+# They are worth NOTHING. Not a penny a second, not a better shiny rate,
+# nothing - and that is the point of having them next to the foundry
+# line, which you buy, and the binder, which earns. A thing that is only
+# worth having because you did it is a different kind of thing from a
+# thing that pays, and this game has plenty of the second sort already.
+#
+# What they are actually for is direction. Nine of them, across nine
+# different corners of the game, and the page lists every one you have
+# not got with how far off it is - so the answer to "what else is there
+# to do in here" is a page rather than a shrug.
+#
+# `won` takes a state and returns a number and a target. Returning the
+# progress rather than a bare yes/no is what lets the page say "19 of
+# 25" instead of "not yet", and it costs nothing to carry.
+# ---------------------------------------------------------------------------
+class Award:
+    __slots__ = ("key", "name", "blurb", "want", "how", "cup")
+
+    def __init__(self, key, name, want, how, blurb, cup="cup"):
+        self.key = key
+        self.name = name
+        self.want = want            # how many of it
+        self.how = how              # state -> how many you have
+        self.blurb = blurb
+        self.cup = cup              # which trophy is in the jiffy bag
+
+    def at(self, state):
+        return min(self.want, max(0, self.how(state)))
+
+    def won(self, state):
+        return self.how(state) >= self.want
+
+
+AWARDS = (
+    Award("open", "The Hundred Club", 100,
+          lambda s: s.packs_opened,
+          "A hundred parcels opened. Derek says the record is nine "
+          "thousand and that the man who holds it has been asked to "
+          "stop entering.", "cup"),
+    Award("foil", "Best Foil", 10,
+          lambda s: s.shinies,
+          "Ten of the ones that came out wrong at the printers, which "
+          "is ten more than most people manage.", "star"),
+    Award("done", "First Retirement", 1,
+          lambda s: s.retired,
+          "One breed taken all the way to ten and withdrawn. The shop "
+          "will not send it again, and that was the whole idea.",
+          "rosette"),
+    Award("tenner", "Ten Withdrawn", 10,
+          lambda s: s.retired,
+          "Ten of them finished. At this point the packs start arriving "
+          "aimed at what is left, which you will feel.", "rosette"),
+    Award("swap", "The Horse Trader", 25,
+          lambda s: s.swapped,
+          "Twenty-five deals done on the board without money changing "
+          "hands once. Derek does not entirely approve.", "cup"),
+    Award("gavel", "Going, Going", 10,
+          lambda s: s.won_bids,
+          "Ten auctions won. Not ten bids - ten won, which is a "
+          "different and considerably dearer number.", "gavel"),
+    Award("door", "The Open Door", 4,
+          lambda s: s.strays_owned,
+          "Four cats let in off the street. None of them are in the "
+          "catalogue and none of them were ever going to be.", "heart"),
+    Award("hall", "A Day Out", 12,
+          lambda s: s.conv_wins,
+          "Twelve things won across the hall floor. The queue game is "
+          "the one nobody beats twelve times by luck.", "star"),
+    Award("full", "The Complete Binder", 1,
+          lambda s: 1 if s.complete else 0,
+          "Every breed in every collection, taken to ten and withdrawn. "
+          "There is no larger award and Derek has only two left.",
+          "crown"),
+)
+BY_AWARD = {a.key: a for a in AWARDS}
+
+
 # ---------------------------------------------------------------------------
 # THE FOUNDRY LINE
 #
@@ -5652,6 +5736,8 @@ class State:
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
         self.shelf = set()          # which of the foundry line you own
+        self.awards = set()         # ... and which of the awards you won
+        self.award_t = 0.0          # when to look at that again
         self.standing = None        # a pack the shop re-orders for you
         self.wants = []             # breeds you have asked the world for
         self.offers = []            # ... and what came back
@@ -5700,6 +5786,24 @@ class State:
     def retired_breed(self, key):
         c = self.cards.get(key)
         return c is not None and c.maxed
+
+    # -- the awards -------------------------------------------------------
+    def check_awards(self, dt=0.0):
+        """Anything newly won, as a list. Checked four times a minute.
+
+        Nine predicates is nothing, but two of them count every card in
+        the binder, and doing that sixty times a second for a thing
+        that changes about nine times a game is work for its own sake.
+        """
+        self.award_t -= dt
+        if dt and self.award_t > 0:
+            return []
+        self.award_t = 15.0
+        got = [a for a in AWARDS
+               if a.key not in self.awards and a.won(self)]
+        for a in got:
+            self.awards.add(a.key)
+        return got
 
     def can_cast(self, st):
         """They will not sell you the statue of a cat you have not
@@ -6453,6 +6557,7 @@ class State:
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
             "shelf": sorted(self.shelf),
+            "awards": sorted(self.awards),
             "standing": list(self.standing) if self.standing else None,
             "wants": list(self.wants),
             "offers": [o.to_row() for o in self.offers],
@@ -6523,6 +6628,7 @@ class State:
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
         s.shelf = {k for k in (d.get("shelf") or ()) if k in BY_STATUE}
+        s.awards = {k for k in (d.get("awards") or ()) if k in BY_AWARD}
         row = d.get("standing")
         if row and row[0] in BY_PACK:
             s.standing = (row[0], int(clamp(int(row[1]), 1, BULK)),
@@ -9359,6 +9465,35 @@ def _mat(surf, parcels, t, r=None):
 # ---------------------------------------------------------------------------
 # THE HALL
 # ---------------------------------------------------------------------------
+
+def _award_shelf(surf, state, t):
+    """The awards, on the hall wall where a visitor would see them.
+
+    Which is the only place for them: the study is where the work
+    happens and the hall is where you are on the way out. Nine spaces,
+    and the empty ones stay empty rather than closing up, because a
+    gap is the part that says there is another one.
+    """
+    r = pygame.Rect(836, 300, 254, 10)
+    if not state.awards:
+        return
+    pygame.draw.rect(surf, WOOD_HI, r, border_radius=2)
+    pygame.draw.rect(surf, shade(WOOD, 0.75), (r.x, r.bottom - 4, r.w, 4))
+    for bx in (r.x + 18, r.right - 24):
+        pygame.draw.polygon(surf, shade(WOOD, 0.8),
+                            [(bx, r.bottom), (bx + 8, r.bottom),
+                             (bx, r.bottom + 11)])
+    glow(surf, (r.centerx, r.y - 16), 150, mix(LAMP, EMBER, 0.45), 0.08)
+    step = r.w / len(AWARDS)
+    for i, a in enumerate(AWARDS):
+        if a.key not in state.awards:
+            continue
+        _trophy(surf, r.x + step * (i + 0.5), r.y + 1, a.cup, 32,
+                0.9 + 0.1 * math.sin(t * 0.7 + i))
+    text(surf, "THE KITTY AWARDS", 11, (r.centerx, r.bottom + 14),
+         shade(TEA, 0.95), center=True, kind="mono", shadow=False)
+
+
 def _hall(surf, state, t):
     surf.fill(INK)
     _wallpaper(surf, HALL_FLOOR, (24, 19, 18), (40, 31, 28), 58)
@@ -9486,6 +9621,7 @@ def _hall(surf, state, t):
         surf.blit(img, r)
         glow(surf, (r.centerx, r.centery), 150, mix(LAMP, CREAM, 0.3),
              0.09 + 0.03 * math.sin(t * 2.0))
+    _award_shelf(surf, state, t)
     draw_cats(surf, state, "hall", t)
     # the near wall of the box, over whoever has got into it
     front = pygame.Rect(box.x, box.y + 22, box.w, box.h - 22)
@@ -9586,6 +9722,85 @@ def statue_art(statue, h):
                    - sil.get_height()))
     _statues[key] = out
     return out
+
+
+BRASS = (166, 126, 58)
+BRASS_HI = (214, 176, 96)
+
+
+def _trophy(surf, x, y, kind, h=34, lit=1.0):
+    """One award, standing on its base at (x, y).
+
+    Five shapes rather than one, because a shelf of nine identical
+    cups is a shelf nobody looks at twice.
+    """
+    # `lit` carries two jobs: the slow breathe on the shelf, and the
+    # one a page uses to show an award nobody has won. Dimming has to
+    # be in the colour - laying a grey box over the top leaves a hard
+    # edge the moment the tile behind it is any other shade.
+    k = 0.40 + 0.60 * clamp(lit, 0.0, 1.2)
+    col = shade(mix(BRASS, LAMP, 0.10 * lit), k)
+    hi = shade(mix(BRASS_HI, CREAM, 0.14 * lit), k)
+    base = pygame.Rect(x - h * 0.26, y - h * 0.15, h * 0.52, h * 0.15)
+    pygame.draw.rect(surf, mix(WALNUT, LAMP, 0.08), base, border_radius=2)
+    pygame.draw.rect(surf, shade(WALNUT, 1.35), (base.x, base.y, base.w, 2))
+    cy = base.y
+    if kind == "cup":
+        bowl = pygame.Rect(x - h * 0.20, cy - h * 0.46, h * 0.40, h * 0.36)
+        pygame.draw.line(surf, col, (x, cy), (x, bowl.bottom - 2), 3)
+        pygame.draw.ellipse(surf, col, bowl)
+        pygame.draw.ellipse(surf, hi, (bowl.x + 2, bowl.y + 2,
+                                       bowl.w * 0.36, bowl.h * 0.6))
+        for sx in (-1, 1):
+            pygame.draw.arc(surf, col,
+                            (x + sx * h * 0.24 - h * 0.09, bowl.y + 2,
+                             h * 0.18, h * 0.26),
+                            -1.4 if sx > 0 else 1.7,
+                            1.4 if sx > 0 else 4.6, 2)
+        pygame.draw.ellipse(surf, hi, (bowl.x, bowl.y, bowl.w, h * 0.09), 2)
+    elif kind == "star":
+        pygame.draw.line(surf, col, (x, cy), (x, cy - h * 0.34), 3)
+        _star(surf, x, cy - h * 0.48, h * 0.21, col)
+        _star(surf, x - h * 0.03, cy - h * 0.51, h * 0.11, hi)
+    elif kind == "rosette":
+        pygame.draw.line(surf, mix(EMBER, LAMP, 0.3),
+                         (x - h * 0.08, cy), (x - h * 0.10, cy - h * 0.22), 3)
+        pygame.draw.line(surf, mix(EMBER, LAMP, 0.3),
+                         (x + h * 0.08, cy), (x + h * 0.10, cy - h * 0.22), 3)
+        for i in range(9):
+            a = i / 9 * TAU
+            pygame.draw.circle(surf, mix(EMBER, LAMP, 0.35),
+                               (int(x + math.cos(a) * h * 0.15),
+                                int(cy - h * 0.36 + math.sin(a) * h * 0.15)),
+                               max(2, int(h * 0.09)))
+        pygame.draw.circle(surf, hi, (int(x), int(cy - h * 0.36)),
+                           max(2, int(h * 0.11)))
+    elif kind == "gavel":
+        pygame.draw.line(surf, mix(WALNUT, LAMP, 0.25),
+                         (x - h * 0.16, cy - h * 0.10),
+                         (x + h * 0.20, cy - h * 0.40), 3)
+        head = pygame.Rect(0, 0, h * 0.30, h * 0.17)
+        head.center = (x + h * 0.18, cy - h * 0.42)
+        pygame.draw.rect(surf, col, head, border_radius=2)
+        pygame.draw.rect(surf, hi, (head.x, head.y, head.w, 2))
+    elif kind == "heart":
+        pygame.draw.line(surf, col, (x, cy), (x, cy - h * 0.26), 3)
+        for sx in (-1, 1):
+            pygame.draw.circle(surf, mix(EMBER, LAMP, 0.4),
+                               (int(x + sx * h * 0.09), int(cy - h * 0.40)),
+                               max(2, int(h * 0.10)))
+        pygame.draw.polygon(surf, mix(EMBER, LAMP, 0.4),
+                            [(x - h * 0.19, cy - h * 0.39),
+                             (x + h * 0.19, cy - h * 0.39),
+                             (x, cy - h * 0.16)])
+    else:                                    # crown, and there is one
+        pygame.draw.line(surf, col, (x, cy), (x, cy - h * 0.24), 3)
+        pts = [(x - h * 0.22, cy - h * 0.26), (x - h * 0.22, cy - h * 0.50),
+               (x - h * 0.11, cy - h * 0.38), (x, cy - h * 0.56),
+               (x + h * 0.11, cy - h * 0.38), (x + h * 0.22, cy - h * 0.50),
+               (x + h * 0.22, cy - h * 0.26)]
+        pygame.draw.polygon(surf, col, pts)
+        pygame.draw.polygon(surf, hi, pts, 1)
 
 
 def _shelf(surf, state=None):
@@ -11025,6 +11240,26 @@ class GameBase:
         if self.focus_t > 0:
             self.focus_t = max(0.0, self.focus_t - dt)
         st = self.state
+        # The first look happens on the first frame, so that a save made
+        # before any of this existed is told what it has already won
+        # rather than sitting on it for fifteen seconds. Which means it
+        # can arrive as nine at once, and nine bells and nine toasts is
+        # a racket - four of which would be dropped on the floor
+        # anyway, because the tray holds four.
+        new_awards = st.check_awards(dt)
+        if len(new_awards) > 2:
+            self.beep("bell")
+            self.toast(f"the kitty awards: {len(new_awards)} of them",
+                       f"{len(st.awards)} of {len(AWARDS)} on the shelf in "
+                       f"the hall, and the club wants its bags back",
+                       mix(LAMP, CREAM, 0.4), 14.0)
+        else:
+            for a in new_awards:
+                self.beep("bell")
+                self.toast("the kitty awards: " + a.name.lower(),
+                           f"{len(st.awards)} of {len(AWARDS)} - it goes on "
+                           f"the shelf in the hall", mix(LAMP, CREAM, 0.4),
+                           12.0)
         before = st.income
         landed = st.tick(dt)
         for a, got in st.won_lots:
@@ -11660,7 +11895,8 @@ class ShopMixin:
                       for x in st.series if x.key != "cat"]
         rest_row = [("home", "THE FLAT"), ("merch", "MERCH"),
                     ("line", "THE LINE"), ("room", "THE ROOM"),
-                    ("orders", "ORDERS"), ("club", "THE CLUB")]
+                    ("orders", "ORDERS"), ("club", "THE CLUB"),
+                    ("awards", "AWARDS")]
         for row, items in ((0, cards_row), (1, rest_row)):
             tx = x
             for key, label in items:
@@ -11717,6 +11953,8 @@ class ShopMixin:
             self.draw_merch(s, body)
         elif self.tab == "line":
             self.draw_line(s, body)
+        elif self.tab == "awards":
+            self.draw_awards(s, body)
         elif self.tab == "room":
             self.draw_room_page(s, body)
         elif self.tab == "orders":
@@ -12432,6 +12670,59 @@ class ShopMixin:
                     (r.right - 104, r.bottom - 42, 90, 30), "BUY",
                     ("merch", m.key), "solid", 15, kind="mono",
                     enabled=st.money >= m.price))
+
+    # -- the awards --------------------------------------------------------
+    def draw_awards(self, s, body):
+        """Nine of them, and how far off each one is.
+
+        The ones you have not got are the point of this page. An
+        achievement list that hides what you have not done is a list of
+        things you already know.
+        """
+        st = self.state
+        got = len(st.awards)
+        text(s, "THE KITTY AWARDS", 22, (body.x, body.y), warm(CREAM, 0.2))
+        text(s, f"{got} of {len(AWARDS)}", 18, (body.right - 10, body.y + 4),
+             GOOD if got else MUTED, right=True, kind="mono")
+        text(s, "The club gives these out. They are worth nothing at all - "
+                "not a penny a second, not one better card - and they go on "
+                "the shelf in the hall.", 13, (body.x, body.y + 28), MUTED,
+             kind="mono", max_w=body.w - 120)
+
+        top = body.y + 58
+        rowh = (body.bottom - top) // 3
+        for i, a in enumerate(AWARDS):
+            col, row = divmod(i, 3)
+            r = pygame.Rect(body.x + col * (body.w // 3 + 4),
+                            top + row * rowh, body.w // 3 - 14, rowh - 8)
+            self._award_tile(s, r, a)
+
+    def _award_tile(self, s, r, a):
+        st = self.state
+        have = a.key in st.awards
+        at = a.at(st)
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.12 if have else 0.02),
+              shade(EMBER, 0.75) if have else shade(SCREEN_HI, 1.4),
+              radius=8, shadow=False)
+        _trophy(s, r.x + 30, r.y + 46, a.cup, 40 if have else 34,
+                1.0 if have else 0.0)
+        text(s, a.name, 16, (r.x + 64, r.y + 8),
+             warm(CREAM, 0.2) if have else shade(TEA, 0.95), max_w=r.w - 76)
+        paragraph(s, a.blurb, 11, (r.x + 64, r.y + 30),
+                  MUTED if have else shade(MUTED, 0.8), r.w - 78, 4,
+                  kind="mono")
+        if have:
+            text(s, "WON", 13, (r.right - 12, r.bottom - 18), GOOD,
+                 right=True, kind="mono")
+            return
+        if a.want > 1:
+            br = pygame.Rect(r.x + 64, r.bottom - 24, r.w - 112, 8)
+            bar(s, br, at / a.want, mix(EMBER, LAMP, 0.3), shade(DEEP, 1.6))
+            text(s, f"{at} of {a.want}", 11, (r.right - 12, r.bottom - 24),
+                 TEA, right=True, kind="mono", shadow=False)
+        else:
+            text(s, "not yet", 12, (r.right - 12, r.bottom - 20),
+                 shade(TEA, 0.9), right=True, kind="mono", shadow=False)
 
     # -- the wall at the end of the cat room ---------------------------
     # -- the foundry line --------------------------------------------------
