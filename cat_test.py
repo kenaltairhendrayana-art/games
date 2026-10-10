@@ -30,6 +30,8 @@ legends arrive sooner too.
 import math
 import os
 import random
+import shutil
+import tempfile
 import sys
 import time
 
@@ -38,6 +40,12 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
 
 import cat_catalogue as cc
+
+# `main` replaces both of these with stubs so that nothing in here can
+# touch the collection on this machine. `backups` is the one test that
+# is ABOUT them, so it needs the real pair - taken now, before main has
+# been anywhere near them, and used only against a temporary folder.
+REAL_SAVE, REAL_LOAD = cc.save_state, cc.load_state
 
 
 # ---------------------------------------------------------------------------
@@ -3497,6 +3505,144 @@ def standing():
     return ok
 
 
+
+def backups():
+    """The ring of old saves behind the live one.
+
+    This test writes save files, which is the one thing the rest of
+    this harness exists to never do. It is safe only because it points
+    `_save_dir` at a temporary folder FIRST and checks that it took
+    before it lifts the headless write guard - and puts both back
+    afterwards whatever happens. If that check ever fails this test
+    must not run, because the thing it would overwrite is somebody's
+    collection.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+    tmp = tempfile.mkdtemp(prefix="catbak")
+    real_dir, real_drv = cc._save_dir, os.environ.get("SDL_VIDEODRIVER")
+    try:
+        cc._save_dir = lambda: tmp
+        if cc._save_dir() != tmp or cc.SAVE_NAME not in \
+                os.path.join(cc._save_dir(), cc.SAVE_NAME):
+            print("  the save folder did not redirect - NOT writing anything")
+            return False
+        os.environ.pop("SDL_VIDEODRIVER", None)
+        ok = _backups_in(tmp)
+    finally:
+        cc._save_dir = real_dir
+        if real_drv is not None:
+            os.environ["SDL_VIDEODRIVER"] = real_drv
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("  backups:", "ok" if ok else "FAILED")
+    return ok
+
+
+def _backups_in(tmp):
+    ok = True
+    live = os.path.join(tmp, cc.SAVE_NAME)
+
+    def put(money):
+        st = cc.State()
+        st.money = money
+        st.seen_intro = True
+        REAL_SAVE(st)
+        return st
+
+    # -- a save with no history behind it leaves the ring alone ---------
+    put(1000)
+    if not os.path.exists(live):
+        print("  the first save did not write at all")
+        return False
+    if cc.backup_rows():
+        print("  a brand new save already has backups behind it")
+        ok = False
+
+    # -- and the ring fills, newest first, oldest off the end -----------
+    for k in range(cc.BACKUPS + 4):
+        put(2000 + k)
+        cc._push_backup(live)       # the clock, hurried along
+    rows = cc.backup_rows()
+    if len(rows) != cc.BACKUPS:
+        print(f"  the ring holds {len(rows)}, not {cc.BACKUPS}")
+        ok = False
+    monies = [None if st is None else round(st.money) for _, _, st in rows]
+    if any(m is None for m in monies):
+        print(f"  a backup in the ring will not load: {monies}")
+        ok = False
+    elif monies != sorted(monies, reverse=True):
+        print(f"  the ring is not newest-first: {monies}")
+        ok = False
+    else:
+        print(f"  {len(rows)} kept, newest first, the oldest falling off")
+
+    # -- spacing: a flurry of saves is not six copies of one minute -----
+    for f in os.listdir(tmp):
+        os.remove(os.path.join(tmp, f))
+    put(3000)
+    for k in range(30):
+        put(3001 + k)               # through save_state, so the clock counts
+    rows = cc.backup_rows()
+    print(f"  31 saves in a row left {len(rows)} backup(s), not 31")
+    if len(rows) > 1:
+        print(f"  {len(rows)} backups from one burst - the spacing is off")
+        ok = False
+
+    # -- a live file that will not parse falls back to the newest good --
+    for f in os.listdir(tmp):
+        os.remove(os.path.join(tmp, f))
+    put(4242)
+    cc._push_backup(live)
+    with open(live, "w", encoding="utf-8") as fh:
+        fh.write("{this is not json")
+    got = REAL_LOAD()
+    if round(got.money) != 4242 or cc._loaded_from != 1:
+        print(f"  a corrupt save loaded {round(got.money)} from "
+              f"{cc._loaded_from}, wanted 4242 from 1")
+        ok = False
+    else:
+        print("  a corrupt live file falls back to the newest backup, "
+              "and says so")
+    with open(live, "w", encoding="utf-8") as fh:
+        fh.write("[1, 2, 3]")        # valid json, wrong shape
+    if round(REAL_LOAD().money) != 4242:
+        print("  a save holding a list instead of an object was accepted")
+        ok = False
+
+    # -- and nothing at all is a new collection, not a crash ------------
+    for f in os.listdir(tmp):
+        os.remove(os.path.join(tmp, f))
+    fresh = REAL_LOAD()
+    if fresh is None or cc._loaded_from is not None:
+        print("  an empty folder did not give a clean new collection")
+        ok = False
+
+    # -- restoring: you get it back, and the undo is the ring -----------
+    put(5000)
+    cc._push_backup(live)
+    put(6000)
+    cc._push_backup(live)
+    put(7000)                        # live is 7000, ring is 6000 then 5000
+    back = cc.restore_backup(2)
+    if back is None or round(back.money) != 5000:
+        print(f"  restoring backup 2 gave "
+              f"{None if back is None else round(back.money)}, wanted 5000")
+        ok = False
+    elif round(REAL_LOAD().money) != 5000:
+        print("  the restore did not reach the live file")
+        ok = False
+    elif round(cc.backup_rows()[0][2].money) != 7000:
+        print("  the file that was replaced is not at the front of the ring")
+        ok = False
+    else:
+        print("  a restore lands, and what it replaced is undoable")
+
+    if cc.restore_backup(cc.BACKUPS + 3) is not None:
+        print("  restored a backup that does not exist")
+        ok = False
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -3578,6 +3724,9 @@ def main():
         print()
     if cmd in ("auctions", "all"):
         ok &= auctions()
+        print()
+    if cmd in ("backups", "all"):
+        ok &= backups()
         print()
     if cmd in ("standing", "all"):
         ok &= standing()

@@ -49,6 +49,7 @@ import json
 import math
 import os
 import random
+import shutil
 import sys
 import time
 from array import array
@@ -241,6 +242,17 @@ def rate(v):
     if v >= 10:
         return f"{v:.1f}/s"
     return f"{v:.2f}/s"
+
+
+def ago_words(secs):
+    """How long ago, roughly. A backup does not need the seconds."""
+    if secs < 90:
+        return "a moment ago"
+    if secs < 5400:
+        return f"{round(secs / 60)} minutes ago"
+    if secs < 172800:
+        return f"{round(secs / 3600)} hours ago"
+    return f"{round(secs / 86400)} days ago"
 
 
 def clock_str(secs):
@@ -6456,13 +6468,150 @@ class State:
         return s
 
 
-def load_state():
+# ---------------------------------------------------------------------------
+# KEEPING MORE THAN ONE COPY OF IT
+#
+# `os.replace` means a save is never half-written, which covers the
+# power cut and covers nothing else. It does not cover a save that was
+# written perfectly and says the wrong thing - a bad migration, a bug
+# in `to_dict`, or the thing that actually happened here, which was a
+# throwaway script writing seventy-four synthetic cards over a real
+# collection. That file was intact. It was simply not the collection.
+#
+# So the last few saves are kept beside the live one, spaced out in
+# time rather than one per write: the game saves on every purchase, and
+# six backups covering the last ninety seconds would be six copies of
+# the same mistake. Spaced at four minutes they cover the last half
+# hour, which is the window in which somebody notices.
+#
+# Rotation copies the PREVIOUS live file, never the state in memory. A
+# file that was loaded and played from is a file known to work; a fresh
+# serialisation of whatever is in memory is exactly the thing the
+# backups are insurance against.
+# ---------------------------------------------------------------------------
+BACKUPS = 6                 # how many are kept behind the live file
+BACKUP_EVERY = 240.0        # ... and the least time between two of them
+
+_loaded_from = None         # which backup the running game came out of
+
+
+def backup_path(i):
+    """Backup 1 is the newest. There is no backup 0; that is the save."""
+    return os.path.join(_save_dir(), f"catalogue.{i}.json")
+
+
+def _push_backup(live):
+    """Put `live` at the front of the ring and shuffle the rest down.
+
+    Best effort throughout: a backup that cannot be written must never
+    stop the save that can.
+    """
+    for i in range(BACKUPS - 1, 0, -1):
+        try:
+            if os.path.exists(backup_path(i)):
+                os.replace(backup_path(i), backup_path(i + 1))
+        except OSError:
+            pass
     try:
-        with open(os.path.join(_save_dir(), SAVE_NAME), encoding="utf-8") as fh:
-            return State.from_dict(json.load(fh))
+        shutil.copy2(live, backup_path(1))
+    except OSError:
+        pass
+
+
+def _rotate_backups():
+    """Push the live file onto the ring, if enough time has gone by."""
+    live = os.path.join(_save_dir(), SAVE_NAME)
+    if not os.path.exists(live):
+        return
+    try:
+        if os.path.exists(backup_path(1)) and \
+                os.path.getmtime(live) - os.path.getmtime(backup_path(1)) \
+                < BACKUP_EVERY:
+            return
+    except OSError:
+        return
+    _push_backup(live)
+
+
+def _read_save(path):
+    """A state, or None if that file is not a save."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+        if not isinstance(d, dict):
+            return None
+        return State.from_dict(d)
     except (OSError, ValueError, TypeError, KeyError, IndexError,
             AttributeError):
+        return None
+
+
+def backup_rows():
+    """What is in the ring, newest first, for the menu to list.
+
+    Each one is read rather than trusted: a backup that will not load
+    is not a backup, and saying so on the screen beats finding out at
+    the moment somebody restores it.
+    """
+    out = []
+    for i in range(1, BACKUPS + 1):
+        path = backup_path(i)
+        if not os.path.exists(path):
+            continue
+        try:
+            when = os.path.getmtime(path)
+        except OSError:
+            continue
+        out.append((i, when, _read_save(path)))
+    return out
+
+
+def restore_backup(i):
+    """Put one back, keeping the file it replaces at the front of the
+    ring - so restoring the wrong one is itself undoable."""
+    if os.environ.get("SDL_VIDEODRIVER") == "dummy" \
+            or os.environ.get("CATALOGUE_READONLY"):
+        return None
+    src = backup_path(i)
+    st = _read_save(src)
+    if st is None:
+        return None
+    live = os.path.join(_save_dir(), SAVE_NAME)
+    try:
+        with open(src, encoding="utf-8") as fh:
+            keep = fh.read()
+        if os.path.exists(live):
+            _push_backup(live)      # which moves src down a slot as well
+        tmp = live + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(keep)
+        os.replace(tmp, live)
+    except OSError:
+        return None
+    return st
+
+
+def load_state():
+    """The live file, or the newest backup that still reads.
+
+    `_loaded_from` is left saying which, because a game that quietly
+    carries on from a half-hour-old save without mentioning it is worse
+    than one that lost the lot.
+    """
+    global _loaded_from
+    _loaded_from = None
+    live = os.path.join(_save_dir(), SAVE_NAME)
+    if not os.path.exists(live):
         return State()
+    st = _read_save(live)
+    if st is not None:
+        return st
+    for i in range(1, BACKUPS + 1):
+        st = _read_save(backup_path(i))
+        if st is not None:
+            _loaded_from = i
+            return st
+    return State()
 
 
 def save_state(state):
@@ -6479,10 +6628,12 @@ def save_state(state):
     process is a process with no window, which this game cannot be
     played in, so it is a process that must not save.
     """
-    if os.environ.get("SDL_VIDEODRIVER") == "dummy"             or os.environ.get("CATALOGUE_READONLY"):
+    if os.environ.get("SDL_VIDEODRIVER") == "dummy" \
+            or os.environ.get("CATALOGUE_READONLY"):
         return
     try:
         path = os.path.join(_save_dir(), SAVE_NAME)
+        _rotate_backups()           # the file as it stands, before this write
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(state.to_dict(), fh)
@@ -9561,6 +9712,7 @@ class GameBase:
         self.floats = []
         self.was_conv = self.state.convention()
         self.autosave = 0.0
+        self.confirm = None         # a backup waiting to be confirmed
         self.coin_timer = 0.0
         self.since_coin = 0.0
         # The balance the SCREEN shows, which is not the balance the game
@@ -9606,6 +9758,15 @@ class GameBase:
             self.toasts.append(Toast(
                 "click the laptop",
                 "it is the only way cards get into this room", LAMP, 14.0))
+        if _loaded_from is not None:
+            # Loudest thing on the screen, and it stays up: carrying on
+            # quietly from a half-hour-old save would be the game losing
+            # a collection without ever saying it had.
+            self.toasts.append(Toast(
+                "the save would not open",
+                f"this is the backup from before it - {self.state.owned} "
+                f"breeds, {clock_str(self.state.played)} at the desk",
+                LAMP, 20.0))
         if self.state.away > 0.5:
             self.toasts.append(Toast(
                 f"while you were out: {money(self.state.away)}",
@@ -9621,6 +9782,7 @@ class GameBase:
         if scene != self.scene:
             self.scene = scene
             self.buttons = []
+            self.confirm = None     # an armed restore does not follow you
             self.beep("page")
 
     def can_enter(self, area):
@@ -9678,6 +9840,36 @@ class GameBase:
     def toast(self, text, sub="", colour=None, life=5.0):
         self.toasts.insert(0, Toast(text, sub, colour, life))
         del self.toasts[4:]
+
+    def put_back(self, i):
+        """Two presses: the first arms it, the second does it."""
+        if self.confirm != i:
+            self.confirm = i
+            self.beep("page")
+            return
+        self.confirm = None
+        # Write where you are now before leaving it. `restore_backup`
+        # keeps whatever is in the live file, so saving first is what
+        # makes the thing at the front of the ring the collection you
+        # actually walked away from rather than the last autosave.
+        save_state(self.state)
+        got = restore_backup(i)
+        if got is None:
+            self.toast("that one would not open", "nothing has been changed",
+                       BAD, 8.0)
+            return
+        self.state = got
+        self.area = got.area
+        self.room = CatRoom()
+        self.room.sync(got, room_cap(got))
+        self.shown = self.shown_exact = got.money
+        self.was_conv = got.convention()
+        self.focus = None
+        self.beep("level")
+        self.go("room")
+        self.toast("put back",
+                   f"{got.owned} breeds, {clock_str(got.played)} at the desk",
+                   GOOD, 10.0)
 
     def save(self):
         save_state(self.state)
@@ -9884,6 +10076,8 @@ class GameBase:
             music(self.state.music)
         elif name == "sound":
             self.state.sound = not self.state.sound
+        elif name == "restore":
+            self.put_back(val)
         elif name == "quit":
             pygame.event.post(pygame.event.Event(pygame.QUIT))
 
@@ -10455,6 +10649,8 @@ class GameBase:
             self.draw_mini(s)
         elif self.scene == "menu":
             self.draw_menu(s)
+        elif self.scene == "saves":
+            self.draw_saves(s)
         elif self.scene == "end":
             self.draw_end(s)
         else:
@@ -12844,9 +13040,84 @@ class MenuMixin:
         self.buttons.append(Button((r.centerx + 100, r.bottom - 76, 150, 44),
                                    "CLOSE", ("scene", "room"), "solid", 17,
                                    kind="mono"))
-        self.buttons.append(Button((r.centerx - 70, r.bottom - 26, 140, 22),
+        self.buttons.append(Button((r.centerx - 250, r.bottom - 26, 160, 22),
+                                   "earlier saves", ("scene", "saves"),
+                                   "link", 14, kind="mono", colour=TEA))
+        self.buttons.append(Button((r.centerx + 90, r.bottom - 26, 160, 22),
                                    "quit the game", ("quit", None), "link",
                                    14, kind="mono", colour=MUTED))
+
+    def draw_saves(self, s):
+        """The ring of old saves, and the one button that goes back.
+
+        Restoring is the most destructive thing in the game, so it asks
+        twice and says exactly what it is about to put back - and what
+        it is about to put back is itself kept, which is the sentence
+        under the list.
+        """
+        self.draw_room(s)
+        del self.buttons[:]
+        dim = pygame.Surface((W, H), pygame.SRCALPHA)
+        dim.fill((8, 6, 6, 212))
+        s.blit(dim, (0, 0))
+        st = self.state
+        r = pygame.Rect(W // 2 - 360, 96, 720, 560)
+        panel(s, r, mix(DEEP, WOOD, 0.3), shade(TEA, 0.5), radius=12)
+        text(s, "EARLIER SAVES", 30, (r.centerx, r.y + 24), warm(CREAM, 0.2),
+             center=True)
+        text(s, "the game keeps the last few, a few minutes apart",
+             13, (r.centerx, r.y + 64), TEA, center=True, kind="mono")
+        hairline(s, r.x + 40, r.y + 90, r.right - 40, TEA, 70)
+
+        text(s, "NOW", 12, (r.x + 40, r.y + 104), warm(EMBER, 0.2),
+             kind="mono")
+        text(s, f"{st.owned} breeds    {clock_str(st.played)} at the desk"
+                f"    {money(st.money)}", 14, (r.x + 110, r.y + 103),
+             mix(TEA, CREAM, 0.35), kind="mono")
+
+        rows = backup_rows()
+        y = r.y + 136
+        if not rows:
+            text(s, "nothing behind it yet", 18, (r.centerx, y + 40), MUTED,
+                 center=True, kind="mono")
+            text(s, "the first one is kept a few minutes into playing",
+                 13, (r.centerx, y + 72), DIM, center=True, kind="mono")
+        for i, when, old in rows:
+            row = pygame.Rect(r.x + 36, y, r.w - 72, 56)
+            armed = self.confirm == i
+            panel(s, row, mix(SCREEN_HI, EMBER, 0.10 if armed else 0.02),
+                  mix(LAMP, EMBER, 0.4) if armed else shade(SCREEN_HI, 1.3),
+                  radius=8, shadow=False)
+            ago = max(0.0, time.time() - when)
+            text(s, ago_words(ago), 15, (row.x + 14, row.y + 8),
+                 mix(TEA, CREAM, 0.3), kind="mono")
+            if old is None:
+                text(s, "this one will not open", 13, (row.x + 14,
+                     row.y + 30), BAD, kind="mono")
+            else:
+                text(s, f"{old.owned} breeds    "
+                        f"{clock_str(old.played)} at the desk    "
+                        f"{money(old.money)}", 13,
+                     (row.x + 14, row.y + 31), MUTED, kind="mono")
+                lost = st.owned - old.owned
+                if lost > 0:
+                    text(s, f"{lost} fewer than now", 12,
+                         (row.right - 150, row.y + 31), LAMP, right=True,
+                         kind="mono", shadow=False)
+                self.buttons.append(Button(
+                    (row.right - 134, row.y + 10, 118, 36),
+                    "SURE?" if armed else "PUT IT BACK",
+                    ("restore", i), "solid" if armed else "plain", 14,
+                    kind="mono",
+                    colour=warm(CREAM, 0.2) if armed else TEA))
+            y += 62
+
+        text(s, "Putting one back keeps the save it replaces, so this is "
+                "not a one-way door.", 12, (r.centerx, r.bottom - 96), DIM,
+             center=True, kind="mono", max_w=r.w - 90)
+        self.buttons.append(Button((r.centerx - 80, r.bottom - 68, 160, 42),
+                                   "BACK", ("scene", "menu"), "solid", 16,
+                                   kind="mono"))
 
     def draw_end(self, s):
         self.draw_room(s)
