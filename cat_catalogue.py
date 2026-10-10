@@ -5097,6 +5097,78 @@ MERCH = (
 BY_MERCH = {m.key: m for m in MERCH}
 
 
+
+# ---------------------------------------------------------------------------
+# THE FOUNDRY LINE
+#
+# Retiring a breed is the whole late game and it has never paid you a
+# penny. It takes the card out of the packs, which is the mechanism, and
+# then nothing happens: ninety duplicates and the reward is an absence.
+#
+# So the company does what every company with a back catalogue does and
+# starts a statue line. Cold-cast resin, numbered, one cat each, and
+# they will only sell you the statue of a cat you have RETIRED - which
+# is the whole conceit. You are not buying an ornament. You are buying
+# the thing that says you finished one, and they know perfectly well you
+# will want the set.
+#
+# They are released in order and priced like late-game money, because
+# late-game money is the thing this game has too much of: a full binder
+# used to leave you with nothing to spend on at all, which the ending
+# screen says out loud. Six of these is three and a half million.
+#
+# The last one is an ARCHIVE card nobody retires in a hurry, and that is
+# deliberate too. A line you can finish on the same evening you start it
+# is a shelf, not a line.
+# ---------------------------------------------------------------------------
+class Statue:
+    __slots__ = ("key", "breed", "name", "price", "gain", "blurb")
+
+    def __init__(self, key, breed, name, price, gain, blurb):
+        self.key = key
+        self.breed = breed          # the cat it is of, which must be retired
+        self.name = name
+        self.price = price
+        self.gain = gain
+        self.blurb = blurb
+
+    @property
+    def cat(self):
+        return BY_KEY[self.breed]
+
+
+STATUES = (
+    Statue("st1", "bom", "No. 1, The Bombay", 90000, 0.06,
+           "The one they always do first, because everybody has one and "
+           "everybody will buy it. Sat on a gloss black plinth, looking "
+           "at something behind you."),
+    Statue("st2", "bsh", "No. 2, The British Shorthair", 190000, 0.07,
+           "Loafed, with its feet under it. The mould line down the back "
+           "is visible if you go looking, and collectors do."),
+    Statue("st3", "ben", "No. 3, The Bengal", 390000, 0.09,
+           "Mid-stride, one paw off the base, and hand-spotted - which "
+           "is why no two of them have quite the same rosettes."),
+    Statue("st4", "sav", "No. 4, The Savannah", 760000, 0.11,
+           "Standing to its full height, which on this one is most of a "
+           "foot. The box it comes in will not go in the recycling."),
+    Statue("st5", "chartreux", "No. 5, The Blue Monk", 1400000, 0.13,
+           "Cast from the original card art rather than a photograph, "
+           "because there are no photographs. Numbered on the underside "
+           "in ink that is already fading."),
+    Statue("st6", "plate", "No. 6, Plate One", 2600000, 0.16,
+           "The last in the line and the only one anybody argues about. "
+           "Not a cat at all: the printing plate, at full size, in "
+           "bronze, on walnut. They made four hundred."),
+)
+BY_STATUE = {x.key: x for x in STATUES}
+LINE_BONUS = 0.25          # for having the set, which is the point of a set
+
+
+def statue_order():
+    """The line in the order the company released it."""
+    return STATUES
+
+
 # ---------------------------------------------------------------------------
 # THE SWAP BOARD
 #
@@ -5579,6 +5651,7 @@ class State:
         self.told = set()           # ... and the ones announced to you
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
+        self.shelf = set()          # which of the foundry line you own
         self.standing = None        # a pack the shop re-orders for you
         self.wants = []             # breeds you have asked the world for
         self.offers = []            # ... and what came back
@@ -5614,6 +5687,35 @@ class State:
         return 1.0 + sum(BY_MERCH[k].income for k in self.kit
                          if k in BY_MERCH)
 
+    # -- the foundry line -------------------------------------------------
+    @property
+    def line(self):
+        """What the statues add. The set is worth more than the six of
+        them, which is the only reason anybody buys the sixth."""
+        got = sum(BY_STATUE[k].gain for k in self.shelf if k in BY_STATUE)
+        if len(self.shelf) >= len(STATUES):
+            got += LINE_BONUS
+        return 1.0 + got
+
+    def retired_breed(self, key):
+        c = self.cards.get(key)
+        return c is not None and c.maxed
+
+    def can_cast(self, st):
+        """They will not sell you the statue of a cat you have not
+        finished. That is the entire product."""
+        return (st.key not in self.shelf
+                and self.retired_breed(st.breed)
+                and self.money + 1e-6 >= st.price)
+
+    def buy_statue(self, st):
+        if not self.can_cast(st):
+            return False
+        self.money -= st.price
+        self.spent += st.price
+        self.shelf.add(st.key)
+        return True
+
     @property
     def shiny_gear(self):
         out = 1.0
@@ -5638,7 +5740,7 @@ class State:
     def income(self):
         raw = sum(BY_KEY[k].rate_at(c.level) * (SHINY_BONUS if c.shiny else 1)
                   for k, c in self.cards.items())
-        return raw * self.comfort * self.gear
+        return raw * self.comfort * self.gear * self.line
 
     @property
     def owned(self):
@@ -6350,6 +6452,7 @@ class State:
             "told": sorted(self.told),
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
+            "shelf": sorted(self.shelf),
             "standing": list(self.standing) if self.standing else None,
             "wants": list(self.wants),
             "offers": [o.to_row() for o in self.offers],
@@ -6419,6 +6522,7 @@ class State:
         s.out.add("cat")
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
+        s.shelf = {k for k in (d.get("shelf") or ()) if k in BY_STATUE}
         row = d.get("standing")
         if row and row[0] in BY_PACK:
             s.standing = (row[0], int(clamp(int(row[1]), 1, BULK)),
@@ -9427,7 +9531,64 @@ def _window(surf, t, sky=0):
                                               sill.w, 4))
 
 
-def _shelf(surf):
+BRONZE = (104, 76, 44)
+WALNUT = (74, 50, 36)
+_statues = {}
+
+
+def statue_art(statue, h):
+    """One statue, cast from the cat it is of.
+
+    The silhouette comes off the same routine that draws the card, so
+    the Bengal statue is Bengal-shaped and the Savannah stands a head
+    taller than the rest of the shelf - which is the only reason to
+    have six of these rather than six identical ornaments.
+
+    Cached: a mask and a scale every frame, six times over, for
+    something that never changes.
+    """
+    key = (statue.key, int(h))
+    got = _statues.get(key)
+    if got is not None:
+        return got
+    base = max(4, int(h * 0.22))
+    out = pygame.Surface((int(h * 1.05), int(h) + base), pygame.SRCALPHA)
+    plinth = pygame.Rect(0, out.get_height() - base, out.get_width(), base)
+    pygame.draw.rect(out, WALNUT, plinth, border_radius=2)
+    pygame.draw.rect(out, shade(WALNUT, 1.35), (plinth.x, plinth.y,
+                                                plinth.w, 2))
+    if statue.breed == "plate":
+        # Not a cat at all: the printing plate, at full size, in bronze.
+        pl = pygame.Rect(int(h * 0.18), int(h * 0.20),
+                         int(h * 0.68), int(h * 0.78))
+        pygame.draw.rect(out, BRONZE, pl, border_radius=1)
+        pygame.draw.rect(out, shade(BRONZE, 1.4), pl, width=1)
+        for i in range(4):
+            hairline(out, pl.x + 4, pl.y + 7 + i * int(pl.h / 5),
+                     pl.right - 4, shade(BRONZE, 0.6), 150)
+        _statues[key] = out
+        return out
+    cat = cat_surface(statue.cat, "sit", int(h * 1.5), level=MAX_LEVEL)
+    try:
+        sil = pygame.mask.from_surface(cat).to_surface(
+            setcolor=(*BRONZE, 255), unsetcolor=(0, 0, 0, 0))
+    except (ValueError, AttributeError):
+        _statues[key] = out
+        return out
+    cw = max(3, int(h * 0.92 * cat.get_width() / max(1, cat.get_height())))
+    sil = pygame.transform.smoothscale(sil, (cw, max(3, int(h * 0.92))))
+    # a lit edge down one side, since a flat fill is a hole in the shelf
+    lit = pygame.mask.from_surface(sil).to_surface(
+        setcolor=(*mix(BRONZE, LAMP, 0.30), 255), unsetcolor=(0, 0, 0, 0))
+    out.blit(lit, ((out.get_width() - cw) // 2 - 1,
+                   plinth.y - sil.get_height() - 1))
+    out.blit(sil, ((out.get_width() - cw) // 2 + 1, plinth.y
+                   - sil.get_height()))
+    _statues[key] = out
+    return out
+
+
+def _shelf(surf, state=None):
     r = pygame.Rect(318, 174, 382, 13)
     pygame.draw.rect(surf, WOOD_HI, r, border_radius=2)
     pygame.draw.rect(surf, shade(WOOD, 0.75), (r.x, r.bottom - 4, r.w, 4))
@@ -9445,6 +9606,26 @@ def _shelf(surf):
     pygame.draw.polygon(surf, mix((84, 70, 58), LAMP, 0.1),
                         [(x + 2, r.y), (x + 16, r.y),
                          (x + 30, r.y - 52), (x + 16, r.y - 56)])
+    if state is None or not state.shelf:
+        return
+    # The line gets a plank of its own, which goes up the day the first
+    # one arrives. Six of them among the books does not read as a line,
+    # it reads as clutter - and they were standing on the books.
+    u = pygame.Rect(r.x, 104, r.w, 11)
+    pygame.draw.rect(surf, WOOD_HI, u, border_radius=2)
+    pygame.draw.rect(surf, shade(WOOD, 0.75), (u.x, u.bottom - 4, u.w, 4))
+    for bx in (u.x + 24, u.right - 28):      # the brackets under it
+        pygame.draw.polygon(surf, shade(WOOD, 0.8),
+                            [(bx, u.bottom), (bx + 10, u.bottom),
+                             (bx, u.bottom + 13)])
+    glow(surf, (u.centerx, u.y - 14), 190, mix(LAMP, EMBER, 0.45), 0.07)
+    sx = u.x + 16
+    for st in STATUES:                       # in the order it was released
+        if st.key not in state.shelf:
+            continue
+        art = statue_art(st, 42)
+        surf.blit(art, (sx, u.y - art.get_height() + 2))
+        sx += art.get_width() + 6
 
 
 def _desk(surf):
@@ -9634,7 +9815,7 @@ def _study(surf, state, t):
     surf.fill(INK)
     _wall(surf, t)
     _window(surf, t, weather_of(state.played))
-    _shelf(surf)
+    _shelf(surf, state)
     _desk(surf)
     _floor(surf)
     if "rug" in state.things:
@@ -10307,6 +10488,8 @@ class GameBase:
                 self.intro_next()
         elif name == "merch":
             self.buy_merch(val)
+        elif name == "statue":
+            self.buy_statue(val)
         elif name == "bigroom":
             self.take_the_room()
         elif name == "club":
@@ -10575,6 +10758,25 @@ class GameBase:
                 else "one you already had")
         self.toast(f"{got.breed.name} is yours", word,
                    mix(LAMP, CREAM, 0.3), 10.0)
+        self.save()
+
+    def buy_statue(self, key):
+        st = self.state
+        x = BY_STATUE.get(key)
+        if x is None or not st.buy_statue(x):
+            return
+        self.beep("shiny")
+        self.shown_exact = st.money
+        if len(st.shelf) >= len(STATUES):
+            self.toast("the line is complete",
+                       f"all six on the shelf, and another "
+                       f"{LINE_BONUS * 100:.0f}% a second for it",
+                       mix(LAMP, CREAM, 0.4), 14.0)
+        else:
+            self.toast(x.name.lower() + ", then",
+                       f"{len(st.shelf)} of {len(STATUES)} - it goes on "
+                       f"the shelf over the desk", mix(LAMP, CREAM, 0.3),
+                       10.0)
         self.save()
 
     def buy_merch(self, key):
@@ -11457,8 +11659,8 @@ class ShopMixin:
         cards_row += [(x.shelf, SERIES_TAB.get(x.key, x.key.upper()))
                       for x in st.series if x.key != "cat"]
         rest_row = [("home", "THE FLAT"), ("merch", "MERCH"),
-                    ("room", "THE ROOM"), ("orders", "ORDERS"),
-                    ("club", "THE CLUB")]
+                    ("line", "THE LINE"), ("room", "THE ROOM"),
+                    ("orders", "ORDERS"), ("club", "THE CLUB")]
         for row, items in ((0, cards_row), (1, rest_row)):
             tx = x
             for key, label in items:
@@ -11513,6 +11715,8 @@ class ShopMixin:
                                 shown.shelf)
         elif self.tab == "merch":
             self.draw_merch(s, body)
+        elif self.tab == "line":
+            self.draw_line(s, body)
         elif self.tab == "room":
             self.draw_room_page(s, body)
         elif self.tab == "orders":
@@ -12230,6 +12434,83 @@ class ShopMixin:
                     enabled=st.money >= m.price))
 
     # -- the wall at the end of the cat room ---------------------------
+    # -- the foundry line --------------------------------------------------
+    def draw_line(self, s, body):
+        """Six statues you cannot buy until you have earned them.
+
+        The locked ones are shown, with the cat they want and how far
+        off it is. A line with the unavailable ones hidden would be a
+        page that said nothing until it suddenly said everything.
+        """
+        st = self.state
+        got = len(st.shelf)
+        text(s, "THE FOUNDRY LINE", 22, (body.x, body.y), warm(CREAM, 0.2))
+        text(s, f"{got} of {len(STATUES)}", 18, (body.right - 10, body.y + 4),
+             GOOD if got else MUTED, right=True, kind="mono")
+        text(s, "Cold-cast resin, numbered, one cat each. They will only "
+                "sell you the statue of a cat you have retired - that is "
+                "the whole product.", 13, (body.x, body.y + 28), MUTED,
+             kind="mono", max_w=body.w - 120)
+        if got >= len(STATUES):
+            text(s, f"the complete line: +{LINE_BONUS * 100:.0f}% a second "
+                    f"on top of the six", 13, (body.x, body.y + 48),
+                 warm(EMBER, 0.2), kind="mono")
+        else:
+            text(s, f"all six together are worth another "
+                    f"+{LINE_BONUS * 100:.0f}% a second", 13,
+                 (body.x, body.y + 48), TEA, kind="mono", shadow=False)
+
+        top = body.y + 76
+        rowh = (body.bottom - top) // 3
+        for i, x in enumerate(STATUES):
+            col, row = divmod(i, 3)
+            r = pygame.Rect(body.x + col * (body.w // 2 + 8),
+                            top + row * rowh, body.w // 2 - 16, rowh - 10)
+            self._statue_tile(s, r, x)
+
+    def _statue_tile(self, s, r, x):
+        st = self.state
+        have = x.key in st.shelf
+        ready = st.retired_breed(x.breed)
+        acc = rarity_colour(x.cat.rarity)
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.12 if have else 0.03),
+              shade(EMBER, 0.7) if have else
+              shade(acc, 0.5) if ready else shade(SCREEN_HI, 1.4),
+              radius=8, shadow=False)
+        text(s, x.name, 17, (r.x + 14, r.y + 8),
+             warm(CREAM, 0.2) if have else CREAM if ready else shade(TEA, 0.9),
+             max_w=r.w - 120)
+        paragraph(s, x.blurb, 11, (r.x + 14, r.y + 30),
+                  MUTED if ready or have else shade(MUTED, 0.75),
+                  r.w - 120, 3, kind="mono")
+        text(s, f"+{x.gain * 100:.0f}% a second", 13, (r.right - 14,
+             r.y + 12), GOOD if have else mix(TEA, CREAM, 0.2), right=True,
+             kind="mono")
+        if have:
+            text(s, "ON THE SHELF", 12, (r.right - 14, r.bottom - 18), GOOD,
+                 right=True, kind="mono")
+            return
+        if not ready:
+            c = st.cards.get(x.breed)
+            if c is None:
+                # No article: half these cats are called "The
+                # something", and "a The Blue Monk" is not English.
+                why = f"no {x.cat.name} in the binder yet"
+            else:
+                left = DUPES_TO_MAX - (sum(2 * lv for lv in range(1, c.level))
+                                       + c.dupes)
+                why = (f"{x.cat.name}, level {c.level} - "
+                       f"{left} more copies to retire it")
+            text(s, why, 11, (r.x + 14, r.bottom - 18), LAMP, kind="mono",
+                 max_w=r.w - 28)
+            return
+        text(s, money(x.price), 19, (r.right - 112, r.bottom - 32),
+             warm(EMBER, 0.2), right=True)
+        self.buttons.append(Button((r.right - 100, r.bottom - 42, 86, 30),
+                                   "BUY", ("statue", x.key), "solid", 15,
+                                   kind="mono",
+                                   enabled=st.money + 1e-6 >= x.price))
+
     def draw_room_page(self, s, body):
         """Four rooms, in order, and the only things in the shop that are
         not for the cats to use but for you to watch them use."""

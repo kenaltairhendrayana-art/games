@@ -3777,6 +3777,200 @@ def weather():
     return ok
 
 
+
+def statues():
+    """The foundry line: six statues gated on retiring the cat.
+
+    The gate is the product. If one of these can be bought without the
+    breed retired then the line is just an expensive furnishing, and
+    the one thing it exists to do - pay you for the ninety duplicates
+    nobody was paying you for - it does not do.
+
+    Every statue also names a breed by key, and a key that does not
+    exist is a page that raises the moment somebody opens the tab.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+
+    # -- the line is real, and points at real cats ----------------------
+    if len(cc.STATUES) < 3:
+        print(f"  {len(cc.STATUES)} statues is not a line")
+        ok = False
+    for x in cc.STATUES:
+        if x.breed not in cc.BY_KEY:
+            print(f"  {x.name} is of {x.breed!r}, which is not a breed")
+            ok = False
+            continue
+        b = cc.BY_KEY[x.breed]
+        if b.rarity == cc.R_UNLISTED:
+            print(f"  {x.name} is of a cat nobody admits to selling")
+            ok = False
+        if b not in cc.State().book:
+            print(f"  {x.name} is of {b.name}, which is not in the book")
+            ok = False
+    keys = [x.key for x in cc.STATUES]
+    if len(set(keys)) != len(keys):
+        print("  two statues share a key")
+        ok = False
+    if len({x.breed for x in cc.STATUES}) != len(cc.STATUES):
+        print("  two statues are of the same cat")
+        ok = False
+    rar = [cc.BY_KEY[x.breed].rarity for x in cc.STATUES]
+    print("  " + ", ".join(f"{x.name.split(',')[0]} {cc.rarity_name(r)}"
+                           for x, r in zip(cc.STATUES, rar)))
+    if rar != sorted(rar):
+        print("  the line does not get rarer as it goes on")
+        ok = False
+    price = [x.price for x in cc.STATUES]
+    if price != sorted(price):
+        print("  the line does not get dearer as it goes on")
+        ok = False
+
+    # -- and you cannot have one until you have finished the cat --------
+    for x in cc.STATUES:
+        st = cc.State()
+        st.money = 10 ** 12
+        if st.can_cast(x):
+            print(f"  {x.name} is for sale with an empty binder")
+            ok = False
+        st.cards[x.breed] = cc.Card(level=cc.MAX_LEVEL - 1)
+        if st.can_cast(x):
+            print(f"  {x.name} is for sale at level {cc.MAX_LEVEL - 1}")
+            ok = False
+        st.cards[x.breed] = cc.Card(level=cc.MAX_LEVEL)
+        if not st.can_cast(x):
+            print(f"  {x.name} is NOT for sale with {x.cat.name} retired")
+            ok = False
+        st.money = x.price - 1
+        if st.can_cast(x):
+            print(f"  {x.name} sold for less than it costs")
+            ok = False
+    print(f"  all {len(cc.STATUES)} refuse to sell until the cat is retired")
+
+    # -- buying one takes the money once --------------------------------
+    st = cc.State()
+    st.money = 10 ** 12
+    x = cc.STATUES[0]
+    st.cards[x.breed] = cc.Card(level=cc.MAX_LEVEL)
+    before = st.money
+    if not st.buy_statue(x):
+        print("  could not buy the first one with the cat retired")
+        ok = False
+    if round(before - st.money) != x.price:
+        print(f"  it took {before - st.money}, not {x.price}")
+        ok = False
+    if st.buy_statue(x):
+        print("  the same statue was sold twice")
+        ok = False
+
+    # -- what the shelf is worth ----------------------------------------
+    st = cc.State()
+    if abs(st.line - 1.0) > 1e-9:
+        print("  an empty shelf is already paying out")
+        ok = False
+    for x in cc.STATUES:
+        st.shelf.add(x.key)
+    want = 1.0 + sum(x.gain for x in cc.STATUES) + cc.LINE_BONUS
+    if abs(st.line - want) > 1e-9:
+        print(f"  the full line pays {st.line:.4f}, not {want:.4f}")
+        ok = False
+    part = cc.State()
+    for x in cc.STATUES[:-1]:
+        part.shelf.add(x.key)
+    gap = st.line - part.line
+    print(f"  the shelf is worth x{st.line:.2f}, and the last one of them "
+          f"alone is worth +{gap * 100:.0f}%")
+    if gap <= cc.STATUES[-1].gain + 1e-9:
+        print("  completing the set is worth no more than the piece")
+        ok = False
+
+    # -- and it reaches the money -----------------------------------------
+    a, b = cc.State(), cc.State()
+    for br in list(cc.BREEDS)[:30]:
+        a.cards[br.key] = cc.Card(level=5)
+        b.cards[br.key] = cc.Card(level=5)
+    for x in cc.STATUES:
+        b.shelf.add(x.key)
+    if abs(b.income - a.income * b.line) > 1e-6:
+        print("  the shelf does not reach the income")
+        ok = False
+    else:
+        print(f"  income with the set: {cc.rate(a.income)} -> "
+              f"{cc.rate(b.income)}")
+
+    # -- and the whole line is affordable at the end of a game -----------
+    # No simulation: a finished binder is a thing that can be built
+    # directly, and what it earns a second is what the sixth statue has
+    # to be priced against. A measured run buys five of these through
+    # the last hour and the sixth about twenty-five minutes after the
+    # binder fills, which is the only window in the game where there is
+    # nothing else to spend on.
+    done = cc.State()
+    for br in cc.BREEDS:
+        done.cards[br.key] = cc.Card(level=cc.MAX_LEVEL)
+    done.things = {u.key for u in cc.UPGRADES}
+    done.kit = {m.key for m in cc.MERCH}
+    done.club = len(cc.CLUB)
+    bare = done.income
+    total = sum(x.price for x in cc.STATUES)
+    mins = total / max(1e-9, bare) / 60.0
+    print(f"  a finished binder earns {cc.rate(bare)}; the whole line is "
+          f"{cc.money(total)}, or {mins:.0f} minutes of it at that rate")
+    # Pessimistic on purpose: this prices the whole line against the
+    # income of someone who owns none of it, and the line pays for
+    # itself as it fills. A measured run has all six about 25 minutes
+    # after the binder, against the 85 this bound reports.
+    if mins > 130:
+        print("  the line costs more than an evening of a finished game")
+        ok = False
+    if mins < 8:
+        print("  the whole line is pocket change by the time you can buy it")
+        ok = False
+    dear = cc.STATUES[-1]
+    if dear.price / max(1e-9, bare) / 60.0 < 3:
+        print("  the last one in the line is not worth waiting for")
+        ok = False
+
+    # -- it survives a save ------------------------------------------------
+    keep = cc.State()
+    keep.shelf = {cc.STATUES[0].key, cc.STATUES[2].key}
+    back = cc.State.from_dict(keep.to_dict())
+    if back.shelf != keep.shelf:
+        print(f"  the shelf came back as {back.shelf}")
+        ok = False
+    if cc.State.from_dict({"shelf": ["not a statue"]}).shelf:
+        print("  a statue that does not exist survived a load")
+        ok = False
+
+    # -- every tile draws, in every state ----------------------------------
+    g = cc.Game(pygame.display.get_surface())
+    g.state = cc.State()
+    g.state.seen_intro = True
+    g.room = cc.CatRoom()
+    g.scene, g.site, g.tab, g.product = "shop", "meowrder", "line", None
+    for owned in (0, 1, len(cc.STATUES)):
+        g.state.shelf = {x.key for x in cc.STATUES[:owned]}
+        g.state.cards = {x.breed: cc.Card(level=cc.MAX_LEVEL)
+                         for x in cc.STATUES[:owned + 1]}
+        try:
+            g.draw()
+        except Exception as e:                           # noqa: BLE001
+            print(f"  the page will not draw with {owned} owned: {e!r}")
+            ok = False
+        g.area = "study"
+        g.scene = "room"
+        try:
+            g.draw()
+        except Exception as e:                           # noqa: BLE001
+            print(f"  the shelf will not draw with {owned} owned: {e!r}")
+            ok = False
+        g.scene = "shop"
+    print("  the page and the shelf both draw at nought, one and all six")
+
+    print("  statues:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -3852,6 +4046,9 @@ def main():
         print()
     if cmd in ("kittens", "all"):
         ok &= kittens()
+        print()
+    if cmd in ("statues", "all"):
+        ok &= statues()
         print()
     if cmd in ("merch", "all"):
         ok &= merch()
