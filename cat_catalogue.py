@@ -2627,8 +2627,8 @@ OLD_GUARD = (
           ("sunlit", "blue", "charcoal")),
     Breed("grand", "Grandmother", R_ARCHIVE, "four generations back",
           "Everything in the cat room is descended from this one.",
-          L(size=1.24, body=1.12, facew=1.24, faceh=0.88, cheek=1.30,
-            ear=0.74, flat=0.5, legs=0.76, fluff=0.98, tail="plume",
+          L(size=1.24, body=1.02, facew=1.05, faceh=1.04, cheek=1.00,
+            ear=0.96, flat=0.1, legs=0.96, fluff=0.78, tail="plume",
             coat=(200, 190, 176), mark=(142, 134, 122), belly=(238, 234, 228),
             pat="tortie", eye=(176, 196, 142), eyeshape="round",
             collar=(206, 170, 84)),
@@ -3057,6 +3057,51 @@ def _tail_path_stand(P, w, h):
     return out
 
 
+
+# Where the four feet stand, across the frame. The near pair is set a
+# little behind the far pair so the cat reads as a body with two sides
+# rather than a cut-out with legs painted on.
+HIND_FAR, HIND_NEAR = 0.347, 0.257
+FORE_FAR, FORE_NEAR = 0.717, 0.631
+
+
+def _paw(out, x, floor, pw, ph):
+    """Toes point the way the cat does, so the oval sits forward of the leg."""
+    out.append(("ellipse", (x - pw * 0.42, floor - ph, pw, ph)))
+
+
+def _fore_leg(out, x, back, floor, lw, bh, k):
+    """Shoulder to paw. A cat's front leg is near enough a straight post,
+    and drawing it as one is why the elbow has to come from the shading
+    rather than the silhouette."""
+    drop = floor - back
+    elbow = back + drop * 0.42
+    out.append(("poly", [(x - lw * 0.70 * k, back - bh * 0.30),
+                         (x + lw * 0.72 * k, back - bh * 0.26),
+                         (x + lw * 0.52 * k, elbow),
+                         (x + lw * 0.46 * k, floor - drop * 0.10),
+                         (x - lw * 0.48 * k, floor - drop * 0.10),
+                         (x - lw * 0.56 * k, elbow)]))
+    _paw(out, x, floor, lw * 1.30 * k, drop * 0.17)
+
+
+def _hind_leg(out, x, back, floor, lw, bh, k, thigh=True):
+    """Thigh, hock, paw. The bend is the part that says the cat is on its
+    feet and not propped up on four dowels: the thigh is a wide round mass
+    carried high into the hip, and only below the hock does the leg
+    become a thin shank."""
+    drop = floor - back
+    hock = back + drop * 0.44
+    if thigh:
+        out.append(("ellipse", (x - lw * 1.15 * k, back - bh * 0.52,
+                                lw * 2.3 * k, bh * 0.56 + drop * 0.70)))
+    out.append(("poly", [(x - lw * 0.62 * k, hock - drop * 0.08),
+                         (x + lw * 0.80 * k, hock - drop * 0.20),
+                         (x + lw * 0.52 * k, floor - drop * 0.10),
+                         (x - lw * 0.44 * k, floor - drop * 0.10)]))
+    _paw(out, x + lw * 0.10 * k, floor, lw * 1.34 * k, drop * 0.17)
+
+
 def _shapes_stand(P, w, h):
     """On its feet, side on, facing right.
 
@@ -3074,22 +3119,28 @@ def _shapes_stand(P, w, h):
         out.append(("circle", (body.x - w * 0.01, top + bh * 0.30),
                     h * 0.07 * (1 + fluff)))
 
-    lw = w * 0.055
-    for lx in (0.30, 0.64):              # the far pair, behind the body
-        out.append(("ellipse", (w * lx, back - bh * 0.22, lw, leg * 1.04)))
-        out.append(("ellipse", (w * lx - lw * 0.2, h - leg * 0.17,
-                                lw * 1.4, leg * 0.19)))
-    out.append(("ellipse", body))
-    out.append(("ellipse", (w * 0.52, top - bh * 0.07, w * 0.30, bh * 1.10)))
-    out.append(("ellipse", (w * 0.26, top + bh * 0.04, w * 0.26, bh * 1.02)))
-    lw2 = w * 0.062
-    for lx in (0.24, 0.58):              # the near pair
-        out.append(("ellipse", (w * lx, back - bh * 0.26, lw2, leg * 1.08)))
-        out.append(("ellipse", (w * lx - lw2 * 0.22, h - leg * 0.19,
-                                lw2 * 1.46, leg * 0.21)))
+    lw = w * 0.052
+    _hind_leg(out, w * HIND_FAR, back, h, lw, bh, 0.92, thigh=False)
+    _fore_leg(out, w * FORE_FAR, back, h, lw, bh, 0.92)
+
+    # The barrel is shallower in the middle than at either end. That one
+    # difference is the whole thing: with a single ellipse the cat is a
+    # loaf on four posts, and with a dip between the shoulder and the hip
+    # it is a cat. The haunch sits high and round at the back, the chest
+    # hangs deep at the front, and the waist between them is the gap.
+    out.append(("ellipse", (w * 0.235, top + bh * 0.15,
+                            w * 0.535, bh * 0.82)))
+    out.append(("ellipse", (w * 0.155, top + bh * 0.03,
+                            w * 0.315, bh * 1.03)))
+    out.append(("ellipse", (w * 0.555, top - bh * 0.05,
+                            w * 0.285, bh * 1.04)))
+
+    _hind_leg(out, w * HIND_NEAR, back, h, lw * 1.12, bh, 1.0)
+    _fore_leg(out, w * FORE_NEAR, back, h, lw * 1.12, bh, 1.0)
+
     if fluff > 0.3:                      # a ruff, round the shoulders
         rw = w * (0.15 + 0.08 * fluff)
-        out.append(("ellipse", (w * 0.70 - rw * 0.5, top - bh * 0.14,
+        out.append(("ellipse", (w * 0.72 - rw * 0.5, top - bh * 0.14,
                                 rw, bh * 0.94)))
     return out
 
@@ -3653,17 +3704,33 @@ def _eye(surf, P, cx, cy, rw, rh, colour, shut, shine=0.0):
                         cy + math.sin(f * math.pi) * rh * 0.78 - rh * 0.1 * f))
         pygame.draw.polygon(surf, colour, [(round(a), round(b))
                                            for a, b in pts])
-    # a dim room means a wide pupil, which is most of what makes these read
-    pr_w, pr_h = rw * 0.46, rh * 0.74
+    # A dim room means a wide pupil, but a round one reads as a doll's
+    # eye. Taller than it is wide is the whole difference between a cat
+    # looking at you and a button sewn onto a face.
+    pr_w, pr_h = rw * 0.30, rh * 0.70
     pygame.draw.ellipse(surf, (18, 14, 16),
                         (cx - pr_w, cy - pr_h, pr_w * 2, pr_h * 2))
-    pygame.draw.circle(surf, (252, 240, 216),
-                       (round(cx - rw * 0.30), round(cy - rh * 0.36)),
-                       max(1, round(rw * (0.17 + 0.09 * shine))))
-    if shine > 0.5:                   # a second catchlight, from the lamp
-        pygame.draw.circle(surf, (250, 234, 206),
-                           (round(cx + rw * 0.34), round(cy + rh * 0.30)),
-                           max(1, round(rw * 0.09)))
+
+    # The lid. Without it the iris is a flat disc of colour; with it the
+    # eye is set into a face and has something above it.
+    lid = pygame.Surface((max(2, round(rw * 2.4)), max(2, round(rh * 2.4))),
+                         pygame.SRCALPHA)
+    pygame.draw.ellipse(lid, (22, 16, 18, 54),
+                        (0, -rh * 0.94, rw * 2.4, rh * 1.72))
+    surf.blit(lid, (round(cx - rw * 1.2), round(cy - rh * 1.2)))
+
+    # One catchlight, small. The old one was a quarter of the eye across
+    # and turned every cat in the binder googly-eyed.
+    gl = pygame.Surface((max(2, round(rw * 2.4)), max(2, round(rh * 2.4))),
+                        pygame.SRCALPHA)
+    pygame.draw.circle(gl, (252, 244, 226, 235),
+                       (round(rw * 0.86), round(rh * 0.80)),
+                       max(1, round(rw * (0.12 + 0.05 * shine))))
+    if shine > 0.5:                   # a second, from the lamp behind you
+        pygame.draw.circle(gl, (250, 234, 206, 130),
+                           (round(rw * 1.56), round(rh * 1.54)),
+                           max(1, round(rw * 0.07)))
+    surf.blit(gl, (round(cx - rw * 1.2), round(cy - rh * 1.2)))
 
 
 def _face(surf, P, w, h, hb, shut, pose="sit", shine=0.0):
@@ -3882,6 +3949,101 @@ _cats = {}
 CAT_RATIO = 0.95          # a sitting cat is this much wider than it is tall
 
 
+
+def _build_prims(P, pose, w, h):
+    """Every silhouette shape for a pose, in paint order.
+
+    Pulled out of `cat_surface` so the drawing can be measured before it
+    is painted - see `_fit_frame`, which needs the shapes and nothing
+    else. Returns the body, the subset of it that is the head, and the
+    box the face is drawn in.
+    """
+    if pose == "curl":
+        prims = _shapes_curl(P, w, h)
+        hb = _head_box_curl(P, w, h)
+        head_prims = [("ellipse", hb)]
+        prims = prims + head_prims
+        ear = hb.h * 0.52 * P["ear"]
+        for sx, lean in ((-1, -0.22), (1, 0.16)):   # both ears, both up
+            bx = hb.centerx + sx * hb.w * 0.30
+            by = hb.y + hb.h * 0.22
+            if P["fold"] > 0.4:
+                prims.append(("ellipse", (bx - hb.w * 0.26, by - ear * 0.34,
+                                          hb.w * 0.52, ear * 0.86)))
+            else:
+                prims.append(("poly", [
+                    (bx - hb.w * 0.20, by + ear * 0.20),
+                    (bx + hb.w * 0.08 + lean * hb.w, by - ear),
+                    (bx + hb.w * 0.26, by + ear * 0.10)]))
+        return prims, head_prims, hb
+    if pose == "stand":
+        head_prims = _shapes_head_stand(P, w, h)
+        return _shapes_stand(P, w, h) + head_prims, head_prims,             _head_box_stand(P, w, h)
+    head_prims = _shapes_head(P, w, h)
+    return _shapes_sit(P, w, h) + head_prims, head_prims, _head_box(P, w, h)
+
+
+def _prim_bounds(prims):
+    xs = []
+    ys = []
+    for p in prims:
+        if p[0] == "circle":
+            xs += [p[1][0] - p[2], p[1][0] + p[2]]
+            ys += [p[1][1] - p[2], p[1][1] + p[2]]
+        elif p[0] == "ellipse":
+            r = _as_rect(p[1])
+            xs += [r.x, r.right]
+            ys += [r.y, r.bottom]
+        else:
+            xs += [x for x, _ in p[1]]
+            ys += [y for _, y in p[1]]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+_frames = {}
+
+
+def _fit_frame(breed, pose, w, h):
+    """Shrink the drawing until the frame holds all of it.
+
+    The poses were each written to a box, and none of them fits in it. A
+    big-eared cat loses a fifth of its height off the top - the Caracat's
+    ears came out sliced flat - and every curled cat had its rump cut off
+    the right edge. Rather than move every ear, tail and haunch in the
+    file and re-measure the lot, measure the drawing and fit it.
+
+    The fit is taken at the top grade, where the coat is fullest, so that
+    a cat does not shrink as it is groomed. The feet stay on the floor:
+    the drawing is centred across the frame but pinned to the bottom of
+    it, because a cat that floats is worse than a cat with short ears.
+    """
+    key = (breed.key, pose, w, h)
+    got = _frames.get(key)
+    if got is not None:
+        return got
+    P = groom(breed.look, MAX_LEVEL)
+
+    def span(gw, gh):
+        x0, y0, x1, y1 = _prim_bounds(_build_prims(P, pose, gw, gh)[0])
+        if P["fluff"] > 0.45:            # the edge bumps overhang as well
+            r = gh * (0.030 + 0.030 * P["fluff"]) * 1.3
+            x0, y0, x1, y1 = x0 - r, y0 - r, x1 + r, y1 + r
+        # Room for the outline on the three free sides. Not the fourth:
+        # the bottom of the frame is the floor, and a cat that hovers a
+        # pixel above its own feet is worse than a clipped outline.
+        m = gh * 0.022
+        return x0 - m, y0 - m, x1 + m, y1
+
+    x0, y0, x1, y1 = span(w, h)
+    k = min(1.0, w / max(1.0, x1 - x0), h / max(1.0, y1 - y0))
+    gw, gh = max(8, int(w * k)), max(8, int(h * k))
+    x0, y0, x1, y1 = span(gw, gh)
+    out = (gw, gh, round((w - (x1 - x0)) * 0.5 - x0), round(h - y1))
+    _frames[key] = out
+    return out
+
+
+
 def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
                 variant=0, shiny=False):
     """A cat at a level in a coat, built once and cached."""
@@ -3906,35 +4068,12 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
         w = int(h * 1.46)
     else:
         w = int(h * CAT_RATIO)
+    ow, oh = w, h
+    w, h, ox, oy = _fit_frame(breed, pose, ow, oh)
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
     sil = pygame.Surface((w, h), pygame.SRCALPHA)
 
-    head_prims = []
-    if pose == "curl":
-        prims = _shapes_curl(P, w, h)
-        hb = _head_box_curl(P, w, h)
-        head_prims = [("ellipse", hb)]
-        prims = prims + head_prims
-        ear = hb.h * 0.52 * P["ear"]
-        for sx, lean in ((-1, -0.22), (1, 0.16)):   # both ears, both up
-            bx = hb.centerx + sx * hb.w * 0.30
-            by = hb.y + hb.h * 0.22
-            if P["fold"] > 0.4:
-                prims.append(("ellipse", (bx - hb.w * 0.26, by - ear * 0.34,
-                                          hb.w * 0.52, ear * 0.86)))
-            else:
-                prims.append(("poly", [
-                    (bx - hb.w * 0.20, by + ear * 0.20),
-                    (bx + hb.w * 0.08 + lean * hb.w, by - ear),
-                    (bx + hb.w * 0.26, by + ear * 0.10)]))
-    elif pose == "stand":
-        head_prims = _shapes_head_stand(P, w, h)
-        prims = _shapes_stand(P, w, h) + head_prims
-        hb = _head_box_stand(P, w, h)
-    else:
-        head_prims = _shapes_head(P, w, h)
-        prims = _shapes_sit(P, w, h) + head_prims
-        hb = _head_box(P, w, h)
+    prims, head_prims, hb = _build_prims(P, pose, w, h)
 
     _paint(surf, prims, P["coat"])
     _paint(sil, prims, (255, 255, 255))
@@ -3943,10 +4082,28 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
     if P["fluff"] > 0.45:
         rng = random.Random(breed.key + "fluff")
         rr0 = h * (0.030 + 0.030 * P["fluff"])
+        if pose == "stand":
+            rr0 *= 0.66
         if pose == "curl":
             spots = [(w * 0.5 + math.cos(a) * w * 0.43,
                       h * 0.62 + math.sin(a) * h * 0.33)
                      for a in (i / 26 * TAU for i in range(26))]
+        elif pose == "stand":
+            # Round the cat's own edge, wherever that is. These used to be
+            # placed on the SITTING cat's bell, which on a cat standing up
+            # left a row of lumps hanging in the air behind its rump.
+            try:
+                edge = pygame.mask.from_surface(sil).outline(5)
+            except (ValueError, AttributeError):
+                edge = []
+            # The coat is long over the back and the rump. It is not long
+            # on the shins or the bridge of the nose, and ringing the whole
+            # outline with bumps turned a Persian into a sheep.
+            _, bh0, _, back0, _ = _stand_metrics(P, w, h)
+            hbx = _head_box_stand(P, w, h).x
+            edge = [q for q in edge
+                    if q[1] < back0 + bh0 * 0.14 and q[0] < hbx]
+            spots = edge[::max(1, len(edge) // 17)] if len(edge) > 8 else []
         else:
             left, right, _, _ = _bell(P, w, h)
             spots = [p for p in left[3:] + right[3:]]
@@ -3981,9 +4138,15 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
     if pose == "stand":
         cr = pygame.Surface((w, h), pygame.SRCALPHA)
         leg, bh, top, back, body = _stand_metrics(P, w, h)
-        for lx in (0.30, 0.64):          # the far legs, in shadow
-            pygame.draw.ellipse(cr, (*shade(P["coat"], 0.5), 110),
-                                (w * lx, back - bh * 0.2, w * 0.055, leg))
+        # Only the part below the belly: the far thigh and shoulder are
+        # behind the body, and shading them put a dark hole in the rump.
+        far = []
+        _hind_leg(far, w * HIND_FAR, back, h, w * 0.052, bh, 0.92,
+                  thigh=False)
+        _fore_leg(far, w * FORE_FAR, back, h, w * 0.052, bh, 0.92)
+        cr.set_clip(pygame.Rect(0, round(back + bh * 0.02), w, h))
+        _paint(cr, far, (*shade(P["coat"], 0.62), 74))
+        cr.set_clip(None)
         surf.blit(cr, (0, 0))
     if pose == "sit":
         cr = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -4052,6 +4215,11 @@ def cat_surface(breed, pose="sit", height=140, shut=False, level=1,
         _face(surf, P, w, h, hb, shut or pose == "curl", pose, shine)
     _collar(surf, P, w, h, hb, pose, level, rarity_colour(breed.rarity),
             head_prims)
+
+    if (w, h) != (ow, oh) or ox or oy:
+        full = pygame.Surface((ow, oh), pygame.SRCALPHA)
+        full.blit(surf, (ox, oy))
+        surf = full
     _cats[key] = surf
     return surf
 
