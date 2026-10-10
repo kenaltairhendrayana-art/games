@@ -3217,6 +3217,286 @@ def days():
     return ok
 
 
+
+def wants():
+    """The want list: the one place in the game that sells you exactly
+    the cat you asked for.
+
+    Three things have to hold or it eats the late game.
+
+    It must never hand over a cat nobody is allowed to sell. It must
+    never hand over more than ONE card, because the end of this game is
+    ninety duplicates and an offer that levelled a card would turn four
+    hours into forty minutes. And it must be the dearest card in the
+    game by a wide margin, every single time - the whole conceit is that
+    telling a dealer what you need is what it costs you.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+
+    # -- what you may ask for -------------------------------------------
+    st = cc.State()
+    # These live in BY_KEY and NOT in BREEDS, so a sweep of BREEDS finds
+    # none of them and proves nothing. That is how the hall's exclusives
+    # got onto the list in the first place.
+    shut = [b for b in cc.BY_KEY.values()
+            if b.rarity == cc.R_UNLISTED or b in cc.EXPO_BREEDS
+            or b in cc.SECRETS]
+    for b in shut:
+        if st.can_want(b.key):
+            print(f"  {b.name} ({cc.rarity_name(b.rarity).lower()}) is not "
+                  f"for sale anywhere and the list took it")
+            ok = False
+    print(f"  {len(shut)} strays and hall exclusives, none of them askable")
+    if len(shut) < 8:
+        print(f"  only {len(shut)} off-catalogue cats found - looking in "
+              f"the wrong place again")
+        ok = False
+
+    plain = [b for b in st.book if b.rarity != cc.R_UNLISTED]
+    if not st.add_want(plain[0].key):
+        print("  could not ask for the first ordinary cat in the game")
+        ok = False
+    if st.can_want(plain[0].key):
+        print("  the same cat can be asked for twice")
+        ok = False
+    st.cards[plain[1].key] = cc.Card()
+    if st.can_want(plain[1].key):
+        print("  the list will go and find you a cat you already own")
+        ok = False
+
+    # -- the cap, and what lifts it --------------------------------------
+    for b in plain[2:40]:
+        st.add_want(b.key)
+    if len(st.wants) != st.want_cap:
+        print(f"  the cap is {st.want_cap} and the list holds {len(st.wants)}")
+        ok = False
+    base = st.want_cap
+    st.club = len(cc.CLUB)
+    if st.want_cap != base + len(cc.CLUB):
+        print("  the club does not lift the cap")
+        ok = False
+    print(f"  cap is {base} to start and {st.want_cap} with the club in")
+
+    # -- an offer is one card, and only ever one card --------------------
+    st = cc.State()
+    st.money = 10 ** 12
+    rng = random.Random(11)
+    seen = 0
+    bad_level = 0
+    for b in plain[:90]:
+        st.wants = [b.key]
+        st.offers = []
+        st.offer_t = 0.0
+        for _ in range(60):
+            st.offer_t = 0.0
+            o = st.tick_offers(0.01, rng)
+            if o is not None:
+                break
+        if not st.offers:
+            continue
+        o = st.offers[0]
+        seen += 1
+        before = dict(st.cards)
+        got = st.take_offer(o)
+        if got is None:
+            print(f"  an offer for {b.name} could not be taken with "
+                  f"unlimited money")
+            ok = False
+            continue
+        card = st.cards[b.key]
+        if b.key in before or card.level != 1 or card.dupes:
+            bad_level += 1
+        if st.wants:
+            print(f"  the want for {b.name} stayed up after it arrived")
+            ok = False
+    print(f"  {seen} offers taken, every one a single level-one card"
+          if not bad_level else
+          f"  {bad_level} of {seen} offers handed over more than one card")
+    if bad_level:
+        ok = False
+    if seen < 20:
+        print(f"  only {seen} of 90 wants were ever answered at all")
+        ok = False
+
+    # -- and it is the dearest card in the game --------------------------
+    worst = None
+    for b in plain:
+        if b.rarity >= cc.SOLD_RARITIES:
+            continue
+        floor = min(w[1] for w in cc.WANTERS)
+        ask = cc.card_worth(b, 1, False) * floor
+        shelf = cc.card_worth(b, 1, False) * cc.SELLERS[0][1]
+        k = ask / shelf
+        if worst is None or k < worst[0]:
+            worst = (k, b.name)
+    print(f"  the cheapest answer is {worst[0]:.2f}x what the kindest "
+          f"seller on Purrbay would want ({worst[1]})")
+    if worst[0] < 1.3:
+        print("  the want list is not dearer than simply browsing")
+        ok = False
+
+    # -- the rarer it is, the longer you wait -----------------------------
+    rng = random.Random(3)
+    hits = {}
+    for r in (0, 4, 8):
+        pool = [b for b in cc.BREEDS
+                if b.rarity == r and b.rarity != cc.R_UNLISTED]
+        if not pool:
+            continue
+        a = cc.State()
+        got = 0
+        for _ in range(600):
+            a.cards = {}
+            a.wants = [pool[0].key]
+            a.offers = []
+            a.offer_t = 0.0
+            if a.tick_offers(0.01, rng) is not None:
+                got += 1
+        hits[cc.rarity_name(r)] = got
+    print("    answers in 600 asks: "
+          + ", ".join(f"{k.lower()} {v}" for k, v in hits.items()))
+    vals = list(hits.values())
+    if len(vals) > 1 and vals[0] <= vals[-1]:
+        print("  a common cat is no easier to find than a rare one")
+        ok = False
+
+    # -- it survives being saved -----------------------------------------
+    st = cc.State()
+    st.wants = [plain[0].key, plain[3].key]
+    st.offers = [cc.Offer(plain[0].key, 2, 5000.0, 90.0, 0, True)]
+    st.bought_offers = 7
+    back = cc.State.from_dict(st.to_dict())
+    if back.wants != st.wants or len(back.offers) != 1 \
+            or back.bought_offers != 7:
+        print("  the want list does not survive a save")
+        ok = False
+    elif not back.offers[0].shiny or back.offers[0].key != plain[0].key:
+        print("  an offer came back from the save wrong")
+        ok = False
+    else:
+        print("  the list, the offers and the count all survive a save")
+    stray = cc.State.from_dict({"wants": [plain[0].key],
+                                "offers": [[plain[3].key, 0, 1, 1, 0, 0]]})
+    if stray.offers:
+        print("  an offer survived for something not on the list")
+        ok = False
+
+    print("  wants:", "ok" if ok else "FAILED")
+    return ok
+
+
+
+def standing():
+    """The standing order: the shop re-ordering for you as slots free.
+
+    This is the one new thing that can spend money while nobody is
+    looking, so what matters is every case where it must NOT. It must
+    never take the round over the slot count, never spend money that is
+    not there, and never go on buying a pack that has stopped being
+    worth buying - a shelf it has left, or a pack whose every breed is
+    retired. A standing order that outlives its own pack is an account
+    draining into nothing.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+    pk = next(p for p in cc.PACKS if p.price and p.shelf in cc.SHELVES)
+
+    # -- it is a toggle, and it survives a save --------------------------
+    st = cc.State()
+    st.set_standing(pk, 2, 0)
+    if st.standing != (pk.key, 2, 0):
+        print("  turning a standing order on did not set it")
+        ok = False
+    st.set_standing(pk, 2, 0)
+    if st.standing is not None:
+        print("  pressing it again did not turn it off")
+        ok = False
+    st.set_standing(pk, 3, 1)
+    back = cc.State.from_dict(st.to_dict())
+    if back.standing != (pk.key, 3, 1):
+        print(f"  the standing order came back as {back.standing}")
+        ok = False
+    else:
+        print("  on, off, and the same again after a save")
+
+    # -- it fills the round and then stops -------------------------------
+    st = cc.State()
+    st.money = 10 ** 9
+    st.set_standing(pk, 1, 0)
+    for _ in range(40):
+        st.run_standing()
+    if len(st.orders) != st.slots:
+        print(f"  filled the post to {len(st.orders)} of {st.slots}")
+        ok = False
+    else:
+        print(f"  fills the round to {st.slots} and stops there")
+    over = st.run_standing()
+    if over is not None:
+        print("  it posted a parcel with no slot free")
+        ok = False
+
+    # -- it cannot spend money that is not there -------------------------
+    st = cc.State()
+    st.money = 0.0
+    st.set_standing(pk, 1, 0)
+    for _ in range(50):
+        st.run_standing()
+    if st.orders or st.money < -1e-9:
+        print(f"  ordered {len(st.orders)} with no money, balance "
+              f"{st.money}")
+        ok = False
+    else:
+        print("  with an empty account it orders nothing and owes nothing")
+
+    # -- what it pays is what the shelf says, on any day -----------------
+    worst = 0.0
+    for d in range(7):
+        a = cc.State()
+        a.money = 10 ** 9
+        a.played = cc.DAY * d + 60
+        a.set_standing(pk, 2, 0)
+        before = a.money
+        o = a.run_standing()
+        if o is None:
+            print("  the standing order did nothing on a day it could buy")
+            ok = False
+            continue
+        unit = cc.price_of(pk, a)
+        want = unit * 2 + cc.ship_cost(pk, 2, 0, unit)
+        worst = max(worst, abs((before - a.money) - want))
+    print(f"  every day of the week, it pays the shelf price to "
+          f"{worst:.4f}")
+    if worst > 0.01:
+        print("  the standing order is not paying the price on the page")
+        ok = False
+
+    # -- and it takes itself down rather than buying nothing -------------
+    st = cc.State()
+    st.money = 10 ** 9
+    st.set_standing(pk, 1, 0)
+    for b in cc.BREEDS:                 # retire the lot
+        st.cards[b.key] = cc.Card(level=cc.MAX_LEVEL)
+    st.orders = []
+    st.run_standing()
+    if st.standing is not None:
+        print("  it is still ordering a pack with nothing left in it")
+        ok = False
+    else:
+        print("  a pack with every breed retired takes itself off order")
+
+    st = cc.State()
+    st.money = 10 ** 9
+    st.standing = ("a pack that does not exist", 1, 0)
+    st.run_standing()
+    if st.standing is not None or st.orders:
+        print("  a standing order for a pack that is gone kept going")
+        ok = False
+
+    print("  standing:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -3298,6 +3578,12 @@ def main():
         print()
     if cmd in ("auctions", "all"):
         ok &= auctions()
+        print()
+    if cmd in ("standing", "all"):
+        ok &= standing()
+        print()
+    if cmd in ("wants", "all"):
+        ok &= wants()
         print()
     if cmd in ("swaps", "all"):
         ok &= swaps()

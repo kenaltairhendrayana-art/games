@@ -4781,6 +4781,79 @@ NEVER_STOCKED = ("attic",)
 ATTIC_ODDS = 0.11          # of a day having one on it
 
 
+
+# ---------------------------------------------------------------------------
+# THE WANT LIST
+#
+# Purrbay sells you whatever somebody happens to be selling. By the end
+# that is the wrong shape of help: you are not short of cards, you are
+# short of four particular cats, and six random listings a day will not
+# find them.
+#
+# So you post what you are after and people come to you. The catch is
+# the one every collector knows and nobody avoids: the moment you tell a
+# dealer what you need, that is what it costs. An offer off the want
+# list is the dearest card in the game, every time, and the better the
+# cat the longer anybody takes to answer at all.
+#
+# It cannot break the late game, and that is deliberate. An offer is ONE
+# card. The late game is ninety duplicates. The list gets you the breed;
+# it does not get you the breed retired - and a want clears itself the
+# moment the cat is in the binder, so the list is only ever a list of
+# things you have not got.
+# ---------------------------------------------------------------------------
+
+# name, what they multiply it by, and what they are like about it
+WANTERS = (
+    ("a man who knows a man", 2.4,
+     "Does not have one. Will have one by Thursday."),
+    ("SleeveCity (trade enquiries)", 3.3,
+     "A shop, of a sort, run out of a spare bedroom."),
+    ("@flipthiscat", 4.6,
+     "Saw your post. Of course he saw your post."),
+    ("THE VAULT (do not lowball)", 6.5,
+     "Has one. Knew you would ask. Has been waiting."),
+)
+WANT_CAP = 2               # how many may be up at once, plus one per club
+OFFER_EVERY = 105.0        # how often somebody gets round to answering
+OFFER_LIFE = 170.0         # and how long they leave it up before pulling it
+OFFERS_AT_ONCE = 3
+OFFER_ODDS = 0.80          # of an answer at all, at the bottom of the ladder
+OFFER_FALLOFF = 1.24       # ... divided by this, per rung up
+
+
+class Offer:
+    """One answer to the list. Always a single card, never a box."""
+    __slots__ = ("key", "who", "price", "left", "coat", "shiny")
+
+    def __init__(self, key, who, price, left, coat=0, shiny=False):
+        self.key = key
+        self.who = who
+        self.price = price
+        self.left = left            # seconds before they pull the offer
+        self.coat = coat
+        self.shiny = shiny
+
+    def to_row(self):
+        return [self.key, self.who, round(self.price, 2), round(self.left, 2),
+                self.coat, int(self.shiny)]
+
+    @staticmethod
+    def from_row(r):
+        try:
+            o = Offer(r[0], int(r[1]), float(r[2]), float(r[3]),
+                      int(r[4]), bool(r[5]))
+        except (TypeError, ValueError, IndexError):
+            return None
+        if o.key not in BY_KEY or not 0 <= o.who < len(WANTERS):
+            return None
+        o.coat = int(clamp(o.coat, 0, len(BY_KEY[o.key].coats) - 1))
+        return o
+
+    def words(self):
+        return BY_KEY[self.key].name + (", shiny" if self.shiny else "")
+
+
 class Lot:
     """One listing. `kind` is "card" or "pack"."""
     __slots__ = ("kind", "key", "level", "coat", "shiny", "qty", "seller",
@@ -5494,6 +5567,11 @@ class State:
         self.told = set()           # ... and the ones announced to you
         self.seen_intro = False     # the four screens before the first pack
         self.kit = set()            # sleeves, binders, a loupe
+        self.standing = None        # a pack the shop re-orders for you
+        self.wants = []             # breeds you have asked the world for
+        self.offers = []            # ... and what came back
+        self.offer_t = OFFER_EVERY
+        self.bought_offers = 0
         self.bids = []              # auctions running on the resale site
         self.won_lots = []          # what closed in your favour this tick
         self.won_bids = 0
@@ -5684,6 +5762,8 @@ class State:
 
     def tick(self, dt):
         self.won_lots = self.run_auctions(dt)
+        self.tick_offers(dt)
+        self.run_standing()
         nxt = self.due()
         if nxt is not None:
             self.out.add(nxt.key)
@@ -5903,33 +5983,170 @@ class State:
             self.next_num += 1
             self.orders.append(o)
             return o
-        b = BY_KEY[lot.key]
-        card = self.cards.get(lot.key)
+        return self.hand_card(lot.key, lot.level, lot.coat, lot.shiny)
+
+    def hand_card(self, key, level, coat, shiny):
+        """Put one card in the binder, wherever it came from.
+
+        The resale site and the want list both end up here. If it is
+        better than the one already in there the binder takes the better
+        of the two, which is the entire reason anybody pays these prices.
+        """
+        b = BY_KEY[key]
+        card = self.cards.get(key)
         if card is None:
-            card = Card(level=lot.level, coat=lot.coat, shiny=lot.shiny)
-            card.saw(lot.coat)
-            self.cards[lot.key] = card
+            card = Card(level=level, coat=coat, shiny=shiny)
+            card.saw(coat)
+            self.cards[key] = card
             self.cards_pulled += 1
-            if lot.shiny:
+            if shiny:
                 self.shinies += 1
-            return Pull(b, "new", card.level, 0, False, lot.coat, lot.shiny,
-                        True)
+            return Pull(b, "new", card.level, 0, False, coat, shiny, True)
         before = card.level
-        fresh = not (card.seen >> lot.coat & 1)
-        card.saw(lot.coat)
-        first_shiny = lot.shiny and not card.shiny
+        fresh = not (card.seen >> coat & 1)
+        card.saw(coat)
+        first_shiny = shiny and not card.shiny
         if first_shiny:
             card.shiny = True
-            card.coat = lot.coat
+            card.coat = coat
             self.shinies += 1
-        if lot.level > card.level:
-            card.level = lot.level
+        if level > card.level:
+            card.level = level
             card.dupes = 0
         else:
             card.add_dupe()
         self.cards_pulled += 1
         return Pull(b, "level" if card.level > before else "dupe",
-                    card.level, before, False, lot.coat, first_shiny, fresh)
+                    card.level, before, False, coat, first_shiny, fresh)
+
+
+    # -- the standing order ----------------------------------------------
+    # The post is four parcels on a round, so the whole game is whether
+    # a slot is ever sitting empty. A player who is paying attention
+    # never lets one; a player who is doing something else lets them sit
+    # empty all evening. That gap is not a difficulty setting, it is a
+    # tax on not watching, and this is the shop's answer to it.
+    #
+    # It buys nothing you could not buy yourself and it gets no discount
+    # for it. What it buys is not having to be here.
+    def set_standing(self, pack, qty, mode):
+        same = (pack.key, qty, mode)
+        self.standing = None if self.standing == same else same
+        return self.standing is not None
+
+    def standing_pack(self):
+        return BY_PACK[self.standing[0]] if self.standing else None
+
+    def run_standing(self):
+        """Fill the round back up, if the order still makes sense.
+
+        It stops itself rather than draining the account: a pack that
+        has gone off the shelf, or that has nothing left in it worth
+        pulling, takes itself down.
+        """
+        if not self.standing:
+            return None
+        key, qty, mode = self.standing
+        pack = BY_PACK.get(key)
+        if pack is None or not pack.price or pack.shelf not in SHELVES:
+            self.standing = None
+            return None
+        if not self.sellable(pack):
+            self.standing = None        # everything in it is retired
+            return None
+        if len(self.orders) >= self.slots:
+            return None
+        unit = price_of(pack, self)
+        if self.money + 1e-6 < unit * qty + ship_cost(pack, qty, mode, unit):
+            return None
+        return self.order(pack, qty, mode)
+
+    # -- the want list ---------------------------------------------------
+    @property
+    def want_cap(self):
+        """Two, and one more for every tier of the club."""
+        return WANT_CAP + self.club
+
+    def can_want(self, key):
+        """What you are allowed to go looking for.
+
+        The book, and nothing else. Rarity alone was not enough: a cat
+        printed for the convention is not UNLISTED, it is CONVENTION,
+        and gating on rarity quietly put the hall's exclusives on sale
+        to anybody who never went. The book already excludes those and
+        the strays, which is why the resale site gates on it too.
+        """
+        b = BY_KEY.get(key)
+        return (b is not None and key not in self.cards
+                and key not in self.wants
+                and b.rarity != R_UNLISTED
+                and any(x.key == key for x in self.book)
+                and len(self.wants) < self.want_cap)
+
+    def add_want(self, key):
+        if not self.can_want(key):
+            return False
+        self.wants.append(key)
+        return True
+
+    def drop_want(self, key):
+        if key not in self.wants:
+            return False
+        self.wants.remove(key)
+        self.offers = [o for o in self.offers if o.key != key]
+        return True
+
+    def offer_cost(self, o):
+        return round(o.price * self.resale_gear)
+
+    def can_take_offer(self, o):
+        return o.left > 0 and self.money + 1e-6 >= self.offer_cost(o)
+
+    def take_offer(self, o):
+        """Pay the asking price. Nobody haggles on a want list."""
+        if o not in self.offers or not self.can_take_offer(o):
+            return None
+        cost = self.offer_cost(o)
+        self.money -= cost
+        self.spent += cost
+        self.offers.remove(o)
+        if o.key in self.wants:
+            self.wants.remove(o.key)
+        self.bought_offers += 1
+        return self.hand_card(o.key, 1, o.coat, o.shiny)
+
+    def tick_offers(self, dt, rng=None):
+        """Lapse what has gone stale, and now and then let somebody
+        answer the list."""
+        for k in [k for k in self.wants if k in self.cards]:
+            self.wants.remove(k)        # it turned up in a packet meanwhile
+        for o in list(self.offers):
+            o.left -= dt
+            if o.left <= 0 or o.key not in self.wants:
+                self.offers.remove(o)
+        self.offer_t -= dt
+        if self.offer_t > 0:
+            return None
+        self.offer_t = OFFER_EVERY
+        if not self.wants or len(self.offers) >= OFFERS_AT_ONCE:
+            return None
+        rng = rng or random
+        up = {o.key for o in self.offers}
+        pool = [k for k in self.wants if k not in up]
+        if not pool:
+            return None
+        key = rng.choice(pool)
+        b = BY_KEY[key]
+        if rng.random() > OFFER_ODDS / (OFFER_FALLOFF ** b.rarity):
+            return None                 # nobody has one this time
+        who = rng.randrange(len(WANTERS))
+        shiny = rng.random() < 0.05
+        coat = rng.randrange(len(b.coats))
+        price = (card_worth(b, 1, shiny) * WANTERS[who][1]
+                 * rng.uniform(0.92, 1.18))
+        o = Offer(key, who, round(price), OFFER_LIFE, coat, shiny)
+        self.offers.append(o)
+        return o
 
     # -- the convention -----------------------------------------------
     @property
@@ -6121,6 +6338,11 @@ class State:
             "told": sorted(self.told),
             "seen_intro": self.seen_intro,
             "kit": sorted(self.kit),
+            "standing": list(self.standing) if self.standing else None,
+            "wants": list(self.wants),
+            "offers": [o.to_row() for o in self.offers],
+            "offer_t": round(self.offer_t, 2),
+            "bought_offers": self.bought_offers,
             "bids": [a.to_row() for a in self.bids],
             "won_bids": self.won_bids,
             "swaps": [w.to_row() for w in self.swaps],
@@ -6185,6 +6407,16 @@ class State:
         s.out.add("cat")
         s.seen_intro = bool(d.get("seen_intro"))
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
+        row = d.get("standing")
+        if row and row[0] in BY_PACK:
+            s.standing = (row[0], int(clamp(int(row[1]), 1, BULK)),
+                          int(clamp(int(row[2]), 0, len(SHIPPING) - 1)))
+        s.wants = [k for k in (d.get("wants") or ()) if k in BY_KEY]
+        s.offers = [x for x in (Offer.from_row(r)
+                                for r in (d.get("offers") or ()))
+                    if x is not None and x.key in s.wants]
+        s.offer_t = float(d.get("offer_t", OFFER_EVERY))
+        s.bought_offers = int(d.get("bought_offers", 0))
         s.bids = [x for x in (Auction.from_row(r)
                               for r in (d.get("bids") or ()))
                   if x is not None]
@@ -9557,6 +9789,18 @@ class GameBase:
             self.mode = int(val)
         elif name == "place":
             self.place_order()
+        elif name == "standing":
+            p = BY_PACK.get(self.product)
+            if p is not None:
+                if self.state.set_standing(p, self.qty, self.mode):
+                    self.toast("standing order",
+                               f"{p.name} x{self.qty}, whenever the post "
+                               f"has room", GOOD, 8.0)
+                else:
+                    self.toast("standing order cancelled", p.name,
+                               mix(TEA, CREAM, 0.2), 6.0)
+                self.beep("page")
+                self.save()
         elif name == "thing":
             up = BY_UPGRADE[val]
             if self.state.buy_thing(up):
@@ -9574,6 +9818,19 @@ class GameBase:
             self.buy_lot(val)
         elif name == "swap":
             self.do_swap(val)
+        elif name == "want":
+            if self.state.add_want(val):
+                self.beep("page")
+                self.toast("on the want list",
+                           BY_KEY[val].name + " - somebody will be in touch",
+                           mix(LAMP, CREAM, 0.3), 8.0)
+                self.save()
+        elif name == "unwant":
+            if self.state.drop_want(val):
+                self.beep("page")
+                self.save()
+        elif name == "offer":
+            self.take_offer(val)
         elif name == "bay":
             self.bay = val
             self.beep("page")
@@ -9841,6 +10098,22 @@ class GameBase:
                     else "one you already had")
             self.toast(f"{got.breed.name} is yours", word,
                        mix(LAMP, CREAM, 0.3), 10.0)
+        self.save()
+
+    def take_offer(self, key):
+        st = self.state
+        o = next((q for q in st.offers if q.key == key), None)
+        if o is None:
+            return
+        got = st.take_offer(o)
+        if got is None:
+            return
+        self.beep("shiny" if o.shiny else "level")
+        word = ("that is a new one" if got.kind == "new" else
+                f"straight to level {got.level}" if got.kind == "level"
+                else "one you already had")
+        self.toast(f"{got.breed.name} is yours", word,
+                   mix(LAMP, CREAM, 0.3), 10.0)
         self.save()
 
     def buy_merch(self, key):
@@ -10413,7 +10686,8 @@ def _stars(surf, n, pos, size=13, colour=None):
 
 SITES = (("meowrder", "MEOWRDER", "meowrder.example"),
          ("purrbay", "PURRBAY", "purrbay.example"),
-         ("swap", "THE SWAP BOARD", "catswap.example"))
+         ("swap", "THE SWAP BOARD", "catswap.example"),
+         ("wanted", "THE WANT LIST", "catwanted.example"))
 
 
 # ---------------------------------------------------------------------------
@@ -10667,6 +10941,11 @@ class ShopMixin:
             self._bookmarks(s)
             self.draw_resale(s)
             return
+        if self.site == "wanted":
+            _browser(s, "yours", "catwanted.example")
+            self._bookmarks(s)
+            self.draw_wanted(s)
+            return
         _browser(s, "catalogue" if not self.product else
                  "catalogue/" + self.product)
         self._bookmarks(s)
@@ -10681,6 +10960,12 @@ class ShopMixin:
         text(s, f"{len(st.orders)}/{st.slots} parcels in the post", 12,
              (PAGE_R.right - 18, y + 36), MUTED if not self.full else BAD,
              right=True, kind="mono", shadow=False)
+        if st.standing:
+            sp = st.standing_pack()
+            text(s, "standing order: " + sp.name
+                 + (f" x{st.standing[1]}" if st.standing[1] > 1 else ""),
+                 12, (PAGE_R.right - 18, y + 52), GOOD, right=True,
+                 kind="mono", shadow=False)
         day = today(st.played)
         if not day.quiet:
             tag = text(s, day.name, 14, (x + 196, y + 34),
@@ -10792,6 +11077,87 @@ class ShopMixin:
                 text(s, label, 12, r.center, warm(CREAM, 0.2), center=True,
                      kind="mono", shadow=False)
             bx += wdt + 6
+
+    # -- the want list -----------------------------------------------------
+    def draw_wanted(self, s):
+        """What you asked for, and who has come back about it."""
+        st = self.state
+        x, y = PAGE_R.x + 18, PAGE_R.y + 6
+        tr = text(s, "THE WANT LIST", 30, (x, y), mix(LAMP, CREAM, 0.4))
+        text(s, "you say what you are after", 13, (tr.right + 14, y + 16),
+             DIM, kind="mono", left=True, shadow=False)
+        text(s, money(self.shown_exact), 24, (PAGE_R.right - 18, y + 14),
+             mix(CREAM, TEA, 0.3), right=True, kind="mono")
+        text(s, f"{st.bought_offers} bought off the list", 12,
+             (PAGE_R.right - 18, y + 36), MUTED, right=True, kind="mono",
+             shadow=False)
+        hairline(s, x, y + 50, PAGE_R.right - 18, TEA, 60)
+        text(s, "Post what you are missing and people will come to you. "
+                "They will also price it knowing exactly how much you want "
+                "it, which is the whole arrangement.", 12, (x, y + 60),
+             MUTED, kind="mono", max_w=PAGE_R.w - 230)
+        self.buttons.append(Button((PAGE_R.right - 190, y + 78, 180, 26),
+                                   "< back to the room", ("scene", "room"),
+                                   "link", 15, kind="mono", colour=TEA))
+        text(s, f"{len(st.wants)} of {st.want_cap} up", 14, (x, y + 84),
+             TEA if len(st.wants) < st.want_cap else warm(EMBER, 0.2),
+             kind="mono")
+        if len(st.wants) >= st.want_cap and st.club < len(CLUB):
+            text(s, "the club lets you have one more up", 11, (x + 110,
+                 y + 86), DIM, kind="mono", shadow=False)
+
+        body = pygame.Rect(PAGE_R.x + 18, y + 114, PAGE_R.w - 36,
+                           PAGE_R.bottom - (y + 114) - 8)
+        if not st.wants:
+            text(s, "nothing on your list", 20, (body.centerx, body.y + 44),
+                 MUTED, center=True, kind="mono")
+            text(s, "open a cat you have not got in the binder and ask for "
+                    "it", 13, (body.centerx, body.y + 78), DIM, center=True,
+                 kind="mono")
+            return
+        rowh = min(96, body.h // max(1, len(st.wants)))
+        for i, key in enumerate(st.wants):
+            self._want_row(s, pygame.Rect(body.x, body.y + i * rowh,
+                                          body.w, rowh - 8), key, i)
+
+    def _want_row(self, s, r, key, i):
+        st = self.state
+        b = BY_KEY[key]
+        o = next((q for q in st.offers if q.key == key), None)
+        acc = rarity_colour(b.rarity)
+        panel(s, r, mix(SCREEN_HI, EMBER, 0.08 if o else 0.02),
+              shade(acc, 0.7) if o else shade(SCREEN_HI, 1.4),
+              radius=8, shadow=False)
+        text(s, b.name, 18, (r.x + 14, r.y + 8), acc, max_w=250)
+        text(s, rarity_name(b.rarity).lower(), 11, (r.x + 14, r.y + 32),
+             MUTED, kind="mono")
+        self.buttons.append(Button((r.x + 14, r.bottom - 28, 94, 22),
+                                   "take it down", ("unwant", key), "link",
+                                   12, kind="mono", colour=DIM))
+        if o is None:
+            text(s, "asked for - nobody has come back yet", 14,
+                 (r.x + 300, r.centery - 8), shade(TEA, 0.9), kind="mono")
+            text(s, "the rarer it is, the longer this takes", 11,
+                 (r.x + 300, r.centery + 12), DIM, kind="mono", shadow=False)
+            return
+        who, _, blurb = WANTERS[o.who]
+        text(s, who, 15, (r.x + 300, r.y + 8), mix(TEA, CREAM, 0.3),
+             kind="mono", max_w=250)
+        text(s, blurb, 11, (r.x + 300, r.y + 28), shade(MUTED, 0.9),
+             kind="mono", max_w=260)
+        cost = st.offer_cost(o)
+        text(s, money(cost), 22, (r.x + 300, r.y + 50),
+             GOOD if st.can_take_offer(o) else BAD, kind="mono")
+        if o.shiny:
+            text(s, "and it is a shiny", 11, (r.x + 404, r.y + 58),
+                 mix(LAMP, CREAM, 0.4), kind="mono", shadow=False)
+        text(s, f"gone in {clock_str(o.left)}", 12,
+             (r.right - 150, r.y + 10), LAMP if o.left < 40 else MUTED,
+             right=True, kind="mono", shadow=False)
+        self.buttons.append(Button(
+            (r.right - 136, r.centery - 18, 116, 36), "BUY IT",
+            ("offer", key), "solid", 16, kind="mono",
+            enabled=st.can_take_offer(o)))
 
     # -- the swap board ----------------------------------------------------
     def draw_swaps(self, s):
@@ -11249,6 +11615,20 @@ class ShopMixin:
         self.buttons.append(Button((right.right - 230, y - 4, 220, 50),
                                    "PLACE ORDER", ("place", None), "solid",
                                    20, kind="mono", enabled=can, note=note))
+
+        # and the one that means you do not have to come back
+        on = st.standing == (p.key, self.qty, self.mode)
+        lab = "STANDING ORDER: ON" if on else "KEEP ONE COMING"
+        self.buttons.append(Button((right.x, y + 34, 240, 26), lab,
+                                   ("standing", None),
+                                   "solid" if on else "plain", 13,
+                                   kind="mono",
+                                   colour=warm(CREAM, 0.2) if on else TEA,
+                                   enabled=bool(p.price) and st.sellable(p)))
+        text(s, "re-ordered whenever the post has room" if on
+             else "the shop re-orders this as slots free up", 11,
+             (right.x + 250, y + 47), GOOD if on else DIM, kind="mono",
+             shadow=False)
 
     # -- what is in the post ------------------------------------------------
     def draw_orders(self, s, body):
@@ -11921,6 +12301,24 @@ class BinderMixin:
                  shadow=False)
             text(s, f"would earn {rate(b.base_rate)} to start", 14,
                  (x, y + 62), DIM, kind="mono", shadow=False)
+            if b.key in st.wants:
+                text(s, "ON YOUR WANT LIST", 14, (x, y + 98),
+                     mix(LAMP, CREAM, 0.35), kind="mono")
+                self.buttons.append(Button((x, y + 120, 150, 30),
+                                           "take it down", ("unwant", b.key),
+                                           "plain", 14, kind="mono"))
+            elif b.rarity == R_UNLISTED:
+                text(s, "nobody will admit to having one of these", 13,
+                     (x, y + 100), DIM, kind="mono", shadow=False)
+            else:
+                full = len(st.wants) >= st.want_cap
+                self.buttons.append(Button((x, y + 98, 212, 34),
+                                           "ASK FOR ONE", ("want", b.key),
+                                           "solid", 15, kind="mono",
+                                           enabled=not full))
+                text(s, f"your list is full ({st.want_cap})" if full
+                     else "posts it to the want list", 12, (x + 226, y + 115),
+                     BAD if full else DIM, kind="mono", shadow=False)
         self.buttons.append(Button((r.right - 130, r.bottom - 54, 104, 36),
                                    "CLOSE", ("pick", self.pick), "plain", 15,
                                    kind="mono"))
