@@ -4249,6 +4249,145 @@ def jumps():
     return ok
 
 
+
+def attic():
+    """The room under the roof, and the one thing it is for.
+
+    Every other room in this flat either sells you something or holds
+    cats. The attic holds cats AND does something, and what it does is
+    the only lever in an idle game nothing else in here touches: how
+    long the place keeps earning once the game is shut.
+
+    So the test that matters is not that the number on the wall is
+    bigger. It is that a save written four hours ago, reopened, pays
+    out four hours instead of two - the arithmetic has to survive the
+    round trip through `from_dict`, which is where it is actually
+    applied.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+
+    # -- the room is wired up like every other room ---------------------
+    for a in cc.AREAS:
+        for table, what in ((cc.AREA_NAME, "a name"),
+                            (cc.AREA_WIDE, "a width"),
+                            (cc._AREA_DRAW, "a drawing")):
+            if a not in table:
+                print(f"  the {a} has no {what}")
+                ok = False
+    if "attic" not in cc.AREAS:
+        print("  there is no attic")
+        return False
+    print(f"  {len(cc.AREAS)} rooms, every one of them named, sized "
+          f"and drawn")
+
+    # -- cats move in, and the places they sit are real ------------------
+    spots = [sp for sp in cc.SPOTS if sp[0] == "attic"]
+    if not spots:
+        print("  nowhere to sit in the attic")
+        ok = False
+    st = cc.State()
+    if cc.attic_cats(st) != 0:
+        print("  an empty binder already has cats in the attic")
+        ok = False
+    for b in cc.BREEDS:
+        st.cards[b.key] = cc.Card(level=6)
+    full = cc.attic_cats(st)
+    print(f"  {len(spots)} places up there, {full} taken with a full flat")
+    if full != len(spots):
+        print(f"  {full} cats for {len(spots)} places")
+        ok = False
+    # and they fill up gradually rather than all at once
+    first = None
+    a = cc.State()
+    for i, b in enumerate(cc.BREEDS):
+        a.cards[b.key] = cc.Card(level=6)
+        if cc.attic_cats(a) and first is None:
+            first = i + 1
+    print(f"  the first cat moves up there at {first} breeds owned")
+    if first is None or first < 8:
+        print("  the attic fills before the rooms below it")
+        ok = False
+
+    # -- what it is worth ------------------------------------------------
+    if cc.offline_cap(cc.State()) != cc.OFFLINE_CAP:
+        print("  an empty attic already pays more than the base")
+        ok = False
+    want = min(cc.ATTIC_MOST, cc.OFFLINE_CAP + cc.ATTIC_EACH * full)
+    if cc.offline_cap(st) != want:
+        print(f"  {full} cats gives {cc.offline_cap(st)}, wanted {want}")
+        ok = False
+    print(f"  base {cc.hours_str(cc.OFFLINE_CAP)}, "
+          f"{cc.hours_str(cc.offline_cap(st))} with the attic full")
+    if cc.offline_cap(st) <= cc.OFFLINE_CAP:
+        print("  a full attic is worth nothing")
+        ok = False
+    if cc.offline_cap(st) > cc.ATTIC_MOST:
+        print("  the cap does not cap")
+        ok = False
+
+    # -- and it reaches the money, which is the whole point --------------
+    def away(state, hours):
+        d = state.to_dict()
+        d["stamp"] = time.time() - hours * 3600
+        return cc.State.from_dict(d)
+
+    bare = cc.State()
+    for b in list(cc.BREEDS)[:6]:       # too few to reach the attic
+        bare.cards[b.key] = cc.Card(level=6)
+    bare.money = 0.0
+    if cc.attic_cats(bare):
+        print("  six cats already reach the attic")
+        ok = False
+    many = cc.State()
+    for b in cc.BREEDS:
+        many.cards[b.key] = cc.Card(level=6)
+    many.money = 0.0
+
+    got_bare = away(bare, 9).money / max(1e-9, bare.income)
+    got_many = away(many, 9).money / max(1e-9, many.income)
+    print(f"  nine hours away: an empty attic pays "
+          f"{cc.hours_str(got_bare)}, a full one {cc.hours_str(got_many)}")
+    if abs(got_bare - cc.OFFLINE_CAP) > 2:
+        print(f"  with no attic cats it paid {got_bare:.0f}s, wanted "
+              f"{cc.OFFLINE_CAP}s")
+        ok = False
+    if abs(got_many - cc.offline_cap(many)) > 2:
+        print(f"  with a full attic it paid {got_many:.0f}s, wanted "
+              f"{cc.offline_cap(many)}s")
+        ok = False
+    # a short trip is still a short trip
+    short = away(many, 0.25)
+    if abs(short.money / max(1e-9, many.income) - 900) > 4:
+        print("  a quarter of an hour away paid something other than that")
+        ok = False
+    else:
+        print("  and a quarter of an hour away still pays a quarter of "
+              "an hour")
+
+    # -- the room draws, empty and full ----------------------------------
+    g = cc.Game(pygame.display.get_surface())
+    g.room = cc.CatRoom()
+    for cats, packs in ((0, 0), (6, 40), (len(cc.BREEDS), 4000)):
+        a = cc.State()
+        a.seen_intro = True
+        for b in list(cc.BREEDS)[:cats]:
+            a.cards[b.key] = cc.Card(level=6)
+        a.packs_opened = packs
+        g.state = a
+        g.area, g.scene = "attic", "room"
+        try:
+            g.draw()
+        except Exception as e:                           # noqa: BLE001
+            print(f"  the attic will not draw with {cats} cats: {e!r}")
+            ok = False
+    print("  it draws empty, half full, and with four thousand parcels "
+          "in it")
+
+    print("  attic:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -4357,6 +4496,9 @@ def main():
         print()
     if cmd in ("resale", "all"):
         ok &= resale()
+        print()
+    if cmd in ("attic", "all"):
+        ok &= attic()
         print()
     if cmd in ("bigroom", "all"):
         ok &= bigroom()

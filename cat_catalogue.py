@@ -255,6 +255,22 @@ def ago_words(secs):
     return f"{round(secs / 86400)} days ago"
 
 
+def hours_str(secs):
+    """A long stretch, in the units a person would say THAT in.
+
+    `clock_str` is for the post and tops out at minutes, which is right
+    for a parcel and silly for the attic: "280m 00s of earnings" is not
+    a sentence anybody says.
+    """
+    secs = max(0, int(secs))
+    h, m = secs // 3600, (secs % 3600) // 60
+    if h and m:
+        return f"{h}h {m:02d}m"
+    if h:
+        return f"{h} hour" + ("" if h == 1 else "s")
+    return f"{m} minutes"
+
+
 def clock_str(secs):
     """A delivery time, in the units a person would say it in."""
     secs = max(0, int(math.ceil(secs)))
@@ -5802,7 +5818,41 @@ FIRST_STRAY = 330.0        # seconds of play before the first one comes
 STRAY_GAP = (520.0, 820.0)  # ... and how long between the ones after it
 
 SAVE_NAME = "catalogue.json"
+# ---------------------------------------------------------------------------
+# THE ATTIC
+#
+# Every parcel this flat has ever taken in left a box, and they are all
+# up here, along with the tank, the beams and whatever came out of the
+# old place and never got unpacked. Cats love it. It is the warmest and
+# least disturbed room in the building and it is full of boxes to sit
+# in, which between them are the only two things a cat has ever asked
+# of a room.
+#
+# What it is FOR is the one lever in an idle game that nothing else in
+# here touches: how long the flat keeps running when the game is shut.
+# The cats go on earning for two hours after you close it, and every
+# cat that has taken up residence in the attic adds another forty
+# minutes to that, up to a day.
+#
+# The reason it is this and not another multiplier: the flat already
+# has four of those - the furnishings, the kit, the foundry line and
+# the club - and a fifth would have been a number going up next to four
+# other numbers going up. Nothing at all was looking after the time you
+# are not here.
+# ---------------------------------------------------------------------------
 OFFLINE_CAP = 2 * 3600          # the most the cats will earn while away
+ATTIC_EACH = 40 * 60            # ... and what one cat in the attic adds
+ATTIC_MOST = 24 * 3600          # no matter how many of them move in
+
+
+def attic_cats(state):
+    """How many have taken up residence under the roof."""
+    return len(cats_in(state, "attic"))
+
+
+def offline_cap(state):
+    """How long the flat earns for with the game shut."""
+    return min(ATTIC_MOST, OFFLINE_CAP + ATTIC_EACH * attic_cats(state))
 START_MONEY = 10.0              # exactly one Paper Sack, which is the point
 
 
@@ -6849,7 +6899,7 @@ class State:
         # than useless.
         gap = max(0.0, time.time() - float(d.get("stamp", time.time())))
         if gap > 1.0:
-            paid = min(gap, OFFLINE_CAP)
+            paid = min(gap, offline_cap(s))
             s.away = s.income * paid
             s.money += s.away
             s.earned += s.away
@@ -8069,12 +8119,14 @@ def draw_parcel(surf, rect, seed=0, open_frac=0.0, num=0):
 # pendant in the hall, the desk lamp, and a string of warm bulbs over the
 # cat tree.
 # ---------------------------------------------------------------------------
-AREAS = ("conv", "hall", "study", "cats")
+AREAS = ("conv", "hall", "study", "cats", "attic")
 AREA_NAME = {"conv": "THE CONVENTION", "hall": "THE HALL",
-             "study": "THE DESK", "cats": "THE CAT ROOM"}
+             "study": "THE DESK", "cats": "THE CAT ROOM",
+             "attic": "THE ATTIC"}
 # How wide each room is. Only the cat room is wider than the window onto
 # it, and walking inside it slides the camera rather than the room.
-AREA_WIDE = {"conv": W, "hall": W, "study": W, "cats": 2000}
+AREA_WIDE = {"conv": W, "hall": W, "study": W, "cats": 2000,
+             "attic": W}
 
 # -- the desk ---------------------------------------------------------------
 WALL_H = 400          # the desk surface starts here
@@ -9645,9 +9697,13 @@ def _catroom(surf, state, t):
 SPOTS = (
     ("study", 1022, 452, "sit", 150),     # the desk, beside the binder
     ("hall", 946, 410, "sit", 116),       # the console table by the door
+    ("attic", 305, 520, "curl", 128),     # down inside an open box
     ("study", 642, 174, "sit", 96),       # the shelf, at the clear end
+    ("attic", 596, 366, "sit", 126),      # up on the stack, by the light
     ("study", 958, 274, "curl", 124),     # the study windowsill
+    ("attic", 880, 524, "curl", 132),     # on the folded blankets
     ("hall", 290, 640, "curl", 132),      # down inside the box
+    ("attic", 790, 290, "sit", 104),      # along the beam, right at the top
     ("study", 676, 726, "curl", 172),     # the middle of the rug
     ("study", 414, 606, "sit", 124),      # the near edge of the rug
 )
@@ -10601,8 +10657,183 @@ def _convention(surf, state, t):
     text(surf, "OUT", 13, (W - 35, 318), TEA, center=True, kind="mono")
 
 
+
+# ---------------------------------------------------------------------------
+# THE ATTIC
+# ---------------------------------------------------------------------------
+ATTIC_FLOOR = 596
+
+
+def _box(surf, r, flap=True, seed=0):
+    """A cardboard box, open or taped. The boxes are the room."""
+    rng = random.Random(seed)
+    face = mix((150, 116, 80), WOOD, rng.uniform(0.10, 0.42))
+    pygame.draw.rect(surf, face, r, border_radius=2)
+    pygame.draw.rect(surf, shade(face, 0.76), r, width=2, border_radius=2)
+    if flap:                       # open, with the flaps folded out
+        for sx in (-1, 1):
+            tip = r.centerx + sx * (r.w * 0.60)
+            pygame.draw.polygon(surf, shade(face, 1.12), [
+                (r.centerx + sx * r.w * 0.06, r.y),
+                (tip, r.y - r.h * 0.17),
+                (tip, r.y + r.h * 0.05),
+                (r.centerx + sx * r.w * 0.06, r.y + r.h * 0.12)])
+        pygame.draw.rect(surf, shade(face, 0.52),
+                         (r.x + 3, r.y, r.w - 6, max(3, int(r.h * 0.16))),
+                         border_radius=2)
+    else:                          # taped shut, and written on
+        pygame.draw.line(surf, shade(face, 1.22),
+                         (r.centerx, r.y), (r.centerx, r.bottom), 3)
+        for i in range(2):
+            hairline(surf, r.x + 8, r.y + 12 + i * 9, r.x + r.w * 0.62,
+                     PAPER, 70)
+    return r
+
+
+def _attic(surf, state, t):
+    """Under the roof. Boxes, a tank, two beams and a lot of dust.
+
+    The pile is built off `packs_opened`, so the room fills up as the
+    game goes on: on a new collection it is an empty loft with a light
+    bulb, and by the end you cannot see the back wall.
+    """
+    surf.fill(INK)
+    # the roof, sloping in from both sides
+    pygame.draw.rect(surf, mix(INK, WOOD, 0.22), (0, 0, W, ATTIC_FLOOR))
+    for sx, x0 in ((1, 0), (-1, W)):
+        pygame.draw.polygon(surf, mix(DEEP, WOOD, 0.16), [
+            (x0, 0), (x0 + sx * 300, 0), (x0, 330)])
+    for i in range(9):             # the rafters, running back
+        x = 120 + i * 118
+        pygame.draw.line(surf, shade(WOOD, 0.62), (x, 40), (x, 300), 7)
+    pygame.draw.rect(surf, shade(WOOD, 0.7), (0, 300, W, 16))
+    pygame.draw.rect(surf, shade(WOOD, 0.9), (0, 300, W, 4))
+
+    _boards(surf, ATTIC_FLOOR, 0.58)
+
+    # the bulb on its flex, which is the only light up here
+    bx = 742
+    pygame.draw.line(surf, shade(TEA, 0.5), (bx, 0), (bx, 128), 2)
+    glow(surf, (bx, 140), 330, mix(LAMP, CREAM, 0.2), 0.20)
+    glow(surf, (bx, 140), 120, mix(LAMP, CREAM, 0.4), 0.26)
+    pygame.draw.circle(surf, mix(LAMP, CREAM, 0.55), (bx, 138), 11)
+    pygame.draw.rect(surf, shade(TEA, 0.7), (bx - 5, 120, 10, 12),
+                     border_radius=2)
+
+    # the water tank, lagged, in the corner
+    tank = pygame.Rect(96, 352, 150, 196)
+    pygame.draw.rect(surf, mix(TEA, WOOD, 0.45), tank, border_radius=5)
+    for i in range(7):
+        hairline(surf, tank.x + 6, tank.y + 16 + i * 25, tank.right - 6,
+                 CREAM, 30)
+    pygame.draw.rect(surf, shade(TEA, 0.6), tank, width=3, border_radius=5)
+    pygame.draw.line(surf, shade(TEA, 0.55), (tank.centerx, tank.y),
+                     (tank.centerx, 300), 9)
+
+    # The four places a cat sits are drawn FIRST and by hand, because a
+    # cat has to be sitting on something: the random pile went in first
+    # and the spots were picked to look right beside it, which left one
+    # cat curled up on bare floorboards and another perched in mid-air.
+    # Everything a cat uses is deliberate; the pile fills in round it.
+    open_box = pygame.Rect(238, ATTIC_FLOOR - 124, 134, 124)
+    _box(surf, open_box, flap=True, seed=1)
+    stack = pygame.Rect(540, ATTIC_FLOOR - 118, 112, 118)
+    _box(surf, stack, flap=False, seed=2)
+    _box(surf, pygame.Rect(548, ATTIC_FLOOR - 230, 96, 112), False, 3)
+    # the folded blankets, which is the warmest thing in the building
+    for i in range(4):
+        bl = pygame.Rect(812, ATTIC_FLOOR - 24 - i * 17, 136 - i * 6, 19)
+        bl.centerx = 880
+        pygame.draw.rect(surf, mix((126, 96, 110), WOOD, 0.18 + i * 0.12),
+                         bl, border_radius=7)
+        pygame.draw.rect(surf, shade(mix((126, 96, 110), WOOD, 0.3), 0.7),
+                         bl, width=1, border_radius=7)
+    # and the beam the top spot is on
+    pygame.draw.rect(surf, shade(WOOD, 0.78), (640, 288, 300, 22))
+    pygame.draw.rect(surf, shade(WOOD, 1.02), (640, 288, 300, 5))
+
+    # THE BOXES. One for roughly every forty parcels, stacked along the
+    # back wall, so the room is a readout of how long you have played.
+    pile = int(clamp(state.packs_opened / 40.0, 0, 22))
+    rng = random.Random(4)
+    cols = [x for x in (392, 452, 684, 740, 962, 1024, 1086)]
+    put = 0
+    for ci, cx in enumerate(cols):
+        y = ATTIC_FLOOR
+        for row in range(4):
+            if put >= pile:
+                break
+            bw = rng.randint(76, 104)
+            bh = rng.randint(52, 70)
+            r = pygame.Rect(cx - bw // 2 + rng.randint(-6, 6), y - bh, bw, bh)
+            _box(surf, r, flap=(row == 0 and ci % 3 == 1),
+                 seed=ci * 31 + row)
+            y -= bh - 3
+            put += 1
+    if not pile:
+        text(surf, "nothing up here yet", 15, (W // 2, 430), shade(TEA, 0.8),
+             center=True, kind="mono")
+        text(surf, "every parcel you open leaves a box, and they all end "
+                   "up here", 12, (W // 2, 456), DIM, center=True,
+             kind="mono")
+
+    # The hatch you came up through: a hole in the floor with the top of
+    # the ladder standing out of it. Drawn flat on the floor line it
+    # read as a small bench nobody could explain.
+    hatch = pygame.Rect(W - 250, ATTIC_FLOOR + 6, 170, 86)
+    pygame.draw.rect(surf, (10, 8, 9), hatch, border_radius=2)
+    pygame.draw.rect(surf, shade(WOOD, 0.55), hatch, width=4,
+                     border_radius=2)
+    # the lid, folded back against the floor
+    pygame.draw.polygon(surf, shade(WOOD, 0.86), [
+        (hatch.x - 4, hatch.y), (hatch.right + 4, hatch.y),
+        (hatch.right - 14, hatch.y - 15), (hatch.x + 6, hatch.y - 15)])
+    rail = mix(WOOD_HI, LAMP, 0.12)
+    for i in range(2):
+        rx = hatch.x + 42 + i * 86
+        pygame.draw.line(surf, rail, (rx, hatch.y - 58),
+                         (rx + 4, hatch.bottom), 6)
+    for i in range(3):              # the rungs, going down into the dark
+        ry = hatch.y - 42 + i * 30
+        pygame.draw.line(surf, shade(rail, 0.9 - i * 0.2),
+                         (hatch.x + 42, ry), (hatch.x + 128, ry), 5)
+
+    # dust, because this is the one room nobody hoovers
+    rng2 = random.Random(12)
+    for i in range(34):
+        dx = rng2.random() * W
+        dy = (rng2.random() * 420 + t * (4 + rng2.random() * 7)) % 420 + 60
+        a = int(26 + 34 * math.sin(t * 0.7 + i))
+        if a <= 2:
+            continue
+        d = pygame.Surface((2, 2), pygame.SRCALPHA)
+        d.fill((*CREAM, a))
+        surf.blit(d, (dx, dy))
+
+    draw_cats(surf, state, "attic", t)
+
+    # what the room is for, written on the wall where the cats are
+    cnt = attic_cats(state)
+    text(surf, "WHILE YOU ARE OUT", 12, (40, 626), shade(TEA, 0.95),
+         kind="mono", shadow=False)
+    text(surf, hours_str(offline_cap(state)) + " of earnings", 26,
+         (40, 648), warm(CREAM, 0.15))
+    if cnt:
+        text(surf, f"{cnt} cat{'' if cnt == 1 else 's'} up here, "
+                   f"{hours_str(ATTIC_EACH)} each, on top of the "
+                   f"{hours_str(OFFLINE_CAP)} you get anyway", 13,
+         (40, 690), GOOD, kind="mono", shadow=False)
+    else:
+        text(surf, f"nobody is up here - a cat in the attic is worth "
+                   f"another {hours_str(ATTIC_EACH)}", 13, (40, 690),
+             MUTED, kind="mono", shadow=False)
+    if offline_cap(state) >= ATTIC_MOST:
+        text(surf, "which is as long as it goes", 12, (40, 712),
+             mix(LAMP, CREAM, 0.3), kind="mono", shadow=False)
+
+
 _AREA_DRAW = {"conv": _convention, "hall": _hall,
-              "study": _study, "cats": _catroom}
+              "study": _study, "cats": _catroom, "attic": _attic}
 _scratch = None
 _wide = None
 
