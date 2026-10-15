@@ -5298,6 +5298,157 @@ BY_MERCH = {m.key: m for m in MERCH}
 
 
 
+
+# ---------------------------------------------------------------------------
+# THE STICKER ALBUM
+#
+# The company does not only print cards. Every year it also prints an
+# album and eight hundred numbered stickers to go in it, which is a
+# different hobby wearing the same coat: cards are bought one careful
+# box at a time and stickers are bought in fistfuls at a counter.
+#
+# It is deliberately OFF the post. A sticker packet does not take a
+# parcel slot and does not go on the round - you buy it, you open it
+# there and then. The catalogue is a game about four parcels and
+# waiting; putting eight hundred more things on that round would have
+# turned a three-and-a-half hour game into a sixteen hour one, and
+# nobody asked for that. Stickers cost money and time and nothing else.
+#
+# They earn nothing. Not a penny a second. The album is the reward, the
+# way the binder is.
+#
+# THE SWAPS are the actual mechanic. Eight hundred stickers pulled at
+# random is the coupon collector's problem and the tail of it is
+# brutal: the last fifty take longer than the first six hundred. So
+# every duplicate becomes a swap, and swaps buy any one sticker you are
+# missing, which is precisely the order form on the back of every real
+# album ever printed.
+# ---------------------------------------------------------------------------
+STICKER_SECTIONS = (
+    ("CATS OF THE WORLD", 96),
+    ("AT THE SHOW", 80),
+    ("THE KITTEN PAGES", 80),
+    ("WORKING CATS", 72),
+    ("THE STREET", 88),
+    ("MARKINGS AND COATS", 72),
+    ("THE COMPANY", 64),
+    ("FAMOUS PAIRS", 56),
+    ("THE OLD SERIES", 96),
+    ("FOIL", 96),
+)
+ALBUM_SIZE = sum(c for _, c in STICKER_SECTIONS)
+FOIL_FROM = ALBUM_SIZE - STICKER_SECTIONS[-1][1]   # the shiny last section
+SWAPS_FOR_ONE = 6          # duplicates it costs to claim a missing number
+PACKET_PRICE = 900         # a packet, over the counter, not by post
+PACKET_SIZE = 6            # ... and what is in one
+
+# The vocabulary. Written out by hand, because the names are the only
+# part of eight hundred stickers anybody reads - the patterns are the
+# ones the catalogue already uses ("The Night Bus Cat", "Harbour
+# Tabby"), so a sticker reads like something off the same press.
+_PLACES = ("Harbour", "Dockside", "Orchard", "Chapel", "Marsh", "Highland",
+           "Lowland", "Moorland", "Riverside", "Hillfoot", "Fenland",
+           "Cliffside", "Bramble", "Thornby", "Westgate", "Eastgate",
+           "Kirkwall", "Longbridge", "Saltmarsh", "Stonecross", "Ashford",
+           "Elmgrove", "Oakhanger", "Yewtree", "Mossbank", "Pitwood",
+           "Draycott", "Netherby", "Overton", "Standish", "Barrowfield",
+           "Coldharbour")
+_TRADES = ("Baker", "Cooper", "Draper", "Farrier", "Glazier", "Mason",
+           "Miller", "Potter", "Sawyer", "Tanner", "Thatcher", "Brewer",
+           "Chandler", "Fletcher", "Carter", "Dyer", "Weaver", "Cobbler")
+_INSIDE = ("Bakery", "Boatyard", "Bookshop", "Brewery", "Dairy", "Ferry",
+           "Forge", "Greenhouse", "Guildhall", "Laundry", "Lighthouse",
+           "Mill", "Observatory", "Pier", "Post Office", "Printworks",
+           "Quarry", "Signal Box", "Station", "Tannery", "Toll House",
+           "Vicarage", "Watchmaker", "Allotment", "Bandstand", "Boathouse",
+           "Coal Yard", "Cold Store", "Dye House", "Glasshouse",
+           "Pump Room", "Rope Walk")
+_COATS = ("Tabby", "Tortie", "Calico", "Tuxedo", "Smoke", "Silver",
+          "Ticked", "Spotted", "Marbled", "Blue", "Cream", "Sable",
+          "Chocolate", "Cinnamon", "Lilac", "Fawn", "Red", "Harlequin",
+          "Van", "Mitted", "Colourpoint", "Shaded", "Chinchilla", "Roan")
+_BUILDS = ("Longhair", "Shorthair", "Rex", "Bobtail", "Curl", "Fold",
+           "Munchkin", "Moggy", "Tom", "Queen")
+_ADJ = ("Patient", "Restless", "Watchful", "Idle", "Thunderous", "Quiet",
+        "Stubborn", "Hopeful", "Peculiar", "Reliable", "Unbothered",
+        "Magnificent", "Diminutive", "Ancient", "Nameless", "Reluctant",
+        "Indignant", "Serene", "Unrepentant", "Contented", "Unhurried",
+        "Obliging")
+_NOUNS = ("Sleeper", "Watcher", "Wanderer", "Climber", "Hunter", "Loafer",
+          "Visitor", "Regular", "Stowaway", "Understudy", "Apprentice",
+          "Foreman", "Caretaker", "Nightwatch", "Ratter", "Mouser",
+          "Lookout", "Bellringer", "Gatekeeper", "Shelfsitter", "Deputy",
+          "Stationmaster")
+_ORDINAL = ("First", "Second", "Third", "Fourth", "Fifth", "Sixth",
+            "Seventh", "Eighth", "Ninth", "Tenth", "Eleventh", "Twelfth")
+
+
+def _sticker_names(taken):
+    """Eight hundred of them, none clashing with each other or with a
+    breed - "The Chip Shop Cat" is a stray who already exists, and two
+    things in one game with one name is a bug that looks like a typo."""
+    rng = random.Random(90210)
+    pats = (
+        lambda r: f"The {r.choice(_INSIDE)} Cat",
+        lambda r: f"{r.choice(_PLACES)} {r.choice(_COATS)}",
+        lambda r: f"{r.choice(_PLACES)} {r.choice(_BUILDS)}",
+        lambda r: f"The {r.choice(_ADJ)} {r.choice(_NOUNS)}",
+        lambda r: f"The {r.choice(_TRADES)}'s Cat",
+        lambda r: f"{r.choice(_COATS)} {r.choice(_BUILDS)}",
+        lambda r: f"The {r.choice(_ORDINAL)} {r.choice(_NOUNS)}",
+        lambda r: f"{r.choice(_PLACES)} {r.choice(_COATS)} "
+                  f"{r.choice(_BUILDS)}",
+        lambda r: f"The {r.choice(_PLACES)} {r.choice(_NOUNS)}",
+    )
+    seen = set(taken)
+    out = []
+    while len(out) < ALBUM_SIZE:
+        nm = pats[rng.randrange(len(pats))](rng)
+        if nm in seen:
+            continue
+        seen.add(nm)
+        out.append(nm)
+    return tuple(out)
+
+
+class Sticker:
+    __slots__ = ("num", "name", "sec", "foil")
+
+    def __init__(self, num, name, sec, foil):
+        self.num = num              # 1-based, the number printed on it
+        self.name = name
+        self.sec = sec              # which section of the album
+        self.foil = foil
+
+    @property
+    def section(self):
+        return STICKER_SECTIONS[self.sec][0]
+
+
+def _build_album():
+    names = _sticker_names({b.name for b in ALL_BREEDS})
+    out = []
+    i = 0
+    for si, (_, count) in enumerate(STICKER_SECTIONS):
+        for _ in range(count):
+            out.append(Sticker(i + 1, names[i], si, i >= FOIL_FROM))
+            i += 1
+    return tuple(out)
+
+
+STICKERS = _build_album()
+SEC_START = tuple(sum(c for _, c in STICKER_SECTIONS[:i])
+                  for i in range(len(STICKER_SECTIONS) + 1))
+
+
+def sticker_section(num):
+    """Which section a 1-based number falls in."""
+    for i in range(len(STICKER_SECTIONS)):
+        if SEC_START[i] < num <= SEC_START[i + 1]:
+            return i
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # THE KITTY AWARDS
 #
@@ -5970,6 +6121,9 @@ class State:
         self.kit = set()            # sleeves, binders, a loupe
         self.shelf = set()          # which of the foundry line you own
         self.awards = set()         # ... and which of the awards you won
+        self.album = 0              # a bit per sticker, 1 if it is stuck in
+        self.album_swaps = 0        # duplicates, waiting to be traded
+        self.stickers_got = 0       # every sticker ever opened, dupes and all
         self.award_t = 0.0          # when to look at that again
         self.standing = None        # a pack the shop re-orders for you
         self.wants = []             # breeds you have asked the world for
@@ -6512,6 +6666,61 @@ class State:
             return None
         return self.order(pack, qty, mode)
 
+    # -- the sticker album -----------------------------------------------
+    @property
+    def album_got(self):
+        return self.album.bit_count()
+
+    @property
+    def album_done(self):
+        return self.album_got >= ALBUM_SIZE
+
+    def has_sticker(self, num):
+        return bool(self.album >> (num - 1) & 1)
+
+    def section_got(self, sec):
+        lo, hi = SEC_START[sec], SEC_START[sec + 1]
+        mask = ((1 << (hi - lo)) - 1) << lo
+        return (self.album & mask).bit_count()
+
+    def stick_in(self, num):
+        """One sticker. Returns True if it was a new number, False if it
+        went in the swaps tin - which most of them do, eventually."""
+        self.stickers_got += 1
+        if self.has_sticker(num):
+            self.album_swaps += 1
+            return False
+        self.album |= 1 << (num - 1)
+        return True
+
+    def missing_stickers(self):
+        return [st for st in STICKERS if not self.has_sticker(st.num)]
+
+    def can_claim(self, num):
+        return (not self.has_sticker(num)
+                and self.album_swaps >= SWAPS_FOR_ONE)
+
+    def claim_sticker(self, num):
+        """The order form on the back cover: swaps for a number you have
+        not got. It is the only way the last fifty ever arrive."""
+        if not self.can_claim(num):
+            return False
+        self.album_swaps -= SWAPS_FOR_ONE
+        self.album |= 1 << (num - 1)
+        return True
+
+    def open_stickers(self, count, rng=None):
+        """A packet. Foil is scarcer, and that is the whole last page."""
+        rng = rng or random
+        out = []
+        for _ in range(count):
+            if rng.random() < 0.085:
+                num = rng.randrange(FOIL_FROM, ALBUM_SIZE) + 1
+            else:
+                num = rng.randrange(0, FOIL_FROM) + 1
+            out.append((num, self.stick_in(num)))
+        return out
+
     # -- the want list ---------------------------------------------------
     @property
     def want_cap(self):
@@ -6791,6 +7000,11 @@ class State:
             "kit": sorted(self.kit),
             "shelf": sorted(self.shelf),
             "awards": sorted(self.awards),
+            # 800 bits of hex, which is 200 characters, against the 3k a
+            # list of the numbers would have cost
+            "album": format(self.album, "x"),
+            "album_swaps": self.album_swaps,
+            "stickers_got": self.stickers_got,
             "standing": list(self.standing) if self.standing else None,
             "wants": list(self.wants),
             "offers": [o.to_row() for o in self.offers],
@@ -6862,6 +7076,13 @@ class State:
         s.kit = {k for k in (d.get("kit") or ()) if k in BY_MERCH}
         s.shelf = {k for k in (d.get("shelf") or ()) if k in BY_STATUE}
         s.awards = {k for k in (d.get("awards") or ()) if k in BY_AWARD}
+        try:
+            s.album = int(d.get("album") or 0, 16)
+        except (TypeError, ValueError):
+            s.album = 0
+        s.album &= (1 << ALBUM_SIZE) - 1     # nothing past the last page
+        s.album_swaps = max(0, int(d.get("album_swaps", 0)))
+        s.stickers_got = max(0, int(d.get("stickers_got", 0)))
         row = d.get("standing")
         if row and row[0] in BY_PACK:
             s.standing = (row[0], int(clamp(int(row[1]), 1, BULK)),
@@ -9782,6 +10003,74 @@ def cat_rect(b, spot, look=(1, 0, False)):
     return img.get_rect(midbottom=(x, y))
 
 
+
+# A sticker is a cat's face on a coloured ground with a number in the
+# corner. Not the card art: a card is a whole cat in a window and is
+# read at two hundred pixels, a sticker is read at sixty and has to say
+# "cat" in about nine shapes.
+SEC_INK = ((176, 110, 84), (120, 142, 178), (178, 142, 96), (112, 158, 124),
+           (150, 120, 168), (170, 150, 104), (122, 150, 160), (186, 124, 128),
+           (138, 134, 114), (206, 170, 96))
+STICKER_COATS = ((58, 50, 48), (96, 78, 66), (142, 106, 70), (186, 146, 96),
+                 (214, 184, 150), (236, 226, 212), (120, 120, 126),
+                 (168, 168, 172), (198, 122, 66), (156, 78, 44),
+                 (86, 92, 104), (210, 166, 120))
+
+
+def sticker_face(surf, r, st, got, t=0.0):
+    """One sticker in its slot, stuck in or still an empty space."""
+    base = SEC_INK[st.sec % len(SEC_INK)]
+    if not got:
+        pygame.draw.rect(surf, shade(DEEP, 1.22), r, border_radius=5)
+        pygame.draw.rect(surf, shade(TEA, 0.45), r, width=1, border_radius=5)
+        text(surf, str(st.num), 13, r.center, shade(TEA, 0.75), center=True,
+             kind="mono", shadow=False)
+        return
+    rng = random.Random(st.num * 7717)
+    ground = mix(base, PAPER, 0.18)
+    if st.foil:                       # the last page, and it shows
+        ground = mix(base, CREAM, 0.34 + 0.12 * math.sin(t * 1.6 + st.num))
+    pygame.draw.rect(surf, ground, r, border_radius=5)
+    pygame.draw.rect(surf, shade(ground, 1.3) if st.foil
+                     else shade(ground, 0.74), r, width=2, border_radius=5)
+
+    # Drawing the cat out of the section colour made a page of
+    # ninety-six of the same ginger cat. The ground says which page you
+    # are on; the cat is its own animal.
+    coat = mix(rng.choice(STICKER_COATS), WOOD, rng.uniform(0.0, 0.22))
+    cx, cy = r.centerx, r.centery + r.h * 0.06
+    hr = r.h * rng.uniform(0.27, 0.33)
+    ew = hr * rng.uniform(0.62, 0.92)
+    for sx in (-1, 1):               # the ears, which do most of the work
+        bx = cx + sx * hr * 0.62
+        pygame.draw.polygon(surf, coat, [
+            (bx - ew * 0.42, cy - hr * 0.42),
+            (bx + sx * ew * 0.16, cy - hr * 1.02),
+            (bx + ew * 0.42, cy - hr * 0.30)])
+    pygame.draw.ellipse(surf, coat, (cx - hr * 1.12, cy - hr * 0.92,
+                                     hr * 2.24, hr * 1.84))
+    if rng.random() < 0.45:          # a blaze, a mask, or nothing
+        mark = mix(coat, CREAM, rng.uniform(0.3, 0.6))
+        pygame.draw.ellipse(surf, mark,
+                            (cx - hr * 0.30, cy - hr * 0.86,
+                             hr * 0.60, hr * 1.5))
+    eye = rng.choice(((214, 186, 92), (138, 182, 140), (120, 160, 198),
+                      (196, 150, 90)))
+    for sx in (-1, 1):
+        pygame.draw.ellipse(surf, eye, (cx + sx * hr * 0.46 - hr * 0.21,
+                                        cy - hr * 0.26, hr * 0.42,
+                                        hr * 0.34))
+        pygame.draw.ellipse(surf, (18, 14, 16),
+                            (cx + sx * hr * 0.46 - hr * 0.07,
+                             cy - hr * 0.26, hr * 0.14, hr * 0.34))
+    pygame.draw.polygon(surf, mix((206, 150, 150), coat, 0.25), [
+        (cx - hr * 0.13, cy + hr * 0.22), (cx + hr * 0.13, cy + hr * 0.22),
+        (cx, cy + hr * 0.44)])
+    num = text(surf, str(st.num), 11, (r.x + 5, r.y + 3),
+               shade(ground, 0.52), kind="mono", shadow=False)
+    del num
+
+
 def draw_cats(surf, state, area, t):
     for i, (b, spot) in enumerate(cats_in(state, area)):
         _, x, y, pose, hgt = spot
@@ -10951,6 +11240,8 @@ class GameBase:
         self.was_conv = self.state.convention()
         self.autosave = 0.0
         self.confirm = None         # a backup waiting to be confirmed
+        self.album_page = 0         # which section of the album is open
+        self.album_hover = 0        # ... and which slot is under the mouse
         self.coin_timer = 0.0
         self.since_coin = 0.0
         # The balance the SCREEN shows, which is not the balance the game
@@ -11078,6 +11369,45 @@ class GameBase:
     def toast(self, text, sub="", colour=None, life=5.0):
         self.toasts.insert(0, Toast(text, sub, colour, life))
         del self.toasts[4:]
+
+    def buy_packet(self, many=1):
+        """Bought at the counter and opened on the spot. Nothing about a
+        packet of stickers touches the post."""
+        st = self.state
+        cost = PACKET_PRICE * many
+        if st.money < cost or st.album_done:
+            return
+        st.money -= cost
+        st.spent += cost
+        got = st.open_stickers(PACKET_SIZE * many)
+        self.shown_exact = st.money
+        new = [num for num, fresh in got if fresh]
+        self.beep("tape")
+        if new:
+            names = ", ".join(f"no. {k}" for k in new[:3])
+            more = f" and {len(new) - 3} more" if len(new) > 3 else ""
+            self.toast(f"{len(new)} new one{'' if len(new) == 1 else 's'}",
+                       names + more, mix(LAMP, CREAM, 0.3), 8.0)
+        else:
+            self.toast("got, got, got, got, got, got",
+                       f"six swaps, then - {st.album_swaps} in the tin",
+                       MUTED, 7.0)
+        if st.album_done:
+            self.toast("the album is full",
+                       f"all {ALBUM_SIZE} of them, stuck in",
+                       mix(LAMP, CREAM, 0.45), 16.0)
+        self.save()
+
+    def claim_sticker(self, num):
+        st = self.state
+        if not st.can_claim(num):
+            return
+        if st.claim_sticker(num):
+            self.beep("level")
+            self.toast(f"no. {num} came in the post",
+                       STICKERS[num - 1].name + f" - {st.album_swaps} swaps "
+                       f"left", GOOD, 8.0)
+            self.save()
 
     def put_back(self, i):
         """Two presses: the first arms it, the second does it."""
@@ -11318,6 +11648,13 @@ class GameBase:
             self.state.sound = not self.state.sound
         elif name == "restore":
             self.put_back(val)
+        elif name == "apage":
+            self.album_page = int(val)
+            self.beep("page")
+        elif name == "packet":
+            self.buy_packet(int(val or 1))
+        elif name == "claim":
+            self.claim_sticker(val)
         elif name == "quit":
             pygame.event.post(pygame.event.Event(pygame.QUIT))
 
@@ -11936,6 +12273,8 @@ class GameBase:
             self.draw_menu(s)
         elif self.scene == "saves":
             self.draw_saves(s)
+        elif self.scene == "album":
+            self.draw_album(s)
         elif self.scene == "end":
             self.draw_end(s)
         else:
@@ -13779,6 +14118,14 @@ class BinderMixin:
                 pygame.draw.rect(s, mix(EMBER, LAMP, 0.3), rect.inflate(6, 6),
                                  width=2, border_radius=8)
 
+        # Centred, and clear of the two at the corners: dropped in at
+        # the right-hand end it sat straight on top of "the catalogue >",
+        # which `cat_test.py layout` is what noticed.
+        self.buttons.append(Button((inner.centerx - 110, inner.bottom - 52,
+                                    220, 34),
+                                   f"THE ALBUM  {st.album_got}/{ALBUM_SIZE}",
+                                   ("scene", "album"), "plain", 14,
+                                   kind="mono", colour=mix(LAMP, CREAM, 0.3)))
         for i in range(pages):
             r = pygame.Rect(inner.centerx - (pages * 90) // 2 + i * 90,
                             inner.bottom - 96, 80, 30)
@@ -14538,6 +14885,124 @@ class MenuMixin:
         self.buttons.append(Button((r.centerx - 80, r.bottom - 68, 160, 42),
                                    "BACK", ("scene", "menu"), "solid", 16,
                                    kind="mono"))
+
+    # -- the sticker album -------------------------------------------------
+    def draw_album(self, s):
+        """Eight hundred numbered slots, a section to a page.
+
+        The empty ones are the page. An album that only showed what you
+        had would be a list of things you already know about.
+        """
+        st = self.state
+        s.fill(INK)
+        for y in range(0, H, 6):
+            pygame.draw.rect(s, mix(WOOD_LO, WOOD, (y / H) ** 0.8),
+                             (0, y, W, 6))
+        glow(s, (420, 180), 460, mix(LAMP, EMBER, 0.4), 0.16)
+        book = pygame.Rect(40, 24, W - 80, H - 48)
+        panel(s, book, mix(RUG, WOOD, 0.34), shade(RUG, 1.2), radius=12)
+        inner = book.inflate(-26, -26)
+        panel(s, inner, mix(DEEP, WOOD, 0.3), shade(TEA, 0.4), radius=8,
+              shadow=False)
+
+        self.album_page = int(clamp(getattr(self, "album_page", 0), 0,
+                                    len(STICKER_SECTIONS) - 1))
+        sec = self.album_page
+        lo, hi = SEC_START[sec], SEC_START[sec + 1]
+        got, tot = st.section_got(sec), hi - lo
+
+        text(s, "THE STICKER ALBUM", 26, (inner.x + 20, inner.y + 12),
+             warm(CREAM, 0.2))
+        text(s, f"{st.album_got} of {ALBUM_SIZE}", 17,
+             (inner.right - 20, inner.y + 18),
+             GOOD if st.album_done else TEA, right=True, kind="mono")
+        hairline(s, inner.x + 20, inner.y + 44, inner.right - 20, TEA, 60)
+
+        text(s, STICKER_SECTIONS[sec][0], 20, (inner.x + 20, inner.y + 54),
+             mix(LAMP, CREAM, 0.35))
+        text(s, f"{got} of {tot} on this page", 13,
+             (inner.x + 320, inner.y + 60),
+             GOOD if got == tot else MUTED, kind="mono")
+
+        # the grid
+        cols, rows = 12, 8
+        area = pygame.Rect(inner.x + 20, inner.y + 86, inner.w - 40, 430)
+        cw = (area.w - (cols - 1) * 7) // cols
+        ch = min(54, (area.h - (rows - 1) * 7) // rows)
+        for i in range(lo, hi):
+            k = i - lo
+            r, c = divmod(k, cols)
+            if r >= rows:
+                break
+            cell = pygame.Rect(area.x + c * (cw + 7), area.y + r * (ch + 7),
+                               cw, ch)
+            sticker_face(s, cell, STICKERS[i], st.has_sticker(i + 1), self.t)
+            if not st.has_sticker(i + 1):
+                self.buttons.append(Button(cell, "", ("claim", i + 1), "hit"))
+            if cell.collidepoint(pygame.mouse.get_pos()):
+                pygame.draw.rect(s, mix(EMBER, LAMP, 0.3), cell.inflate(4, 4),
+                                 width=2, border_radius=6)
+                self.album_hover = i + 1
+
+        # what you are pointing at
+        hov = getattr(self, "album_hover", 0)
+        if lo < hov <= hi:
+            h = STICKERS[hov - 1]
+            mine = st.has_sticker(hov)
+            text(s, f"No. {h.num}  {h.name}", 16,
+                 (inner.x + 20, inner.bottom - 118),
+                 warm(CREAM, 0.2) if mine else mix(TEA, CREAM, 0.3))
+            text(s, "in the album" if mine else
+                 (f"click to send off for it - {SWAPS_FOR_ONE} swaps"
+                  if st.album_swaps >= SWAPS_FOR_ONE else
+                  f"not got it - {SWAPS_FOR_ONE} swaps to send off for one"),
+                 12, (inner.x + 20, inner.bottom - 96),
+                 GOOD if mine else
+                 (TEA if st.album_swaps >= SWAPS_FOR_ONE else MUTED),
+                 kind="mono")
+
+        # the section tabs
+        tx = inner.x + 20
+        for i, (nm, cnt) in enumerate(STICKER_SECTIONS):
+            lab = f"{i + 1}"
+            wdt = 34
+            r = pygame.Rect(tx, inner.bottom - 68, wdt, 24)
+            on = i == sec
+            full = st.section_got(i) >= cnt
+            if on:
+                pygame.draw.rect(s, mix(SCREEN_HI, EMBER, 0.3), r,
+                                 border_radius=5)
+                text(s, lab, 13, r.center, warm(CREAM, 0.2), center=True,
+                     kind="mono", shadow=False)
+            self.buttons.append(Button(r, lab, ("apage", i),
+                                       "hit" if on else "plain", 13,
+                                       kind="mono",
+                                       colour=CREAM if on else
+                                       GOOD if full else TEA))
+            tx += wdt + 5
+
+        # the counter, and the two things you can do
+        text(s, f"{st.album_swaps} swaps", 18,
+             (inner.right - 320, inner.bottom - 60), warm(EMBER, 0.2),
+             right=True, kind="mono")
+        text(s, f"{st.stickers_got} opened", 12,
+             (inner.right - 320, inner.bottom - 38), MUTED, right=True,
+             kind="mono", shadow=False)
+        # One packet, or ten. Filling the album takes about three
+        # hundred of them, and three hundred clicks is not a hobby.
+        self.buttons.append(Button(
+            (inner.right - 436, inner.bottom - 70, 142, 42),
+            f"A PACKET  {money(PACKET_PRICE)}", ("packet", 1), "solid", 14,
+            kind="mono", enabled=st.money >= PACKET_PRICE and
+            not st.album_done))
+        self.buttons.append(Button(
+            (inner.right - 286, inner.bottom - 70, 146, 42),
+            f"TEN  {money(PACKET_PRICE * 10)}", ("packet", 10), "solid", 14,
+            kind="mono", enabled=st.money >= PACKET_PRICE * 10 and
+            not st.album_done))
+        self.buttons.append(Button(
+            (inner.right - 132, inner.bottom - 70, 112, 42), "THE BINDER",
+            ("scene", "binder"), "plain", 15, kind="mono"))
 
     def draw_end(self, s):
         self.draw_room(s)

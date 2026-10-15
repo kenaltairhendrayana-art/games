@@ -479,6 +479,11 @@ def sameness():
             print(f"  two cats are both called {nm!r}: {keys}")
         ok = False
 
+    # Each silhouette is packed into one integer, a bit per pixel, so a
+    # comparison is two machine-word operations instead of two passes
+    # over a list of 5184 Python ints. It matters because this is the
+    # one test whose cost is the SQUARE of the book: at 200 cats it is
+    # 19,900 comparisons and at 1000 it is half a million.
     masks = {}
     # Every cat in the game, not just the catalogue. The five off the
     # street and the five printed for the hall were never compared
@@ -492,18 +497,32 @@ def sameness():
         sil = m.to_surface(setcolor=(255, 255, 255, 255),
                            unsetcolor=(0, 0, 0, 255))
         small = pygame.transform.smoothscale(sil, (SZ, SZ))
-        masks[b.key] = [1 if small.get_at((x, y))[0] > 110 else 0
-                        for y in range(SZ) for x in range(SZ)]
+        v = 0
+        for y in range(SZ):
+            for x in range(SZ):
+                if small.get_at((x, y))[0] > 110:
+                    v |= 1 << (y * SZ + x)
+        masks[b.key] = v
+    # Only the close pairs are kept. Half a million tuples of
+    # (float, str, str) is most of a gigabyte and the report only ever
+    # prints the top eight.
     worst = []
+    total = 0
+    acc = 0.0
+    least = (2.0, "", "")
     for i, a in enumerate(cc.ALL_BREEDS):
+        ma = masks[a.key]
         for b in cc.ALL_BREEDS[i + 1:]:
-            ma, mb = masks[a.key], masks[b.key]
-            inter = sum(1 for x, y in zip(ma, mb) if x and y)
-            union = sum(1 for x, y in zip(ma, mb) if x or y)
-            worst.append((inter / max(1, union), a.name, b.name))
+            mb = masks[b.key]
+            o = (ma & mb).bit_count() / max(1, (ma | mb).bit_count())
+            total += 1
+            acc += o
+            if o > 0.90:
+                worst.append((o, a.name, b.name))
+            if o < least[0]:
+                least = (o, a.name, b.name)
     worst.sort(reverse=True)
-    total = len(worst)
-    mean = sum(w[0] for w in worst) / total
+    mean = acc / max(1, total)
 
     IDENTICAL = 0.965          # nothing may be this close to anything
     CLOSE = 0.95               # ... and few may be this close
@@ -516,8 +535,8 @@ def sameness():
     for same, a, b in worst[:8]:
         flag = "  <-- the same cat twice" if same > IDENTICAL else ""
         print(f"    {same:.3f}  {a} / {b}{flag}")
-    print(f"  the two least alike: {worst[-1][0]:.3f}  "
-          f"{worst[-1][1]} / {worst[-1][2]}")
+    print(f"  the two least alike: {least[0]:.3f}  "
+          f"{least[1]} / {least[2]}")
 
     bad = [w for w in worst if w[0] > IDENTICAL]
     close = [w for w in worst if w[0] > CLOSE]
@@ -4388,6 +4407,178 @@ def attic():
     return ok
 
 
+
+def album():
+    """Eight hundred numbered stickers, which take the game to a
+    thousand things to collect.
+
+    The promise this has to keep is that it is a SIDE collection. The
+    catalogue is a game about four parcels and waiting, and it is
+    balanced to three and a half hours; a packet of stickers may cost
+    money and it may cost time, but the moment it takes a parcel slot
+    or pays a penny a second it is not beside that game any more, it is
+    inside it, and the number everyone measured is wrong.
+    """
+    ok = True
+    pygame.display.set_mode((cc.W, cc.H))
+
+    # -- the album is the shape it says it is ---------------------------
+    if sum(c for _, c in cc.STICKER_SECTIONS) != cc.ALBUM_SIZE:
+        print("  the sections do not add up to the album")
+        ok = False
+    nums = [st.num for st in cc.STICKERS]
+    if nums != list(range(1, cc.ALBUM_SIZE + 1)):
+        print("  the numbers are not 1 to the end with no gaps")
+        ok = False
+    names = [st.name for st in cc.STICKERS]
+    if len(set(names)) != len(names):
+        dup = sorted({x for x in names if names.count(x) > 1})
+        print(f"  {len(dup)} sticker name(s) used twice: {dup[:3]}")
+        ok = False
+    clash = sorted(set(names) & {b.name for b in cc.ALL_BREEDS})
+    if clash:
+        print(f"  a sticker and a cat share a name: {clash[:3]}")
+        ok = False
+    total = len(cc.BY_KEY) + cc.ALBUM_SIZE
+    print(f"  {len(cc.BY_KEY)} cats and {cc.ALBUM_SIZE} stickers: "
+          f"{total} things to collect")
+    if total < 1000:
+        print(f"  {total} is short of a thousand")
+        ok = False
+    foil = [st for st in cc.STICKERS if st.foil]
+    if {st.sec for st in foil} != {len(cc.STICKER_SECTIONS) - 1}:
+        print("  the foil is not all on the last page")
+        ok = False
+    print(f"  {len(foil)} of them foil, all on the last page")
+
+    # -- sticking them in ------------------------------------------------
+    st = cc.State()
+    if st.album_got or st.album_swaps:
+        print("  a new album is not empty")
+        ok = False
+    if not st.stick_in(42):
+        print("  the first one was not new")
+        ok = False
+    if st.stick_in(42):
+        print("  the same number went in twice")
+        ok = False
+    if st.album_swaps != 1:
+        print(f"  a duplicate gave {st.album_swaps} swaps, wanted 1")
+        ok = False
+    if not st.has_sticker(42) or st.album_got != 1:
+        print("  it did not go in the album")
+        ok = False
+
+    # -- the order form ---------------------------------------------------
+    a = cc.State()
+    a.album_swaps = cc.SWAPS_FOR_ONE
+    if a.can_claim(42) is False:
+        print("  cannot send off for one with the swaps for it")
+        ok = False
+    a.claim_sticker(42)
+    if not a.has_sticker(42) or a.album_swaps != 0:
+        print("  sending off for one did not work")
+        ok = False
+    if a.can_claim(43):
+        print("  sent off for one with no swaps left")
+        ok = False
+    a.album_swaps = 99
+    if a.can_claim(42):
+        print("  sent off for one already in the album")
+        ok = False
+    print(f"  a duplicate is a swap, and {cc.SWAPS_FOR_ONE} swaps is any "
+          f"number you are missing")
+
+    # -- nothing it does touches the post or the money a second ----------
+    g = cc.Game(pygame.display.get_surface())
+    g.state = cc.State()
+    g.state.seen_intro = True
+    g.state.money = 10 ** 7
+    g.room = cc.CatRoom()
+    for b in list(cc.BREEDS)[:40]:
+        g.state.cards[b.key] = cc.Card(level=5)
+    before = (cc.rate(g.state.income), len(g.state.orders),
+              len(g.state.parcels), g.state.slots)
+    for _ in range(25):
+        g.buy_packet()
+    after = (cc.rate(g.state.income), len(g.state.orders),
+             len(g.state.parcels), g.state.slots)
+    if before != after:
+        print(f"  packets changed the game around them: {before} -> {after}")
+        ok = False
+    else:
+        print(f"  25 packets: the post, the slots and the income are all "
+              f"exactly where they were")
+    if g.state.album_got == 0:
+        print("  25 packets produced no stickers")
+        ok = False
+
+    # -- how long the whole thing takes -----------------------------------
+    rng = random.Random(11)
+    runs = []
+    for seed in range(3):
+        a = cc.State()
+        rng = random.Random(seed)
+        packets = 0
+        while not a.album_done and packets < 40000:
+            a.open_stickers(cc.PACKET_SIZE, rng)
+            packets += 1
+            while a.album_swaps >= cc.SWAPS_FOR_ONE:
+                miss = a.missing_stickers()
+                if not miss:
+                    break
+                a.claim_sticker(miss[0].num)
+        runs.append(packets)
+    avg = sum(runs) / len(runs)
+    print(f"  filling it takes {avg:.0f} packets on average "
+          f"({cc.money(avg * cc.PACKET_PRICE)}), sending off for the ones "
+          f"that never come")
+    if avg >= 40000:
+        print("  the album cannot be finished")
+        ok = False
+
+    # -- and it survives a save -------------------------------------------
+    keep = cc.State()
+    rng = random.Random(3)
+    for _ in range(120):
+        keep.open_stickers(cc.PACKET_SIZE, rng)
+    back = cc.State.from_dict(keep.to_dict())
+    if (back.album, back.album_swaps, back.stickers_got) != \
+            (keep.album, keep.album_swaps, keep.stickers_got):
+        print("  the album does not survive a save")
+        ok = False
+    else:
+        print(f"  {keep.album_got} stickers survive a save in "
+              f"{len(keep.to_dict()['album'])} characters")
+    full = cc.State()
+    full.album = (1 << cc.ALBUM_SIZE) - 1
+    if not cc.State.from_dict(full.to_dict()).album_done:
+        print("  a finished album does not survive a save")
+        ok = False
+    junk = cc.State.from_dict({"album": "not hex"})
+    if junk.album:
+        print("  a corrupt album loaded as something")
+        ok = False
+
+    # -- every page draws --------------------------------------------------
+    for owned in (0, 400, cc.ALBUM_SIZE):
+        g.state = cc.State()
+        g.state.seen_intro = True
+        g.state.album = (1 << owned) - 1
+        for page in range(len(cc.STICKER_SECTIONS)):
+            g.scene, g.album_page = "album", page
+            try:
+                g.draw()
+            except Exception as e:                       # noqa: BLE001
+                print(f"  page {page + 1} will not draw at {owned}: {e!r}")
+                ok = False
+                break
+    print(f"  all {len(cc.STICKER_SECTIONS)} pages draw, empty and full")
+
+    print("  album:", "ok" if ok else "FAILED")
+    return ok
+
+
 def main():
     args = sys.argv[1:] or ["all"]
     cmd = args[0]
@@ -4496,6 +4687,9 @@ def main():
         print()
     if cmd in ("resale", "all"):
         ok &= resale()
+        print()
+    if cmd in ("album", "all"):
+        ok &= album()
         print()
     if cmd in ("attic", "all"):
         ok &= attic()
