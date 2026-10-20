@@ -24,6 +24,11 @@ chk.pyc
 #     !assets/whatever.png
 *.png
 
+# One exception: the link-preview card for the deployed site. This one is a
+# real asset - it ships inside site/ and is read by WhatsApp, Twitter and the
+# rest, which is the thing the rule above was never about.
+!og.png
+
 # ---- audio --------------------------------------------------------------
 # Same story. All eighteen pieces are generated in code; vermilion_theme.ogg
 # is the recording THE VENGEANCE replaced and nothing loads it any more.
@@ -34,3 +39,7 @@ chk.pyc
 # ---- editor / tooling ---------------------------------------------------
 # Local Claude Code permissions - per-machine, not project configuration.
 .claude/settings.local.json
+
+# ---- web build output ---------------------------------------------------
+# site/ is rebuilt by build_site.sh, and by Netlify on every deploy.
+site/

@@ -1,0 +1,33 @@
+# Netlify for "Jeritan".
+#
+# The game is one file, jeritan.html, written for the Artifact skeleton.
+# build_site.sh wraps it into a complete HTML document and writes site/
+# alongside a 404, robots and a sitemap. No npm, no dependencies, nothing
+# to install - the build image already has bash.
+
+[build]
+  command = "bash build_site.sh"
+  publish = "site"
+
+[build.environment]
+  SITE_URL = "https://jeritan.netlify.app"
+
+# Always revalidated: it is one small file and it changes often.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/og.png"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"
+    # The game asks nothing of the player device.
+    Permissions-Policy = "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
